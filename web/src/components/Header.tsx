@@ -1,10 +1,16 @@
-import { Link } from "react-router-dom";
-import { Film, User } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { Film, User, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useSessionContext, signOut } from "supertokens-auth-react/recipe/session";
 
 export function Header() {
-    // TODO: Add auth state check
-    const user = null;
+    const session = useSessionContext();
+    const navigate = useNavigate();
+
+    async function onLogout() {
+        await signOut();
+        navigate("/");
+    }
 
     return (
         <header className="border-b border-white/10 sticky top-0 bg-black/80 backdrop-blur z-50">
@@ -20,10 +26,18 @@ export function Header() {
 
                 {/* Actions */}
                 <div className="flex items-center gap-4">
-                    {user ? (
-                        <Button variant="ghost" size="icon">
-                            <User className="h-5 w-5" />
-                        </Button>
+                    {!session.loading && session.doesSessionExist ? (
+                        <>
+                            <Link to="/dashboard">
+                                <Button variant="ghost" size="icon" title="Dashboard">
+                                    <User className="h-5 w-5" />
+                                </Button>
+                            </Link>
+                            <Button variant="outline" onClick={onLogout} title="Sign Out">
+                                <LogOut className="h-4 w-4 mr-2" />
+                                Sign Out
+                            </Button>
+                        </>
                     ) : (
                         <Link to="/auth">
                             <Button variant="outline">Sign In</Button>

@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from supertokens_python import init, InputAppInfo, SupertokensConfig, AppInfo
+from supertokens_python import init, InputAppInfo, SupertokensConfig, AppInfo, get_all_cors_headers
 from supertokens_python.recipe import emailpassword, session, dashboard
 from supertokens_python.framework.fastapi import get_middleware
 from starlette.middleware.cors import CORSMiddleware
@@ -41,7 +41,7 @@ app.add_middleware(
     allow_origins=[f"http://localhost:{WEB_PORT}"],
     allow_credentials=True,
     allow_methods=["GET", "PUT", "POST", "DELETE", "OPTIONS", "PATCH"],
-    allow_headers=["Content-Type"] + session.get_cors_allowed_headers(),
+    allow_headers=["Content-Type"] + get_all_cors_headers(),
 )
 
 # --- Routes ---
@@ -52,6 +52,20 @@ def read_root():
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+
+from supertokens_python.recipe.session.framework.fastapi import verify_session
+from supertokens_python.recipe.session import SessionContainer
+from fastapi import Depends
+from supertokens_python.asyncio import get_users_oldest_first
+
+# ... (existing routes)
+
+@app.get("/users")
+async def get_users():
+    # Retrieve all users (no pagination for now, simple implementation)
+    # Default tenant_id is "public"
+    users_response = await get_users_oldest_first("public")
+    return {"users": users_response.users}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=API_PORT)

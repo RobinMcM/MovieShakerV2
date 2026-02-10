@@ -13,5 +13,16 @@ class Project(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     name: str
     description: Optional[str] = None
+    
+    # Metadata
+    status: str = Field(default="planning")
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    director: Optional[str] = None
+    film_type: Optional[str] = None
+    series: Optional[str] = None
+    episode: Optional[str] = None
+    aspect_ratio: str = Field(default="16:9")
+    
     created_at: datetime = Field(default_factory=datetime.utcnow)
     owner_id: str = Field(index=True) # SuperTokens User ID of the creator ("MovieMaker")

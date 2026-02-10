@@ -2,6 +2,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Film, User, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSessionContext, signOut } from "supertokens-auth-react/recipe/session";
+import { ModeToggle } from "@/components/mode-toggle";
 
 export function Header() {
     const session = useSessionContext();
@@ -13,7 +14,7 @@ export function Header() {
     }
 
     return (
-        <header className="border-b border-white/10 sticky top-0 bg-black/80 backdrop-blur z-50">
+        <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
             <div className="container mx-auto px-4 py-4 flex items-center justify-between">
 
                 {/* Logo */}
@@ -24,10 +25,13 @@ export function Header() {
                     </span>
                 </Link>
 
-                {/* Actions */}
                 <div className="flex items-center gap-4">
+                    <ModeToggle />
                     {!session.loading && session.doesSessionExist ? (
                         <>
+                            <Link to="/projects">
+                                <Button variant="ghost">Projects</Button>
+                            </Link>
                             <Button variant="ghost" size="icon" title="User">
                                 <User className="h-5 w-5" />
                             </Button>

@@ -28,11 +28,9 @@ export function Header() {
                 <div className="flex items-center gap-4">
                     {!session.loading && session.doesSessionExist ? (
                         <>
-                            <Link to="/dashboard">
-                                <Button variant="ghost" size="icon" title="Dashboard">
-                                    <User className="h-5 w-5" />
-                                </Button>
-                            </Link>
+                            <Button variant="ghost" size="icon" title="User">
+                                <User className="h-5 w-5" />
+                            </Button>
                             <Button variant="outline" onClick={onLogout} title="Sign Out">
                                 <LogOut className="h-4 w-4 mr-2" />
                                 Sign Out

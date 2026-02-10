@@ -3,10 +3,9 @@ import { SuperTokensWrapper } from "supertokens-auth-react";
 import { getSuperTokensRoutesForReactRouterDom } from "supertokens-auth-react/ui";
 import { EmailPasswordPreBuiltUI } from "supertokens-auth-react/recipe/emailpassword/prebuiltui";
 import * as reactRouterDom from "react-router-dom";
-import { SessionAuth } from "supertokens-auth-react/recipe/session";
 
 import Landing from './pages/Landing';
-import Dashboard from './pages/Dashboard';
+
 
 import Users from './pages/Users';
 
@@ -23,14 +22,7 @@ function App() {
                     <Route path="/users" element={<Users />} />
 
                     {/* Protected Routes */}
-                    <Route
-                        path="/dashboard"
-                        element={
-                            <SessionAuth>
-                                <Dashboard />
-                            </SessionAuth>
-                        }
-                    />
+                    {/* <Route path="/dashboard" element={<SessionAuth><Dashboard /></SessionAuth>} /> */}
                 </Routes>
             </Router>
         </SuperTokensWrapper>

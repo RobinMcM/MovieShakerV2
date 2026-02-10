@@ -2,7 +2,6 @@ import { Link } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
-import { useSessionContext } from "supertokens-auth-react/recipe/session";
 
 // Assets
 import heroImage from "@/assets/hero-film-production.jpg";
@@ -14,9 +13,6 @@ import crewCoordination from "@/assets/crew-coordination.jpg";
 import moodBoardInspiration from "@/assets/mood-board-inspiration.jpg";
 
 export default function Landing() {
-    const session = useSessionContext();
-    const isLoggedIn = !session.loading && session.doesSessionExist;
-
     return (
         <div className="min-h-screen bg-background flex flex-col font-sans">
             <Header />
@@ -41,9 +37,9 @@ export default function Landing() {
                         <p className="text-xl md:text-2xl text-muted-foreground mb-8 max-w-2xl mx-auto">
                             Bringing your creative vision to life with cutting-edge technology and expert craftsmanship
                         </p>
-                        <Link to={isLoggedIn ? "/dashboard" : "/auth"}>
+                        <Link to="/auth">
                             <Button size="lg" className="text-lg px-8">
-                                {isLoggedIn ? "Go to Dashboard" : "Start Your Project"}
+                                Start Your Project
                             </Button>
                         </Link>
                     </div>

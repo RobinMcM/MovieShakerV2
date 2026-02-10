@@ -1,10 +1,17 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from supertokens_python import init, InputAppInfo, SupertokensConfig, AppInfo, get_all_cors_headers
 from supertokens_python.recipe import emailpassword, session, dashboard
+from supertokens_python.recipe.session.framework.fastapi import verify_session
+from supertokens_python.recipe.session import SessionContainer
 from supertokens_python.framework.fastapi import get_middleware
+from supertokens_python.asyncio import get_users_oldest_first
 from starlette.middleware.cors import CORSMiddleware
 import uvicorn
 import os
+
+# Local imports
+from db import init_db
+from projects import router as projects_router
 
 # --- Configuration ---
 # TODO: Move to config.py
@@ -33,6 +40,11 @@ init(
 
 app = FastAPI(title="MovieShaker Engine (Indie)")
 
+# --- Startup Events ---
+@app.on_event("startup")
+def on_startup():
+    init_db()
+
 # --- Middleware ---
 app.add_middleware(get_middleware())
 
@@ -44,6 +56,9 @@ app.add_middleware(
     allow_headers=["Content-Type"] + get_all_cors_headers(),
 )
 
+# --- Routers ---
+app.include_router(projects_router)
+
 # --- Routes ---
 @app.get("/")
 def read_root():
@@ -52,13 +67,6 @@ def read_root():
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
-
-from supertokens_python.recipe.session.framework.fastapi import verify_session
-from supertokens_python.recipe.session import SessionContainer
-from fastapi import Depends
-from supertokens_python.asyncio import get_users_oldest_first
-
-# ... (existing routes)
 
 @app.get("/users")
 async def get_users():

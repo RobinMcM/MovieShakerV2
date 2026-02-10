@@ -1,0 +1,23 @@
+# System
+.DS_Store
+.agent/
+.do/
+
+# Dependencies & Build
+node_modules/
+dist/
+build/
+*.pyc
+__pycache__/
+engine/venv/
+engine/__pycache__/
+web/node_modules/
+web/dist/
+
+# Environment
+.env
+.env.*
+!*.example
+
+# Legacy Archive (Excluded from new repo)
+.archive/

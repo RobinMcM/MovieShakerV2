@@ -1,0 +1,82 @@
+version: '3'
+
+services:
+  # 1. The Brain: SuperTokens Authentication Engine
+  supertokens:
+    image: supertokens/supertokens-postgresql:9.1.1
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3567:3567"
+    environment:
+      POSTGRESQL_CONNECTION_URI: "postgresql://user:password@db:5432/supertokens"
+    volumes:
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    networks:
+      - indie_network
+    restart: unless-stopped
+    healthcheck:
+      test: >
+        bash -c 'exec 3<> /dev/tcp/127.0.0.1/3567 && echo -e "GET /hello HTTP/1.1\r\nhost: 127.0.0.1\r\nConnection: close\r\n\r\n" >&3 && cat <&3 | grep "Hello"'
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # 2. The Muscle: FastAPI Engine (Python)
+  engine:
+    build:
+      context: ./engine
+      dockerfile: Dockerfile
+    depends_on:
+      supertokens:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      - SUPERTOKENS_CONNECTION_URI=http://supertokens:3567
+      - WEB_HOST=http://localhost:5173
+    networks:
+      - indie_network
+    volumes:
+      - ./engine:/app
+
+  # 3. The Face: React Web (Development Mode)
+  web:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./web:/app
+    ports:
+      - "5173:5173"
+    command: sh -c "npm install && npm run dev -- --host"
+    networks:
+      - indie_network
+
+  # 4. The Memory: Postgres (Local Dev Only)
+  db:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: movieshaker
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    networks:
+      - indie_network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U user -d movieshaker" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  indie_network:
+    driver: bridge
+
+volumes:
+  postgres_data:

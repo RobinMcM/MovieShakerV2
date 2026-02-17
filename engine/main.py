@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from supertokens_python import init, InputAppInfo, SupertokensConfig, AppInfo, get_all_cors_headers
 from supertokens_python.recipe import emailpassword, session, dashboard
 from supertokens_python.recipe.session.framework.fastapi import verify_session
@@ -8,6 +9,9 @@ from supertokens_python.asyncio import get_users_oldest_first
 from starlette.middleware.cors import CORSMiddleware
 import uvicorn
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Local imports
 from db import init_db
@@ -39,6 +43,32 @@ init(
 )
 
 app = FastAPI(title="MovieShaker Engine (Indie)")
+
+# Allowed web origin for CORS on error responses
+_CORS_ORIGIN = f"http://localhost:{WEB_PORT}"
+
+
+def _cors_headers():
+    return {
+        "Access-Control-Allow-Origin": _CORS_ORIGIN,
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Allow-Methods": "GET, PUT, POST, DELETE, OPTIONS, PATCH",
+        "Access-Control-Allow-Headers": "Content-Type, " + ", ".join(get_all_cors_headers()),
+    }
+
+
+@app.exception_handler(Exception)
+def global_exception_handler(request, exc):
+    """Return 500 with CORS headers so the client can read the error."""
+    if isinstance(exc, HTTPException):
+        raise exc  # Use default FastAPI handling (keeps status code)
+    logger.exception("Unhandled exception: %s", exc)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error", "error": str(exc)},
+        headers=_cors_headers(),
+    )
+
 
 # --- Startup Events ---
 @app.on_event("startup")

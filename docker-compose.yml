@@ -22,7 +22,16 @@ services:
       retries: 10
       start_period: 20s
 
-  # 2. The Muscle: FastAPI Engine (Python)
+  # 2. Local Valkey (Redis-protocol cache; for API caching)
+  valkey:
+    image: valkey/valkey:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - indie_network
+    restart: unless-stopped
+
+  # 3. The Muscle: FastAPI Engine (Python)
   engine:
     build:
       context: ./engine
@@ -32,19 +41,22 @@ services:
         condition: service_healthy
       supertokens:
         condition: service_healthy
+      valkey:
+        condition: service_started
     ports:
       - "8000:8000"
     environment:
       - SUPERTOKENS_CONNECTION_URI=http://supertokens:3567
       - WEB_HOST=http://localhost:5173
       - DATABASE_URL=postgresql://user:password@db:5432/movieshaker
+      - VALKEY_URL=redis://valkey:6379/0
     networks:
       - indie_network
     volumes:
       - ./engine:/app
     restart: unless-stopped
 
-  # 3. The Face: React Web (Development Mode)
+  # 4. The Face: React Web (Development Mode)
   web:
     image: node:20-alpine
     working_dir: /app
@@ -56,7 +68,7 @@ services:
     networks:
       - indie_network
 
-  # 4. The Memory: Postgres (Local Dev Only)
+  # 5. The Memory: Postgres (Local Dev Only)
   db:
     image: postgres:15-alpine
     ports:

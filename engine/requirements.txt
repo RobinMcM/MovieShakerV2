@@ -4,3 +4,4 @@ supertokens-python==0.16.0
 python-dotenv==1.0.1
 sqlmodel==0.0.14
 psycopg2-binary==2.9.9
+valkey>=5.0.0

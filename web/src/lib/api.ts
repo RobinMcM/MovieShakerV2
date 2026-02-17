@@ -36,7 +36,11 @@ export async function apiRequest<T>(endpoint: string, options: RequestOptions = 
         }
 
         const errorData = await response.json().catch(() => ({ detail: "An unknown error occurred" }));
-        throw new Error(errorData.detail || `Request failed with status ${response.status}`);
+        const message =
+            response.status === 500 && errorData.error
+                ? `${errorData.detail}: ${errorData.error}`
+                : errorData.detail || `Request failed with status ${response.status}`;
+        throw new Error(message);
     }
 
     // Handle 204 No Content

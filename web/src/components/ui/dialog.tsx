@@ -35,26 +35,34 @@ export const Dialog: React.FC<DialogProps> = ({ open = false, onOpenChange, chil
 export const DialogTrigger = React.forwardRef<
     HTMLButtonElement,
     React.ButtonHTMLAttributes<HTMLButtonElement> & { asChild?: boolean }
->(({ className, onClick, asChild, ...props }, ref) => {
+>(({ className, onClick, asChild, children, ...props }, ref) => {
     const { onOpenChange } = React.useContext(DialogContext);
 
-    // If asChild is true, we should strictly clone the child, but for simplicity in this no-dep version,
-    // we'll just render a div or button. A proper implementation would use React.cloneElement or Slot.
-    // For now, let's assume standard button usage or wrap children.
+    const openDialog = (e: React.MouseEvent<HTMLButtonElement>) => {
+        onClick?.(e);
+        onOpenChange(true);
+    };
+
+    if (asChild && React.isValidElement(children)) {
+        return React.cloneElement(children as React.ReactElement<React.ButtonHTMLAttributes<HTMLButtonElement>>, {
+            ref,
+            onClick: (e: React.MouseEvent<HTMLButtonElement>) => {
+                (children as React.ReactElement<{ onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void }>).props.onClick?.(e);
+                openDialog(e);
+            },
+        });
+    }
 
     return (
         <button
             ref={ref}
-            className={cn(asChild ? "" : "inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50", className)}
-            onClick={(e) => {
-                onClick?.(e);
-                onOpenChange(true);
-            }}
+            className={cn("inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50", className)}
+            onClick={openDialog}
             {...props}
         >
-            {props.children}
+            {children}
         </button>
-    )
+    );
 })
 DialogTrigger.displayName = "DialogTrigger"
 

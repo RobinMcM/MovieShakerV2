@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
@@ -7,8 +8,13 @@ from db import get_session
 from models import Project, ProjectMember
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
+from cache import cache_get, cache_set, cache_delete, PROJECTS_LIST_TTL
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+
+
+def _projects_cache_key(user_id: str) -> str:
+    return f"projects:list:{user_id}"
 
 # Pydantic models for request/response
 # Pydantic models for request/response
@@ -85,6 +91,8 @@ def create_project(
     db.add(member)
     db.commit()
     
+    cache_delete(_projects_cache_key(user_id))
+    
     return ProjectResponse(
         id=str(new_project.id),
         name=new_project.name,
@@ -101,35 +109,70 @@ def create_project(
     )
 
 @router.get("/", response_model=List[ProjectResponse])
+@router.get("", response_model=List[ProjectResponse], include_in_schema=False)
 def list_projects(
     session: SessionContainer = Depends(verify_session()),
     db: Session = Depends(get_session)
 ):
-    user_id = session.get_user_id()
-    
-    # Find all memberships for this user
-    statement = select(Project, ProjectMember.role).join(ProjectMember).where(
-        ProjectMember.user_id == user_id
-    )
-    results = db.exec(statement).all()
-    
+    try:
+        user_id = session.get_user_id()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"session.get_user_id: {e!s}") from e
+
+    cache_key = _projects_cache_key(user_id)
+    cached = cache_get(cache_key)
+    if cached is not None:
+        try:
+            data = json.loads(cached)
+            out = []
+            for raw in data:
+                item = dict(raw)
+                for field in ("start_date", "end_date"):
+                    if isinstance(item.get(field), str) and item[field]:
+                        item[field] = datetime.fromisoformat(item[field].replace("Z", "+00:00"))
+                out.append(ProjectResponse(**item))
+            return out
+        except Exception:
+            pass
+
+    try:
+        statement = (
+            select(Project, ProjectMember.role)
+            .join(ProjectMember, Project.id == ProjectMember.project_id)
+            .where(ProjectMember.user_id == user_id)
+        )
+        results = db.exec(statement).all()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"db query: {e!s}") from e
+
     projects = []
     for project, role in results:
-        projects.append(ProjectResponse(
-            id=str(project.id),
-            name=project.name,
-            description=project.description,
-            status=project.status,
-            start_date=project.start_date,
-            end_date=project.end_date,
-            director=project.director,
-            film_type=project.film_type,
-            series=project.series,
-            episode=project.episode,
-            aspect_ratio=project.aspect_ratio,
-            role=role
-        ))
-        
+        try:
+            projects.append(ProjectResponse(
+                id=str(project.id),
+                name=project.name,
+                description=project.description,
+                status=project.status,
+                start_date=project.start_date,
+                end_date=project.end_date,
+                director=project.director,
+                film_type=project.film_type,
+                series=project.series,
+                episode=project.episode,
+                aspect_ratio=project.aspect_ratio,
+                role=role
+            ))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"build ProjectResponse: {e!s}") from e
+
+    try:
+        payload = [
+            getattr(p, "model_dump", lambda: p.dict())() for p in projects
+        ]
+        cache_set(cache_key, json.dumps(payload, default=str), PROJECTS_LIST_TTL)
+    except Exception:
+        pass
+
     return projects
 
 @router.put("/{project_id}", response_model=ProjectResponse)
@@ -155,14 +198,18 @@ def update_project(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
         
-    # Update fields
-    project_data = project_update.dict(exclude_unset=True)
+    # Update fields (Pydantic v1 .dict() or v2 .model_dump())
+    project_data = getattr(
+        project_update, "model_dump", lambda **kw: project_update.dict(**kw)
+    )(exclude_unset=True)
     for key, value in project_data.items():
         setattr(project, key, value)
         
     db.add(project)
     db.commit()
     db.refresh(project)
+    
+    cache_delete(_projects_cache_key(user_id))
     
     return ProjectResponse(
         id=str(project.id),
@@ -213,5 +260,7 @@ def delete_project(
         db.delete(m)
         
     db.commit()
+    
+    cache_delete(_projects_cache_key(user_id))
     
     return {"success": True, "message": "Project deleted"}

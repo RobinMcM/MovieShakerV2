@@ -1,7 +1,6 @@
 #!/bin/bash
 
-# Start Redis in the background
-redis-server --daemonize yes
+# Valkey runs as a separate container; engine connects via VALKEY_URL
 
 # Start the FastAPI application via Uvicorn
 # Host 0.0.0.0 is required for Docker networking

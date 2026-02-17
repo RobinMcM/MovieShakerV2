@@ -77,12 +77,13 @@ export default function Projects() {
     async function fetchProjects() {
         try {
             setLoading(true);
-            const data = await api.get<Project[]>("/projects");
+            const data = await api.get<Project[]>("/projects/");
             setProjects(data);
             setError(null);
         } catch (err) {
             console.error(err);
-            setError("Failed to load projects. Please try again.");
+            const message = err instanceof Error ? err.message : "Failed to load projects. Please try again.";
+            setError(message);
         } finally {
             setLoading(false);
         }
@@ -147,7 +148,7 @@ export default function Projects() {
             if (editingId) {
                 await api.put<Project>(`/projects/${editingId}`, payload);
             } else {
-                await api.post<Project>("/projects", payload);
+                await api.post<Project>("/projects/", payload);
             }
 
             setIsDialogOpen(false);

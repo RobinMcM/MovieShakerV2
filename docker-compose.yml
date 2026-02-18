@@ -8,7 +8,7 @@ services:
     ports:
       - "3567:3567"
     environment:
-      POSTGRESQL_CONNECTION_URI: "postgresql://user:password@db:5432/supertokens"
+      POSTGRESQL_CONNECTION_URI: "postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/supertokens"
     volumes:
       - ./init-scripts:/docker-entrypoint-initdb.d
     networks:
@@ -48,7 +48,7 @@ services:
     environment:
       - SUPERTOKENS_CONNECTION_URI=http://supertokens:3567
       - WEB_HOST=http://localhost:5173
-      - DATABASE_URL=postgresql://user:password@db:5432/movieshaker
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/movieshaker
       - VALKEY_URL=redis://valkey:6379/0
     networks:
       - indie_network
@@ -74,16 +74,16 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: movieshaker
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-movieshaker}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-scripts:/docker-entrypoint-initdb.d
     networks:
       - indie_network
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U user -d movieshaker" ]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-movieshaker}" ]
       interval: 10s
       timeout: 5s
       retries: 5

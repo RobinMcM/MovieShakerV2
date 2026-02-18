@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
-    Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+    Dialog, DialogContent, DialogHeader, DialogTitle,
     DialogTrigger, DialogFooter
 } from "@/components/ui/dialog";
 // Import Lucide icons
@@ -194,14 +194,13 @@ export default function Projects() {
                             </Button>
                         </DialogTrigger>
                         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                            <DialogHeader>
-                                <DialogTitle>{editingId ? "Edit Project" : "Create New Project"}</DialogTitle>
-                                <DialogDescription>
-                                    {editingId ? "Update your project details below." : "Enter the details for your new production."}
-                                </DialogDescription>
+                            <DialogHeader className="pb-0 text-center sm:text-center">
+                                <DialogTitle className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                                    {editingId ? "Edit Project" : "Create New Project"}
+                                </DialogTitle>
                             </DialogHeader>
 
-                            <form onSubmit={handleSubmit} className="space-y-6 py-4">
+                            <form onSubmit={handleSubmit} className="space-y-6 -mt-4 pt-0 pb-4">
                                 {apiError && (
                                     <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md border border-destructive/20">
                                         {apiError}

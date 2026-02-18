@@ -3,6 +3,22 @@ from sqlmodel import Field, SQLModel, Relationship
 from datetime import datetime
 import uuid
 
+
+class UserProfile(SQLModel, table=True):
+    """App-owned profile: name, company, communication email, etc. Keyed by SuperTokens user_id."""
+    __tablename__ = "user_profile"
+    user_id: str = Field(primary_key=True)  # SuperTokens User ID
+    name: Optional[str] = None
+    company: Optional[str] = None
+    communication_email: Optional[str] = None  # For display/notifications; auth email stays in SuperTokens
+    username: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    admin: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class ProjectMember(SQLModel, table=True):
     project_id: uuid.UUID = Field(foreign_key="project.id", primary_key=True)
     user_id: str = Field(primary_key=True) # SuperTokens User ID

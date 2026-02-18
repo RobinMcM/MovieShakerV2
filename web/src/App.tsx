@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 
 import Landing from './pages/Landing';
 import Projects from './pages/Projects';
+import Profile from './pages/Profile';
 import Users from './pages/Users';
 
 function App() {
@@ -29,6 +30,14 @@ function App() {
                             element={
                                 <SessionAuth>
                                     <Projects />
+                                </SessionAuth>
+                            }
+                        />
+                        <Route
+                            path="/profile"
+                            element={
+                                <SessionAuth>
+                                    <Profile />
                                 </SessionAuth>
                             }
                         />

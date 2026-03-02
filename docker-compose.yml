@@ -50,6 +50,11 @@ services:
       - WEB_HOST=http://localhost:5173
       - DATABASE_URL=postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/movieshaker
       - VALKEY_URL=redis://valkey:6379/0
+      - DO_SPACES_ENDPOINT=${DO_SPACES_ENDPOINT:-}
+      - DO_SPACES_REGION=${DO_SPACES_REGION:-}
+      - DO_SPACES_BUCKET=${DO_SPACES_BUCKET:-}
+      - DO_SPACES_ACCESS_KEY_ID=${DO_SPACES_ACCESS_KEY_ID:-}
+      - DO_SPACES_SECRET_ACCESS_KEY=${DO_SPACES_SECRET_ACCESS_KEY:-}
     networks:
       - indie_network
     volumes:

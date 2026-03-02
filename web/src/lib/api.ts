@@ -1,4 +1,4 @@
-const API_URL = "http://localhost:8000";
+export const API_URL = "http://localhost:8000";
 
 type RequestMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
 
@@ -51,9 +51,29 @@ export async function apiRequest<T>(endpoint: string, options: RequestOptions = 
     return response.json();
 }
 
+/** POST multipart/form-data (e.g. file upload). Do not set Content-Type; browser sets boundary. */
+export async function apiPostForm<T>(endpoint: string, formData: FormData): Promise<T> {
+    const url = `${API_URL}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+    const response = await fetch(url, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+    });
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: "Request failed" }));
+        const message =
+            response.status === 500 && errorData.error
+                ? `${errorData.detail}: ${errorData.error}`
+                : errorData.detail || `Request failed with status ${response.status}`;
+        throw new Error(message);
+    }
+    return response.json();
+}
+
 export const api = {
     get: <T>(endpoint: string) => apiRequest<T>(endpoint, { method: "GET" }),
     post: <T>(endpoint: string, body: any) => apiRequest<T>(endpoint, { method: "POST", body }),
     put: <T>(endpoint: string, body: any) => apiRequest<T>(endpoint, { method: "PUT", body }),
     delete: <T>(endpoint: string) => apiRequest<T>(endpoint, { method: "DELETE" }),
+    postForm: apiPostForm,
 };

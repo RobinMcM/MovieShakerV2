@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 from db import init_db
 from projects import router as projects_router
 from profile import router as profile_router
+from scripts import router as scripts_router
 
 # --- Configuration ---
 # TODO: Move to config.py
@@ -45,13 +46,14 @@ init(
 
 app = FastAPI(title="MovieShaker Engine (Indie)")
 
-# Allowed web origin for CORS on error responses
-_CORS_ORIGIN = f"http://localhost:{WEB_PORT}"
+# Allowed web origins for CORS (5173 default Vite, 5174 when 5173 in use)
+_CORS_ORIGINS = [f"http://localhost:{WEB_PORT}", "http://localhost:5174"]
 
 
 def _cors_headers():
+    # Use first allowed origin for single-value response (e.g. error handler)
     return {
-        "Access-Control-Allow-Origin": _CORS_ORIGIN,
+        "Access-Control-Allow-Origin": _CORS_ORIGINS[0],
         "Access-Control-Allow-Credentials": "true",
         "Access-Control-Allow-Methods": "GET, PUT, POST, DELETE, OPTIONS, PATCH",
         "Access-Control-Allow-Headers": "Content-Type, " + ", ".join(get_all_cors_headers()),
@@ -81,7 +83,7 @@ app.add_middleware(get_middleware())
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[f"http://localhost:{WEB_PORT}"],
+    allow_origins=_CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "PUT", "POST", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["Content-Type"] + get_all_cors_headers(),
@@ -90,6 +92,7 @@ app.add_middleware(
 # --- Routers ---
 app.include_router(projects_router)
 app.include_router(profile_router)
+app.include_router(scripts_router)
 
 # --- Routes ---
 @app.get("/")

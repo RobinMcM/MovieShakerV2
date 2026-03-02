@@ -42,3 +42,17 @@ class Project(SQLModel, table=True):
     
     created_at: datetime = Field(default_factory=datetime.utcnow)
     owner_id: str = Field(index=True) # SuperTokens User ID of the creator ("MovieMaker")
+
+
+class Script(SQLModel, table=True):
+    """Script PDF (and optional JSON) per project. Files at STORAGE_ROOT/{user_id}/{project_id}/{script_id}/."""
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    project_id: uuid.UUID = Field(foreign_key="project.id", index=True)
+    user_id: str = Field(index=True)  # SuperTokens user who uploaded
+    name: str = Field()
+    description: Optional[str] = None
+    series: Optional[str] = None
+    episode: Optional[str] = None
+    file_path: str = Field()  # relative: {user_id}/{project_id}/{script_id}/script.pdf
+    is_current: bool = Field(default=False)
+    uploaded_at: datetime = Field(default_factory=datetime.utcnow)

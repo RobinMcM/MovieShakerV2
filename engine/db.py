@@ -35,7 +35,7 @@ def _migrate_project_table():
 
 def init_db():
     # Ensure models are registered (import side-effect)
-    from models import Project, ProjectMember, UserProfile  # noqa: F401
+    from models import Project, ProjectMember, UserProfile, Script  # noqa: F401
     SQLModel.metadata.create_all(engine)
     _migrate_project_table()
 

@@ -60,3 +60,15 @@ def cache_delete(key: str) -> None:
 
 # Default TTL for list/project caches (seconds)
 PROJECTS_LIST_TTL = 60
+
+# Script caches
+SCRIPTS_LIST_TTL = 60
+SCRIPTS_STATS_TTL = 300
+
+
+def scripts_list_key(project_id: str) -> str:
+    return f"scripts:list:{project_id}"
+
+
+def scripts_stats_key(script_id: str) -> str:
+    return f"scripts:stats:{script_id}"

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -343,59 +344,61 @@ export default function Projects() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {projects.map((project) => (
-                        <Card key={project.id} className="group relative overflow-hidden transition-all hover:shadow-md hover:border-primary/50">
-                            <CardHeader className="pb-3">
-                                <div className="flex justify-between items-start">
-                                    <CardTitle className="line-clamp-1 text-xl">{project.name}</CardTitle>
-                                    {project.role === 'owner' && (
-                                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleEditClick(project)}>
-                                                <Pencil className="h-4 w-4" />
-                                            </Button>
-                                            <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" onClick={(e) => handleDelete(project.id, e)}>
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                        </div>
-                                    )}
-                                </div>
-                                <CardDescription className="line-clamp-2 min-h-[40px]">
-                                    {project.description || "No description provided."}
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="flex flex-wrap gap-2 mb-4">
-                                    <span className="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80">
-                                        {project.status}
-                                    </span>
-                                    {project.film_type && (
-                                        <span className="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-primary/10 text-primary hover:bg-primary/20">
-                                            {project.film_type}
+                        <Link key={project.id} to={`/project/${project.id}`} className="block">
+                            <Card className="group relative overflow-hidden transition-all hover:shadow-md hover:border-primary/50">
+                                <CardHeader className="pb-3">
+                                    <div className="flex justify-between items-start">
+                                        <CardTitle className="line-clamp-1 text-xl">{project.name}</CardTitle>
+                                        {project.role === 'owner' && (
+                                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.preventDefault()}>
+                                                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleEditClick(project); }}>
+                                                    <Pencil className="h-4 w-4" />
+                                                </Button>
+                                                <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDelete(project.id, e); }}>
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <CardDescription className="line-clamp-2 min-h-[40px]">
+                                        {project.description || "No description provided."}
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="flex flex-wrap gap-2 mb-4">
+                                        <span className="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80">
+                                            {project.status}
                                         </span>
-                                    )}
-                                    <span className="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-muted text-muted-foreground">
-                                        {project.role}
-                                    </span>
-                                </div>
-
-                                <div className="space-y-1 text-sm text-muted-foreground">
-                                    {project.director && (
-                                        <div className="flex items-center gap-2">
-                                            <Clapperboard className="h-3 w-3" />
-                                            <span>Dir. {project.director}</span>
-                                        </div>
-                                    )}
-                                    {project.start_date && (
-                                        <div className="flex items-center gap-2">
-                                            <CalendarIcon className="h-3 w-3" />
-                                            <span>
-                                                {new Date(project.start_date).toLocaleDateString()}
-                                                {project.end_date ? ` - ${new Date(project.end_date).toLocaleDateString()}` : ''}
+                                        {project.film_type && (
+                                            <span className="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-primary/10 text-primary hover:bg-primary/20">
+                                                {project.film_type}
                                             </span>
-                                        </div>
-                                    )}
-                                </div>
-                            </CardContent>
-                        </Card>
+                                        )}
+                                        <span className="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-muted text-muted-foreground">
+                                            {project.role}
+                                        </span>
+                                    </div>
+
+                                    <div className="space-y-1 text-sm text-muted-foreground">
+                                        {project.director && (
+                                            <div className="flex items-center gap-2">
+                                                <Clapperboard className="h-3 w-3" />
+                                                <span>Dir. {project.director}</span>
+                                            </div>
+                                        )}
+                                        {project.start_date && (
+                                            <div className="flex items-center gap-2">
+                                                <CalendarIcon className="h-3 w-3" />
+                                                <span>
+                                                    {new Date(project.start_date).toLocaleDateString()}
+                                                    {project.end_date ? ` - ${new Date(project.end_date).toLocaleDateString()}` : ''}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </Link>
                     ))}
                 </div>
 

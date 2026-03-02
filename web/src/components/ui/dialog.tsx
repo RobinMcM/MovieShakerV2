@@ -44,13 +44,13 @@ export const DialogTrigger = React.forwardRef<
     };
 
     if (asChild && React.isValidElement(children)) {
-        return React.cloneElement(children as React.ReactElement<React.ButtonHTMLAttributes<HTMLButtonElement>>, {
+        return React.cloneElement(children as React.ReactElement<Record<string, unknown>>, {
             ref,
             onClick: (e: React.MouseEvent<HTMLButtonElement>) => {
                 (children as React.ReactElement<{ onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void }>).props.onClick?.(e);
                 openDialog(e);
             },
-        });
+        } as Record<string, unknown>);
     }
 
     return (

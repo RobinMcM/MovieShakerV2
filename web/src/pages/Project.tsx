@@ -103,11 +103,12 @@ export default function Project() {
     const isOnlyParticipant = false;
     const isProductionCompany = true;
 
+    const hasSession = !session.loading && "doesSessionExist" in session && (session as { doesSessionExist: boolean }).doesSessionExist;
     useEffect(() => {
-        if (projectId && session.doesSessionExist) {
+        if (projectId && hasSession) {
             loadProject();
         }
-    }, [projectId, session.doesSessionExist]);
+    }, [projectId, hasSession]);
 
     useEffect(() => {
         if (projectId && project) {
@@ -214,7 +215,7 @@ export default function Project() {
         }
     }
 
-    async function handleDeleteScript(scriptId: string, scriptName: string, filePath: string) {
+    async function handleDeleteScript(scriptId: string, scriptName: string, _filePath: string) {
         const confirmed = window.confirm(
             `Delete script "${scriptName}"? This cannot be undone.`
         );

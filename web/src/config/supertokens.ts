@@ -1,5 +1,4 @@
-// Direct import from built file so production bundle gets a valid default export (avoids undefined.init)
-import SuperTokens from "supertokens-auth-react/lib/build/index.js";
+import SuperTokens from "supertokens-auth-react";
 import EmailPassword from "supertokens-auth-react/recipe/emailpassword";
 import Session from "supertokens-auth-react/recipe/session";
 

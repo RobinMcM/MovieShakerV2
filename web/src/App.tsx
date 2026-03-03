@@ -7,6 +7,7 @@ import * as reactRouterDom from "react-router-dom";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
 import { ThemeProvider } from "@/components/theme-provider";
 
+import { AuthReadyProvider } from "@/contexts/AuthReadyContext";
 import { initSuperTokens, isSuperTokensReady } from './config/supertokens';
 import Landing from './pages/Landing';
 import Projects from './pages/Projects';
@@ -44,6 +45,7 @@ function App() {
     );
 
     const themeAndRouter = (
+        <AuthReadyProvider value={authOk}>
         <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
             <Router>
                 <Routes>
@@ -83,6 +85,7 @@ function App() {
                 </Routes>
             </Router>
         </ThemeProvider>
+        </AuthReadyProvider>
     );
 
     if (authOk) {

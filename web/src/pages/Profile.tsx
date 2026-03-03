@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Header } from "@/components/Header";
+import { AppHeader } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -86,7 +86,7 @@ export default function Profile() {
     if (loading) {
         return (
             <div className="min-h-screen bg-background flex flex-col font-sans">
-                <Header />
+                <AppHeader />
                 <main className="flex-1 container mx-auto px-4 py-8 flex items-center justify-center">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </main>
@@ -97,7 +97,7 @@ export default function Profile() {
 
     return (
         <div className="min-h-screen bg-background flex flex-col font-sans">
-            <Header />
+            <AppHeader />
             <main className="flex-1 container mx-auto px-4 py-8 max-w-2xl">
                 <div className="flex items-center gap-2 mb-6">
                     <User className="h-8 w-8 text-primary" />

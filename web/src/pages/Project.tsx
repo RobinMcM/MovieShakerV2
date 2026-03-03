@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useSessionContext } from "supertokens-auth-react/recipe/session";
-import { Header } from "@/components/Header";
+import { AppHeader } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -235,7 +235,7 @@ export default function Project() {
     if (loading) {
         return (
             <div className="min-h-screen flex flex-col bg-background">
-                <Header />
+                <AppHeader />
                 <main className="flex-1 flex items-center justify-center">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </main>
@@ -247,7 +247,7 @@ export default function Project() {
     if (!projectId || !project) {
         return (
             <div className="min-h-screen flex flex-col bg-background">
-                <Header />
+                <AppHeader />
                 <main className="flex-1 container mx-auto px-4 py-8">
                     <p className="text-muted-foreground">Project not found.</p>
                     <Link to="/projects" className="text-primary underline mt-4 inline-block">
@@ -261,7 +261,7 @@ export default function Project() {
 
     return (
         <div className="min-h-screen flex flex-col bg-background">
-            <Header />
+            <AppHeader />
             <main className="flex-1 container mx-auto px-4 py-8">
                 <div className="max-w-3xl mx-auto space-y-8">
                     {message && (

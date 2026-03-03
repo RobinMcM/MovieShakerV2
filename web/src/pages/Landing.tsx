@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Header } from "@/components/Header";
+import { AppHeader } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 
@@ -15,7 +15,7 @@ import moodBoardInspiration from "@/assets/mood-board-inspiration.jpg";
 export default function Landing() {
     return (
         <div className="min-h-screen bg-background flex flex-col font-sans">
-            <Header />
+            <AppHeader />
 
             {/* Main Content */}
             <main className="flex-1">

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { Header } from "@/components/Header";
+import { AppHeader } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -176,7 +176,7 @@ export default function Projects() {
 
     return (
         <div className="min-h-screen bg-background flex flex-col font-sans">
-            <Header />
+            <AppHeader />
             <main className="flex-1 container mx-auto px-4 py-8">
 
                 <div className="flex justify-between items-center mb-8">

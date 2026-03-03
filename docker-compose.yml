@@ -48,7 +48,7 @@ services:
       - "8000:8000"
     environment:
       - SUPERTOKENS_CONNECTION_URI=http://supertokens:3567
-      - WEB_HOST=http://localhost:5173
+      - WEB_HOST=http://localhost:3000
       - DATABASE_URL=postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/movieshaker
       - VALKEY_URL=redis://valkey:6379/0
       - DO_SPACES_ENDPOINT=${DO_SPACES_ENDPOINT:-}
@@ -62,15 +62,15 @@ services:
       - ./engine:/app
     restart: unless-stopped
 
-  # 4. The Face: React Web (Development Mode)
+  # 4. The Face: Next.js Web (Development Mode)
   web:
     image: node:20-alpine
     working_dir: /app
     volumes:
       - ./web:/app
     ports:
-      - "5173:5173"
-    command: sh -c "npm install && npm run dev -- --host"
+      - "3000:3000"
+    command: sh -c "npm install && npx next dev -H 0.0.0.0"
     networks:
       - indie_network
 

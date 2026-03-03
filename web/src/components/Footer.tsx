@@ -1,5 +1,5 @@
 import { Film } from "lucide-react";
-import { Link } from "react-router-dom";
+import Link from "next/link";
 
 export function Footer() {
     return (
@@ -16,21 +16,13 @@ export function Footer() {
                         </p>
                     </div>
                     <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
-                        <Link to="#" className="hover:text-primary transition-colors">About Us</Link>
-                        <Link to="#" className="hover:text-primary transition-colors">Our Team</Link>
-                        <Link to="#" className="hover:text-primary transition-colors">Careers</Link>
-                        <Link to="/contact" className="hover:text-primary transition-colors">
-                            Contact
-                        </Link>
-                        <Link to="/privacy" className="hover:text-primary transition-colors">
-                            Privacy Policy
-                        </Link>
-                        <Link to="/terms" className="hover:text-primary transition-colors">
-                            Terms of Service
-                        </Link>
-                        <Link to="/cookies" className="hover:text-primary transition-colors">
-                            Cookie Policy
-                        </Link>
+                        <Link href="#" className="hover:text-primary transition-colors">About Us</Link>
+                        <Link href="#" className="hover:text-primary transition-colors">Our Team</Link>
+                        <Link href="#" className="hover:text-primary transition-colors">Careers</Link>
+                        <Link href="/contact" className="hover:text-primary transition-colors">Contact</Link>
+                        <Link href="/privacy" className="hover:text-primary transition-colors">Privacy Policy</Link>
+                        <Link href="/terms" className="hover:text-primary transition-colors">Terms of Service</Link>
+                        <Link href="/cookies" className="hover:text-primary transition-colors">Cookie Policy</Link>
                     </div>
                 </div>
                 <div className="pt-8 border-t border-border text-center text-sm text-muted-foreground">

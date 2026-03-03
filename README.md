@@ -1,7 +1,7 @@
 # MovieShaker: The Mean Indie Machine
 
 ## Architecture
-- **Web**: React + Vite (Static Site on Prod)
+- **Web**: React + Next.js (App Router)
 - **Engine**: FastAPI + Python (Docker Worker on Prod)
 - **Auth**: SuperTokens Core (Docker Worker on Prod / Local Container)
 - **DB**: PostgreSQL (Managed on Prod / Local Container)
@@ -24,17 +24,19 @@ Once Docker is installed:
 docker-compose up -d --build
 
 # 2. Access the apps
-# Web App: http://localhost:5173
+# Web App: http://localhost:3000
 # API Engine: http://localhost:8000
 # SuperTokens Dashboard: http://localhost:3567
 ```
 
 ## Running Without Docker (Web Only)
-If you only want to work on the Frontend design while Docker installs:
+If you only want to work on the frontend while Docker installs:
 
 ```bash
 cd web
 npm install
 npm run dev
 ```
+Then open http://localhost:3000. For production build: `npm run build` then `npm run start`.
+
 *Note: Authentication and API features will not work until Docker is running.*

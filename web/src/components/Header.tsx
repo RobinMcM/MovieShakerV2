@@ -1,4 +1,7 @@
-import { Link, useNavigate } from "react-router-dom";
+"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Film, User, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSessionContext, signOut } from "supertokens-auth-react/recipe/session";
@@ -10,7 +13,7 @@ export function HeaderGuest() {
     return (
         <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
             <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-                <Link to="/" className="flex items-center gap-2">
+                <Link href="/" className="flex items-center gap-2">
                     <Film className="h-6 w-6 text-primary" />
                     <span className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                         MovieShaker
@@ -18,7 +21,7 @@ export function HeaderGuest() {
                 </Link>
                 <div className="flex items-center gap-4">
                     <ModeToggle />
-                    <Link to="/auth">
+                    <Link href="/auth">
                         <Button variant="outline">Sign In</Button>
                     </Link>
                 </div>
@@ -36,33 +39,30 @@ export function AppHeader() {
 
 export function Header() {
     const session = useSessionContext();
-    const navigate = useNavigate();
+    const router = useRouter();
 
     async function onLogout() {
         await signOut();
-        navigate("/");
+        router.push("/");
     }
 
     return (
         <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
             <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-
-                {/* Logo */}
-                <Link to="/" className="flex items-center gap-2">
+                <Link href="/" className="flex items-center gap-2">
                     <Film className="h-6 w-6 text-primary" />
                     <span className="text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                         MovieShaker
                     </span>
                 </Link>
-
                 <div className="flex items-center gap-4">
                     <ModeToggle />
                     {!session.loading && session.doesSessionExist ? (
                         <>
-                            <Link to="/projects">
+                            <Link href="/projects">
                                 <Button variant="ghost">Projects</Button>
                             </Link>
-                            <Link to="/profile">
+                            <Link href="/profile">
                                 <Button variant="ghost" size="icon" title="Profile">
                                     <User className="h-5 w-5" />
                                 </Button>
@@ -73,7 +73,7 @@ export function Header() {
                             </Button>
                         </>
                     ) : (
-                        <Link to="/auth">
+                        <Link href="/auth">
                             <Button variant="outline">Sign In</Button>
                         </Link>
                     )}

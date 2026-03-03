@@ -2,8 +2,8 @@ import SuperTokens from "supertokens-auth-react";
 import EmailPassword from "supertokens-auth-react/recipe/emailpassword";
 import Session from "supertokens-auth-react/recipe/session";
 
-const apiDomain = import.meta.env.VITE_API_URL || "http://localhost:8000";
-const websiteDomain = import.meta.env.VITE_WEBSITE_DOMAIN || "http://localhost:5173";
+const apiDomain = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const websiteDomain = process.env.NEXT_PUBLIC_WEBSITE_DOMAIN || "http://localhost:3000";
 
 export const SuperTokensConfig = {
     appInfo: {
@@ -19,7 +19,7 @@ export const SuperTokensConfig = {
 let initDone = false;
 
 /**
- * Initialize SuperTokens. Must be called before rendering app.
+ * Initialize SuperTokens. Must be called on the client before rendering auth UI.
  * Returns true if init succeeded, false otherwise.
  */
 export function initSuperTokens(): boolean {

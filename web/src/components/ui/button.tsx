@@ -1,10 +1,6 @@
-import * as React from "react"
-import { type VariantProps, cva } from "class-variance-authority"
-import { cn } from "@/lib/utils"
-
-// NOTE: We are implementing a lightweight version for now.
-// If we need the full power later, we can install the dependencies.
-// For now, simple props interface.
+import * as React from "react";
+import { type VariantProps, cva } from "class-variance-authority";
+import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
     "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
@@ -30,27 +26,23 @@ const buttonVariants = cva(
             size: "default",
         },
     }
-)
+);
 
 interface ButtonProps
     extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
-    asChild?: boolean
+        VariantProps<typeof buttonVariants> {
+    asChild?: boolean;
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-    ({ className, variant, size, asChild = false, ...props }, ref) => {
-        // For now, no Slot support to avoid installing @radix-ui/react-slot just yet if we want to be super mean.
-        // But Slot is very useful. Let's assume standard button for now.
-        return (
-            <button
-                className={cn(buttonVariants({ variant, size, className }))}
-                ref={ref}
-                {...props}
-            />
-        )
-    }
-)
-Button.displayName = "Button"
+    ({ className, variant, size, asChild = false, ...props }, ref) => (
+        <button
+            className={cn(buttonVariants({ variant, size, className }))}
+            ref={ref}
+            {...props}
+        />
+    )
+);
+Button.displayName = "Button";
 
-export { Button, buttonVariants }
+export { Button, buttonVariants };

@@ -5,10 +5,15 @@ import './index.css'
 
 import { initSuperTokens } from './config/supertokens'
 
-initSuperTokens()
+const root = document.getElementById('root')!
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-    <React.StrictMode>
-        <App />
-    </React.StrictMode>,
-)
+async function bootstrap() {
+    await initSuperTokens()
+    ReactDOM.createRoot(root).render(
+        <React.StrictMode>
+            <App />
+        </React.StrictMode>,
+    )
+}
+
+bootstrap()

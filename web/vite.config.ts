@@ -58,6 +58,14 @@ export default defineConfig({
             plugins: [supertokensEsbuildPlugin()],
         },
     },
+    build: {
+        rollupOptions: {
+            output: {
+                // Single bundle so SuperTokens and recipes stay in one chunk (avoids undefined.init in production)
+                inlineDynamicImports: true,
+            },
+        },
+    },
     server: {
         host: true, // Needed for Docker
         port: 5173

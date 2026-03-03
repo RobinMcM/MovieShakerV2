@@ -31,7 +31,7 @@ export async function initSuperTokens(): Promise<void> {
             console.error("MovieShaker: SuperTokens.init is not available.");
             return;
         }
-        const recipeList: unknown[] = [];
+        const recipeList: ReturnType<typeof EmailPassword.init>[] = [];
         if (typeof EmailPassword?.init === "function") recipeList.push(EmailPassword.init());
         if (typeof Session?.init === "function") recipeList.push(Session.init());
         if (recipeList.length === 0) {
@@ -40,7 +40,7 @@ export async function initSuperTokens(): Promise<void> {
         }
         SuperTokens.init({
             ...SuperTokensConfig,
-            recipeList,
+            recipeList: recipeList as Parameters<typeof SuperTokens.init>[0]["recipeList"],
         });
     } catch (e) {
         console.error("MovieShaker: SuperTokens init failed", e);

@@ -47,23 +47,17 @@ export default defineConfig({
         ],
     },
     optimizeDeps: {
-        include: [
+        exclude: [
             "supertokens-auth-react",
             "supertokens-auth-react/recipe/emailpassword",
-            "supertokens-auth-react/recipe/emailpassword/prebuiltui",
             "supertokens-auth-react/recipe/session",
+        ],
+        include: [
+            "supertokens-auth-react/recipe/emailpassword/prebuiltui",
             "supertokens-auth-react/ui",
         ],
         esbuildOptions: {
             plugins: [supertokensEsbuildPlugin()],
-        },
-    },
-    build: {
-        rollupOptions: {
-            output: {
-                // Single bundle so SuperTokens and recipes stay in one chunk (avoids undefined.init in production)
-                inlineDynamicImports: true,
-            },
         },
     },
     server: {

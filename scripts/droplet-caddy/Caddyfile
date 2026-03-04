@@ -1,0 +1,7 @@
+# Caddy reverse proxy for MovieShaker API
+# api.movieshaker.com -> http://127.0.0.1:8000
+# HTTPS certificate is obtained and renewed automatically by Caddy (Let's Encrypt).
+
+api.movieshaker.com {
+    reverse_proxy 127.0.0.1:8000
+}

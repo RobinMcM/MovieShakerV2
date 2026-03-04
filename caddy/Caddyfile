@@ -1,0 +1,6 @@
+# api.movieshaker.com -> engine:8000 (Docker service)
+# HTTPS certificate obtained and renewed automatically by Caddy (Let's Encrypt).
+
+api.movieshaker.com {
+    reverse_proxy engine:8000
+}

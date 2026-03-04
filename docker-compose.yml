@@ -62,7 +62,23 @@ services:
       - ./engine:/app
     restart: unless-stopped
 
-  # 4. The Face: Next.js Web (Development Mode)
+  # 4. Reverse proxy: HTTPS for api.movieshaker.com -> engine
+  caddy:
+    image: caddy:alpine
+    depends_on:
+      engine:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+    networks:
+      - indie_network
+    restart: unless-stopped
+
+  # 5. The Face: Next.js Web (Development Mode)
   web:
     image: node:20-alpine
     working_dir: /app
@@ -74,7 +90,7 @@ services:
     networks:
       - indie_network
 
-  # 5. The Memory: Postgres (Local Dev Only)
+  # 6. The Memory: Postgres (Local Dev Only)
   db:
     image: postgres:15-alpine
     ports:
@@ -100,3 +116,4 @@ networks:
 
 volumes:
   postgres_data:
+  caddy_data:

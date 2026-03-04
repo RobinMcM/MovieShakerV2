@@ -11,12 +11,37 @@ class UserProfile(SQLModel, table=True):
     name: Optional[str] = None
     company: Optional[str] = None
     communication_email: Optional[str] = None  # For display/notifications; auth email stays in SuperTokens
+    email_verified_at: Optional[datetime] = None  # When communication_email was verified
     username: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
     admin: bool = Field(default=False)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class EmailVerificationToken(SQLModel, table=True):
+    """One-time token for verifying communication_email. Expires after use or TTL."""
+    __tablename__ = "email_verification_token"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: str = Field(index=True)
+    email: str = Field(index=True)
+    token: str = Field(unique=True, index=True)
+    expires_at: datetime = Field()
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Notification(SQLModel, table=True):
+    """In-app notification record; email may also be sent via send_notification_email."""
+    __tablename__ = "notification"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: str = Field(index=True)
+    type: str = Field(index=True)
+    title: str = Field()
+    body: Optional[str] = None
+    payload: Optional[str] = None  # JSON for extra data / CTA URL
+    read_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class ProjectMember(SQLModel, table=True):

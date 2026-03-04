@@ -1,15 +1,30 @@
-from datetime import datetime
+from datetime import datetime, timedelta
+import os
+import secrets
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from typing import Optional
 
 from db import get_session
-from models import UserProfile
+from models import UserProfile, EmailVerificationToken
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
-from sqlmodel import Session
+from sqlmodel import Session, select
+
+from email_client import send_email_via_web
 
 router = APIRouter(prefix="/profile", tags=["profile"])
+
+# Router for public verify-email link (no prefix so path is /verify-email)
+verify_router = APIRouter(tags=["auth"])
+
+# Base URL for verification links (engine API). Redirect after verify goes to web.
+API_BASE = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip("/")
+WEBSITE_DOMAIN = os.getenv("WEBSITE_DOMAIN", "http://localhost:3000").rstrip("/")
+
+# Token TTL for email verification (hours)
+VERIFICATION_TOKEN_HOURS = 24
 
 
 class ProfileResponse(BaseModel):
@@ -18,6 +33,7 @@ class ProfileResponse(BaseModel):
     company: Optional[str] = None
     auth_email_masked: Optional[str] = None  # Login email (masked); from SuperTokens
     communication_email: Optional[str] = None
+    email_verified_at: Optional[datetime] = None
     username: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
@@ -80,6 +96,7 @@ async def get_profile(
         company=profile.company,
         auth_email_masked=auth_email_masked,
         communication_email=profile.communication_email,
+        email_verified_at=profile.email_verified_at,
         username=profile.username,
         phone=profile.phone,
         address=profile.address,
@@ -87,6 +104,75 @@ async def get_profile(
         created_at=profile.created_at,
         updated_at=profile.updated_at,
     )
+
+
+@verify_router.get("/verify-email")
+async def verify_email_route(token: str, db: Session = Depends(get_session)):
+    """Validate token, set email_verified_at on profile, redirect to web success page."""
+    if not token:
+        return RedirectResponse(f"{WEBSITE_DOMAIN}/profile?verified=error", status_code=302)
+    now = datetime.utcnow()
+    statement = select(EmailVerificationToken).where(
+        EmailVerificationToken.token == token,
+        EmailVerificationToken.expires_at > now,
+    )
+    row = db.exec(statement).first()
+    if not row:
+        return RedirectResponse(f"{WEBSITE_DOMAIN}/profile?verified=error", status_code=302)
+    profile = db.get(UserProfile, row.user_id)
+    if profile and profile.communication_email and profile.communication_email.lower() == row.email:
+        profile.email_verified_at = now
+        profile.updated_at = now
+        db.add(profile)
+    db.delete(row)
+    db.commit()
+    return RedirectResponse(f"{WEBSITE_DOMAIN}/profile?verified=1", status_code=302)
+
+
+@router.post("/send-verification-email", response_model=ProfileResponse)
+@router.post("/send-verification-email/", response_model=ProfileResponse)
+async def send_verification_email(
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    """Resend verification email for current profile communication_email."""
+    user_id = session.get_user_id()
+    profile = db.get(UserProfile, user_id)
+    if not profile or not profile.communication_email:
+        raise HTTPException(status_code=400, detail="No communication email set")
+    await _create_and_send_verification(user_id, profile.communication_email, db)
+    db.refresh(profile)
+    auth_email_masked = await _get_auth_email_masked(user_id)
+    return ProfileResponse(
+        user_id=profile.user_id,
+        name=profile.name,
+        company=profile.company,
+        auth_email_masked=auth_email_masked,
+        communication_email=profile.communication_email,
+        email_verified_at=profile.email_verified_at,
+        username=profile.username,
+        phone=profile.phone,
+        address=profile.address,
+        admin=profile.admin,
+        created_at=profile.created_at,
+        updated_at=profile.updated_at,
+    )
+
+
+async def _create_and_send_verification(user_id: str, email: str, db: Session) -> None:
+    """Create a verification token and send email via web. Caller holds db session."""
+    expires_at = datetime.utcnow() + timedelta(hours=VERIFICATION_TOKEN_HOURS)
+    token = secrets.token_urlsafe(32)
+    row = EmailVerificationToken(
+        user_id=user_id,
+        email=email.lower().strip(),
+        token=token,
+        expires_at=expires_at,
+    )
+    db.add(row)
+    db.commit()
+    verify_url = f"{API_BASE}/verify-email?token={token}"
+    await send_email_via_web(type="verification", email=email, verifyUrl=verify_url)
 
 
 @router.put("", response_model=ProfileResponse)
@@ -106,12 +192,23 @@ async def update_profile(
         db.refresh(profile)
 
     data = body.model_dump() if hasattr(body, "model_dump") else body.dict(exclude_unset=True)
+    new_communication_email = data.get("communication_email")
+    if new_communication_email is not None:
+        new_communication_email = (new_communication_email or "").strip() or None
+        if new_communication_email and new_communication_email != (profile.communication_email or ""):
+            profile.email_verified_at = None  # Require re-verify for new address
     for key, value in data.items():
+        if key == "communication_email" and value is not None:
+            value = (value or "").strip() or None
         setattr(profile, key, value)
     profile.updated_at = datetime.utcnow()
     db.add(profile)
     db.commit()
     db.refresh(profile)
+
+    # Send verification email when communication_email is set or changed
+    if new_communication_email is not None and profile.communication_email:
+        await _create_and_send_verification(user_id, profile.communication_email, db)
 
     auth_email_masked = await _get_auth_email_masked(user_id)
 
@@ -121,6 +218,7 @@ async def update_profile(
         company=profile.company,
         auth_email_masked=auth_email_masked,
         communication_email=profile.communication_email,
+        email_verified_at=profile.email_verified_at,
         username=profile.username,
         phone=profile.phone,
         address=profile.address,

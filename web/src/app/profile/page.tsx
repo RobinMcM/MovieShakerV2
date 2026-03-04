@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
 import { AppHeader } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -8,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, User } from "lucide-react";
+import { Loader2, User, CheckCircle2, Mail } from "lucide-react";
 import { api } from "@/lib/api";
 
 interface Profile {
@@ -17,6 +18,7 @@ interface Profile {
     company?: string | null;
     auth_email_masked?: string | null;
     communication_email?: string | null;
+    email_verified_at?: string | null;
     username?: string | null;
     phone?: string | null;
     address?: string | null;
@@ -26,10 +28,13 @@ interface Profile {
 }
 
 function ProfilePage() {
+    const searchParams = useSearchParams();
     const [profile, setProfile] = useState<Profile | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [resending, setResending] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [verifiedBanner, setVerifiedBanner] = useState<"success" | "error" | null>(null);
 
     const [formData, setFormData] = useState({
         name: "",
@@ -43,6 +48,12 @@ function ProfilePage() {
     useEffect(() => {
         fetchProfile();
     }, []);
+
+    useEffect(() => {
+        const v = searchParams.get("verified");
+        if (v === "1") setVerifiedBanner("success");
+        else if (v === "error") setVerifiedBanner("error");
+    }, [searchParams]);
 
     async function fetchProfile() {
         try {
@@ -86,6 +97,23 @@ function ProfilePage() {
         }
     }
 
+    async function handleResendVerification() {
+        if (!profile?.communication_email) return;
+        try {
+            setResending(true);
+            const data = await api.post<Profile>("/profile/send-verification-email", {});
+            setProfile(data);
+            setError(null);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : "Failed to send verification email.";
+            setError(message);
+        } finally {
+            setResending(false);
+        }
+    }
+
+    const communicationEmailVerified = !!profile?.email_verified_at;
+
     if (loading) {
         return (
             <div className="min-h-screen bg-background flex flex-col font-sans">
@@ -114,6 +142,17 @@ function ProfilePage() {
                     )}
                 </div>
 
+                {verifiedBanner === "success" && (
+                    <div className="mb-4 p-3 text-sm text-green-700 dark:text-green-400 bg-green-500/10 rounded-md border border-green-500/20 flex items-center gap-2">
+                        <CheckCircle2 className="h-5 w-5 shrink-0" />
+                        Email verified. You can close this page.
+                    </div>
+                )}
+                {verifiedBanner === "error" && (
+                    <div className="mb-4 p-3 text-sm text-destructive bg-destructive/10 rounded-md border border-destructive/20">
+                        Verification link invalid or expired. Request a new one below.
+                    </div>
+                )}
                 {error && (
                     <div className="mb-4 p-3 text-sm text-destructive bg-destructive/10 rounded-md border border-destructive/20">
                         {error}
@@ -157,14 +196,47 @@ function ProfilePage() {
 
                             <div className="space-y-2">
                                 <Label htmlFor="communication_email">Email for communications</Label>
-                                <Input
-                                    id="communication_email"
-                                    name="communication_email"
-                                    type="email"
-                                    value={formData.communication_email}
-                                    onChange={handleChange}
-                                    placeholder="Shown to collaborators; can differ from login email"
-                                />
+                                <div className="flex flex-col gap-2">
+                                    <Input
+                                        id="communication_email"
+                                        name="communication_email"
+                                        type="email"
+                                        value={formData.communication_email}
+                                        onChange={handleChange}
+                                        placeholder="Shown to collaborators; can differ from login email"
+                                    />
+                                    {profile?.communication_email && (
+                                        <div className="flex items-center gap-2 text-sm">
+                                            {communicationEmailVerified ? (
+                                                <span className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
+                                                    <CheckCircle2 className="h-4 w-4" />
+                                                    Verified
+                                                </span>
+                                            ) : (
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    disabled={resending}
+                                                    onClick={handleResendVerification}
+                                                    className="w-fit"
+                                                >
+                                                    {resending ? (
+                                                        <>
+                                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                            Sending…
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Mail className="mr-2 h-4 w-4" />
+                                                            Resend verification email
+                                                        </>
+                                                    )}
+                                                </Button>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
                             <div className="space-y-2">

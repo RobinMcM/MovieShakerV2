@@ -16,8 +16,9 @@ logger = logging.getLogger(__name__)
 # Local imports
 from db import init_db
 from projects import router as projects_router
-from profile import router as profile_router
+from profile import router as profile_router, verify_router
 from scripts import router as scripts_router
+from notifications import router as notifications_router
 
 # --- Configuration ---
 # TODO: Move to config.py
@@ -108,8 +109,10 @@ app.add_middleware(
 )
 
 # --- Routers ---
+app.include_router(verify_router)
 app.include_router(projects_router)
 app.include_router(profile_router)
+app.include_router(notifications_router)
 app.include_router(scripts_router)
 
 # --- Routes ---

@@ -4,12 +4,22 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        // Root and HTML pages: no CDN or browser cache so updates show immediately
-        source: "/:path*",
+        // Static assets (hashed): cache long so repeat visits are fast
+        source: "/_next/static/:path*",
         headers: [
           {
             key: "Cache-Control",
-            value: "public, s-maxage=0, max-age=0, must-revalidate",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+      {
+        // All page requests: never cache HTML so users always get latest after deploy
+        source: "/:path((?!_next).*)",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "no-store, no-cache, must-revalidate",
           },
         ],
       },

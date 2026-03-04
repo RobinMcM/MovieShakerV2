@@ -11,6 +11,20 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@db:5432/mov
 engine = create_engine(DATABASE_URL, echo=True)
 
 
+def _migrate_user_profile_email_verified():
+    """Add email_verified_at to user_profile if missing."""
+    with engine.connect() as conn:
+        with conn.begin():
+            try:
+                conn.execute(
+                    text(
+                        "ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMP"
+                    )
+                )
+            except Exception as e:
+                logger.warning("Migration user_profile email_verified_at: %s", e)
+
+
 def _migrate_project_table():
     """Add any missing columns to project table (idempotent). Run after create_all."""
     # Columns that may have been added to the model after the table was first created
@@ -35,8 +49,16 @@ def _migrate_project_table():
 
 def init_db():
     # Ensure models are registered (import side-effect)
-    from models import Project, ProjectMember, UserProfile, Script  # noqa: F401
+    from models import (  # noqa: F401
+        Project,
+        ProjectMember,
+        UserProfile,
+        Script,
+        EmailVerificationToken,
+        Notification,
+    )
     SQLModel.metadata.create_all(engine)
+    _migrate_user_profile_email_verified()
     _migrate_project_table()
 
 

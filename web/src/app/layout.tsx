@@ -3,6 +3,9 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { SupertokensProvider } from "@/components/providers/SupertokensProvider";
 
+// Prevent Next.js from serving cached prerendered HTML (avoids "old site" after deploy)
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "MovieShaker - The Mean Indie Machine",
   description: "Professional film production",

@@ -4,11 +4,12 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        // Root and HTML pages: no CDN or browser cache so updates show immediately
         source: "/:path*",
         headers: [
           {
             key: "Cache-Control",
-            value: "s-maxage=0, must-revalidate",
+            value: "public, s-maxage=0, max-age=0, must-revalidate",
           },
         ],
       },

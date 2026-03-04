@@ -46,14 +46,31 @@ init(
 
 app = FastAPI(title="MovieShaker Engine (Indie)")
 
-# Allowed web origins for CORS (5173 default Vite, 5174 when 5173 in use)
+# Allowed web origins for CORS. Add production frontend URL via CORS_ORIGINS env (comma-separated).
+# Fallback when CORS_ORIGINS is not set in container (e.g. production .env not loaded).
+_DEFAULT_PRODUCTION_ORIGINS = [
+    "https://movieshaker.com",
+    "https://ooocreatives.com",
+    "https://afilminabox.com",
+    "https://reelinvesting.com",
+    "https://dolphin-app-9dvbj.ondigitalocean.app",
+]
 _CORS_ORIGINS = [f"http://localhost:{WEB_PORT}", "http://localhost:5174"]
+_env_origins = os.getenv("CORS_ORIGINS", "").strip()
+if _env_origins:
+    _CORS_ORIGINS = _CORS_ORIGINS + [o.strip() for o in _env_origins.split(",") if o.strip()]
+elif os.getenv("SUPERTOKENS_CONNECTION_URI", "").strip():
+    # Production (SuperTokens configured): use fallback so CORS works even if CORS_ORIGINS wasn't passed to container
+    _CORS_ORIGINS = _CORS_ORIGINS + _DEFAULT_PRODUCTION_ORIGINS
+    logger.warning("CORS_ORIGINS empty; using default production origins. Set CORS_ORIGINS in env to override.")
 
 
-def _cors_headers():
-    # Use first allowed origin for single-value response (e.g. error handler)
+def _cors_headers(request=None):
+    # Use request Origin if allowed, else first allowed origin (for error responses).
+    origin = request.headers.get("origin") if request else None
+    allow_origin = origin if origin and origin in _CORS_ORIGINS else _CORS_ORIGINS[0]
     return {
-        "Access-Control-Allow-Origin": _CORS_ORIGINS[0],
+        "Access-Control-Allow-Origin": allow_origin,
         "Access-Control-Allow-Credentials": "true",
         "Access-Control-Allow-Methods": "GET, PUT, POST, DELETE, OPTIONS, PATCH",
         "Access-Control-Allow-Headers": "Content-Type, " + ", ".join(get_all_cors_headers()),
@@ -69,7 +86,7 @@ def global_exception_handler(request, exc):
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error", "error": str(exc)},
-        headers=_cors_headers(),
+        headers=_cors_headers(request),
     )
 
 
@@ -77,6 +94,7 @@ def global_exception_handler(request, exc):
 @app.on_event("startup")
 def on_startup():
     init_db()
+    logger.info("CORS allowed origins (%d): %s", len(_CORS_ORIGINS), _CORS_ORIGINS)
 
 # --- Middleware ---
 app.add_middleware(get_middleware())

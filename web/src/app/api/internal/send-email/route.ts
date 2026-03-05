@@ -31,11 +31,12 @@ export async function POST(request: NextRequest) {
   }
 
   const type = body && typeof body === "object" && "type" in body && body.type;
-  if (type === "verification") {
-    return handleVerification(body);
+  const payload = body && typeof body === "object" ? (body as Record<string, unknown>) : null;
+  if (type === "verification" && payload) {
+    return handleVerification(payload);
   }
-  if (type === "notification") {
-    return handleNotification(body);
+  if (type === "notification" && payload) {
+    return handleNotification(payload);
   }
 
   return NextResponse.json(

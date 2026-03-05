@@ -112,6 +112,6 @@ class SceneCharacter(SQLModel, table=True):
     """Link between scene and character (character appears in scene)."""
     __tablename__ = "scene_characters"
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    scene_id: uuid.UUID = Field(foreign_key="scene.id", index=True)
-    character_id: uuid.UUID = Field(foreign_key="character.id", index=True)
+    scene_id: uuid.UUID = Field(foreign_key="scenes.id", index=True)
+    character_id: uuid.UUID = Field(foreign_key="characters.id", index=True)
     user_id: str = Field(index=True)

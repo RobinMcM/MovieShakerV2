@@ -452,16 +452,13 @@ def _get_script_file_bytes(script: Script) -> Tuple[bytes, bool]:
     return (body, body[:5].strip().startswith(b"%PDF-"))
 
 
-def _parse_json_script(body: bytes) -> Tuple[List[dict], List[str], dict, int]:
-    """Parse JSON script. Returns (headings, unique_characters, scene_index_to_characters, page_count)."""
-    data = json.loads(body.decode("utf-8", errors="replace"))
-    elements = data.get("elements") or []
-    page_count = 1
-    if isinstance(data.get("metadata"), dict) and "page_count" in data["metadata"]:
-        page_count = int(data["metadata"]["page_count"]) or 1
+def _derive_db_from_elements(
+    elements: List[dict], page_count: int
+) -> Tuple[List[dict], List[str], dict, int]:
+    """Derive (headings, unique_characters, scene_char_map, page_count) from full elements for DB insert."""
     headings = []
     character_set = set()
-    scene_char_map = {}  # scene_index -> set of character names
+    scene_char_map: dict = {}
     for el in elements:
         el_type = (el.get("type") or "action").strip().lower()
         text = (el.get("text") or "").strip()
@@ -479,19 +476,44 @@ def _parse_json_script(body: bytes) -> Tuple[List[dict], List[str], dict, int]:
                 character_set.add(name)
                 if headings:
                     scene_char_map[len(headings) - 1].add(name)
-    unique_characters = sorted(character_set)
-    return (headings, unique_characters, scene_char_map, page_count)
+    return (headings, sorted(character_set), scene_char_map, page_count)
 
 
-def _build_script_json(headings: List[dict], unique_characters: List[str], scene_char_map: dict, page_count: int) -> bytes:
-    """Build JSON document { metadata: { page_count }, elements: [...] } for saving as script.json."""
+def _parse_json_script(body: bytes) -> Tuple[List[dict], List[str], dict, int]:
+    """Parse JSON script. Returns (headings, unique_characters, scene_index_to_characters, page_count)."""
+    data = json.loads(body.decode("utf-8", errors="replace"))
+    elements = data.get("elements") or []
+    page_count = 1
+    if isinstance(data.get("metadata"), dict) and "page_count" in data["metadata"]:
+        page_count = int(data["metadata"]["page_count"]) or 1
+    return _derive_db_from_elements(elements, page_count)
+
+
+# Canonical script.json types (source of truth)
+SCRIPT_JSON_TYPES = frozenset(
+    {"scene_heading", "action", "character", "dialogue", "parenthetical", "transition", "page_number", "general"}
+)
+
+
+def _script_json_to_bytes(elements: List[dict], metadata: dict) -> bytes:
+    """Serialize script.json document. metadata must include page_count."""
+    meta = dict(metadata)
+    if "page_count" not in meta:
+        meta["page_count"] = 1
+    doc = {"metadata": meta, "elements": elements}
+    return json.dumps(doc, indent=2).encode("utf-8")
+
+
+def _build_script_json(
+    headings: List[dict], unique_characters: List[str], scene_char_map: dict, page_count: int
+) -> bytes:
+    """Build reduced script.json (scene_heading + character only) for saving as script.json."""
     elements: List[dict] = []
     for i, h in enumerate(headings):
         elements.append({"type": "scene_heading", "text": h.get("heading", "")})
         for cname in sorted(scene_char_map.get(i, set())):
             elements.append({"type": "character", "text": cname})
-    doc = {"metadata": {"page_count": page_count}, "elements": elements}
-    return json.dumps(doc, indent=2).encode("utf-8")
+    return _script_json_to_bytes(elements, {"page_count": page_count})
 
 
 def _parse_pdf_script(body: bytes) -> Tuple[List[dict], List[str], dict, int]:
@@ -524,6 +546,132 @@ def _parse_pdf_script(body: bytes) -> Tuple[List[dict], List[str], dict, int]:
     return (headings, unique_characters, scene_char_map, page_count)
 
 
+def _parse_pdf_script_full(body: bytes) -> Optional[Tuple[List[dict], int]]:
+    """
+    Extract full screenplay elements from PDF using position-based classification (legacy heuristics).
+    Returns (elements, page_count) or None on failure (caller should fall back to _parse_pdf_script).
+    """
+    try:
+        from pdfminer.converter import PDFPageAggregator
+        from pdfminer.layout import LAParams, LTTextBox, LTTextLine
+        from pdfminer.pdfpage import PDFPage
+        from pdfminer.pdfinterp import PDFPageInterpreter, PDFResourceManager
+    except ImportError:
+        return None
+    try:
+        rsrc = PDFResourceManager()
+        laparams = LAParams()
+        device = PDFPageAggregator(rsrc, laparams=laparams)
+        interpreter = PDFPageInterpreter(rsrc, device)
+        all_lines: List[Tuple[int, float, float, str]] = []  # (page_num, x, y, text)
+        line_height_tol = 5
+        for page_num, page in enumerate(PDFPage.get_pages(io.BytesIO(body)), 1):
+            interpreter.process_page(page)
+            layout = device.get_result()
+            for obj in layout:
+                if isinstance(obj, LTTextBox):
+                    for line in obj:
+                        if isinstance(line, LTTextLine):
+                            text = (line.get_text() or "").strip()
+                            if not text:
+                                continue
+                            x0, y0, x1, y1 = line.bbox
+                            x_center = (x0 + x1) / 2
+                            y_center = (y0 + y1) / 2
+                            all_lines.append((page_num, x_center, y_center, text))
+        if not all_lines:
+            return None
+        all_lines.sort(key=lambda t: (t[0], -t[2], t[1]))
+        grouped: List[Tuple[int, float, float, str]] = []
+        for page_num, x, y, text in all_lines:
+            if grouped and grouped[-1][0] == page_num and abs(grouped[-1][2] - y) <= line_height_tol:
+                grouped[-1] = (page_num, (grouped[-1][1] + x) / 2, grouped[-1][2], grouped[-1][3] + " " + text)
+            else:
+                grouped.append((page_num, x, y, text))
+        scene_heading_re = re.compile(r"^(INT\.|EXT\.|INT\./EXT\.|I/E|EST\.)(?:\s|$)", re.IGNORECASE)
+        MERGE_Y_TOLERANCE = 20
+        elements: List[dict] = []
+        last_el: Optional[dict] = None
+        last_y: float = -1e9
+        for page_num, x, y, text in grouped:
+            is_centered = 150 < x < 400
+            is_parenthetical = text.startswith("(") and text.endswith(")")
+            starts_scene = bool(scene_heading_re.match(text))
+            is_page_num = bool(re.match(r"^\d+\.?$", text)) and y > 500 and x > 450
+            is_upper = text == text.upper() and bool(re.search(r"[A-Z]", text))
+            el_type = "action"
+            if is_page_num:
+                el_type = "page_number"
+            elif starts_scene:
+                el_type = "scene_heading"
+            elif is_centered and is_upper and not is_parenthetical:
+                el_type = "character"
+            elif is_centered and is_parenthetical:
+                el_type = "parenthetical"
+            elif is_centered:
+                if last_el and last_el.get("type") in ("character", "parenthetical", "dialogue"):
+                    el_type = "dialogue"
+                elif text.endswith("TO:") or re.match(r"^FADE", text, re.I):
+                    el_type = "transition"
+                else:
+                    el_type = "dialogue"
+            else:
+                el_type = "action"
+            should_merge = (
+                last_el is not None
+                and last_el.get("_page") == page_num
+                and last_el.get("type") == el_type
+                and abs(last_y - y) <= MERGE_Y_TOLERANCE
+                and not (el_type == "scene_heading")  # never merge two scene headings
+            )
+            if should_merge and last_el is not None:
+                last_el["text"] = (last_el["text"] or "") + " " + text
+            else:
+                last_el = {"type": el_type, "text": text, "_page": page_num}
+                elements.append(last_el)
+            last_y = y
+        for el in elements:
+            el.pop("_page", None)
+        page_count = max((t[0] for t in grouped), default=1)
+        return (elements, page_count)
+    except Exception:
+        return None
+
+
+# PUT /scripts/{script_id}/json - update script.json (source of truth) from client e.g. ScriptViewer save
+class ScriptJsonBody(BaseModel):
+    elements: List[dict]  # [ {"type": str, "text": str}, ... ]
+    metadata: Optional[dict] = None  # e.g. page_count, title, author
+
+
+@router.put("/scripts/{script_id}/json")
+def update_script_json(
+    script_id: str,
+    body: ScriptJsonBody,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    """Update script.json in storage. Does not change scenes/characters in DB."""
+    user_id = session.get_user_id()
+    script = _get_script_and_ensure_access(db, script_id, user_id)
+    if not body.elements:
+        raise HTTPException(status_code=400, detail="elements array is required and must not be empty")
+    metadata = body.metadata or {}
+    if "page_count" not in metadata:
+        metadata = {**metadata, "page_count": 1}
+    normalized = [{"type": (e.get("type") or "action").strip().lower(), "text": (e.get("text") or "").strip()} for e in body.elements]
+    json_bytes = _script_json_to_bytes(normalized, metadata)
+    save_script_file(
+        script.user_id,
+        str(script.project_id),
+        str(script.id),
+        "script.json",
+        io.BytesIO(json_bytes),
+        len(json_bytes),
+    )
+    return {"success": True, "message": "Script JSON updated"}
+
+
 # POST /scripts/{script_id}/parse
 @router.post("/scripts/{script_id}/parse")
 def parse_script(
@@ -536,10 +684,25 @@ def parse_script(
     if getattr(script, "is_locked", False):
         raise HTTPException(status_code=403, detail="Script is locked. Unlock it to re-parse.")
     body, is_pdf = _get_script_file_bytes(script)
+    full_elements: Optional[List[dict]] = None
+    script_metadata: Optional[dict] = None
     if body[:20].strip().startswith(b"{") or body[:20].strip().startswith(b"["):
         headings, unique_characters, scene_char_map, page_count = _parse_json_script(body)
+        data = json.loads(body.decode("utf-8", errors="replace"))
+        raw_elements = data.get("elements") or []
+        raw_meta = data.get("metadata") or {}
+        types_present = { (e.get("type") or "action").strip().lower() for e in raw_elements }
+        if types_present - {"scene_heading", "character"}:
+            full_elements = [{"type": (e.get("type") or "action").strip().lower(), "text": (e.get("text") or "").strip()} for e in raw_elements]
+            script_metadata = {**raw_meta, "page_count": raw_meta.get("page_count", page_count)}
     elif is_pdf:
-        headings, unique_characters, scene_char_map, page_count = _parse_pdf_script(body)
+        full_result = _parse_pdf_script_full(body)
+        if full_result is not None:
+            full_elements, page_count = full_result
+            headings, unique_characters, scene_char_map, page_count = _derive_db_from_elements(full_elements, page_count)
+            script_metadata = {"page_count": page_count}
+        else:
+            headings, unique_characters, scene_char_map, page_count = _parse_pdf_script(body)
     else:
         raise HTTPException(status_code=400, detail="File format not recognized (expected PDF or JSON).")
     script_uuid = script.id
@@ -583,8 +746,11 @@ def parse_script(
     db.add(script)
     db.commit()
     cache_delete(scripts_stats_key(script_id))
-    # Persist script.json in same location as script.pdf (local or Spaces)
-    json_bytes = _build_script_json(headings, unique_characters, scene_char_map, page_count)
+    # Persist script.json in same location as script.pdf (full elements when available, else reduced)
+    if full_elements is not None and script_metadata is not None:
+        json_bytes = _script_json_to_bytes(full_elements, script_metadata)
+    else:
+        json_bytes = _build_script_json(headings, unique_characters, scene_char_map, page_count)
     save_script_file(
         script.user_id,
         str(script.project_id),

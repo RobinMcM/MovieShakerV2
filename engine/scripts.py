@@ -638,6 +638,27 @@ def _parse_pdf_script_full(body: bytes) -> Optional[Tuple[List[dict], int]]:
         return None
 
 
+def _read_script_json(script: Script) -> Optional[Tuple[List[dict], dict]]:
+    """Read current script.json from storage. Returns (elements, metadata) or None if not found."""
+    json_key = relative_file_path(script.user_id, str(script.project_id), str(script.id), "script.json")
+    if uses_spaces():
+        result = get_script_file_stream(json_key)
+        if result is None:
+            return None
+        body, _ = result
+    else:
+        path = script_json_path(script.user_id, str(script.project_id), str(script.id))
+        if not path.exists():
+            return None
+        body = path.read_bytes()
+    data = json.loads(body.decode("utf-8", errors="replace"))
+    elements = data.get("elements")
+    metadata = data.get("metadata") or {}
+    if not isinstance(elements, list):
+        return None
+    return (elements, metadata)
+
+
 # PUT /scripts/{script_id}/json - update script.json (source of truth) from client e.g. ScriptViewer save
 class ScriptJsonBody(BaseModel):
     elements: List[dict]  # [ {"type": str, "text": str}, ... ]
@@ -651,7 +672,7 @@ def update_script_json(
     session: SessionContainer = Depends(verify_session()),
     db: Session = Depends(get_session),
 ):
-    """Update script.json in storage. Does not change scenes/characters in DB."""
+    """Update script.json in storage (full replace). Use for saving edits or replacing document. Does not change scenes/characters in DB."""
     user_id = session.get_user_id()
     script = _get_script_and_ensure_access(db, script_id, user_id)
     if not body.elements:
@@ -670,6 +691,44 @@ def update_script_json(
         len(json_bytes),
     )
     return {"success": True, "message": "Script JSON updated"}
+
+
+# POST /scripts/{script_id}/json/elements - append elements to script.json (e.g. during production)
+class AppendElementsBody(BaseModel):
+    elements: List[dict]  # [ {"type": str, "text": str}, ... ] - will be appended to existing
+
+
+@router.post("/scripts/{script_id}/json/elements")
+def append_script_json_elements(
+    script_id: str,
+    body: AppendElementsBody,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    """Append elements to script.json. Use during production to add extra elements. Fails if script.json does not exist (parse first)."""
+    user_id = session.get_user_id()
+    script = _get_script_and_ensure_access(db, script_id, user_id)
+    current = _read_script_json(script)
+    if current is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Script JSON not found. Parse the script first to create script.json.",
+        )
+    existing_elements, metadata = current
+    if not body.elements:
+        return {"success": True, "message": "No elements to append", "elements_count": len(existing_elements)}
+    new_els = [{"type": (e.get("type") or "action").strip().lower(), "text": (e.get("text") or "").strip()} for e in body.elements]
+    combined = existing_elements + new_els
+    json_bytes = _script_json_to_bytes(combined, metadata)
+    save_script_file(
+        script.user_id,
+        str(script.project_id),
+        str(script.id),
+        "script.json",
+        io.BytesIO(json_bytes),
+        len(json_bytes),
+    )
+    return {"success": True, "message": "Elements appended", "elements_count": len(combined)}
 
 
 # POST /scripts/{script_id}/parse

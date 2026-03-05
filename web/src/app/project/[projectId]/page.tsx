@@ -564,11 +564,15 @@ function ProjectPage() {
                                     {scripts.map((script) => (
                                         <div key={script.id} className="border rounded-lg hover:bg-accent/50 transition-colors">
                                             <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-3">
-                                                <div className="flex items-start gap-3 flex-1 min-w-0">
+                                                <Link
+                                                    href={projectId ? `/project/${projectId}/script/${script.id}` : "#"}
+                                                    className="flex items-start gap-3 flex-1 min-w-0 cursor-pointer"
+                                                    aria-label={`Open script ${script.name}`}
+                                                >
                                                     <FileText className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2 flex-wrap">
-                                                            <p className="font-medium break-words">{script.name}</p>
+                                                            <p className="font-medium break-words hover:text-primary transition-colors">{script.name}</p>
                                                             {script.is_current && (
                                                                 <span className="inline-flex items-center gap-1 rounded-md border border-green-500/20 bg-green-500/10 px-2 py-0.5 text-xs font-medium text-green-500 flex-shrink-0">
                                                                     <CheckCircle2 className="h-3 w-3" />
@@ -591,7 +595,7 @@ function ProjectPage() {
                                                             </div>
                                                         )}
                                                     </div>
-                                                </div>
+                                                </Link>
                                                 <div className="flex items-center gap-2 w-full sm:w-auto sm:flex-shrink-0 sm:ml-2">
                                                     <Button
                                                         variant="link"

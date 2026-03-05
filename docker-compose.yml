@@ -50,7 +50,7 @@ services:
       - SUPERTOKENS_CONNECTION_URI=http://supertokens:3567
       - WEB_HOST=http://localhost:3000
       - CORS_ORIGINS=${CORS_ORIGINS:-}
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/movieshaker
+      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/movieshaker}
       - VALKEY_URL=redis://valkey:6379/0
       - DO_SPACES_ENDPOINT=${DO_SPACES_ENDPOINT:-}
       - DO_SPACES_REGION=${DO_SPACES_REGION:-}

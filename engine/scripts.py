@@ -1,16 +1,19 @@
 """
 Scripts API: list by project, create+upload (multipart), stats, stream file, delete.
+Parse: POST /scripts/:id/parse to extract scenes/characters from PDF or JSON.
 Storage path: STORAGE_ROOT/{user_id}/{project_id}/{script_id}/script.pdf
 Valkey cache: scripts:list:{project_id}, scripts:stats:{script_id}
 """
+import io
 import json
+import re
 import uuid
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
-from sqlmodel import Session, select
+from sqlmodel import Session, select, update
 from pydantic import BaseModel
 
 from db import get_session
@@ -384,6 +387,184 @@ def get_script_scene_characters(
         for r in rows
     ]
     return {"success": True, "data": data}
+
+
+# POST /scripts/{script_id}/set-current
+@router.post("/scripts/{script_id}/set-current")
+def set_script_current(
+    script_id: str,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    script = _get_script_and_ensure_access(db, script_id, user_id)
+    project_id = str(script.project_id)
+    db.exec(update(Script).where(Script.project_id == script.project_id).values(is_current=False))
+    script.is_current = True
+    db.add(script)
+    db.commit()
+    db.refresh(script)
+    cache_delete(scripts_list_key(project_id))
+    return {"success": True, "message": "Script set as current"}
+
+
+# POST /scripts/{script_id}/set-lock
+class SetLockBody(BaseModel):
+    is_locked: bool
+
+
+@router.post("/scripts/{script_id}/set-lock")
+def set_script_lock(
+    script_id: str,
+    body: SetLockBody,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    script = _get_script_and_ensure_access(db, script_id, user_id)
+    script.is_locked = body.is_locked
+    db.add(script)
+    db.commit()
+    db.refresh(script)
+    data = _script_to_response(script)
+    return {"success": True, "data": data.model_dump()}
+
+
+def _get_script_file_bytes(script: Script) -> Tuple[bytes, bool]:
+    """Return (body, is_pdf). Raises HTTPException if file not found."""
+    if uses_spaces():
+        result = get_script_file_stream(script.file_path)
+        if result is None:
+            raise HTTPException(status_code=404, detail="Script file not found")
+        body, _ = result
+        return (body, body[:5].strip().startswith(b"%PDF-"))
+    path = get_script_file_path(script.file_path)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Script file not found")
+    body = path.read_bytes()
+    return (body, body[:5].strip().startswith(b"%PDF-"))
+
+
+def _parse_json_script(body: bytes) -> Tuple[List[dict], List[str], dict, int]:
+    """Parse JSON script. Returns (headings, unique_characters, scene_index_to_characters, page_count)."""
+    data = json.loads(body.decode("utf-8", errors="replace"))
+    elements = data.get("elements") or []
+    page_count = 1
+    if isinstance(data.get("metadata"), dict) and "page_count" in data["metadata"]:
+        page_count = int(data["metadata"]["page_count"]) or 1
+    headings = []
+    character_set = set()
+    scene_char_map = {}  # scene_index -> set of character names
+    for el in elements:
+        el_type = (el.get("type") or "action").strip().lower()
+        text = (el.get("text") or "").strip()
+        if el_type == "scene_heading":
+            headings.append({
+                "heading": text[:255],
+                "page_number": f"Page {len(headings) + 1}",
+                "length_in_eighths": 1,
+            })
+            scene_char_map[len(headings) - 1] = set()
+        elif el_type == "character":
+            name = re.sub(r"\s*\([^)]*\)", "", text)
+            name = re.sub(r"[(),!?:;]", "", name).strip().rstrip(". ")
+            if 0 < len(name) < 50:
+                character_set.add(name)
+                if headings:
+                    scene_char_map[len(headings) - 1].add(name)
+    unique_characters = sorted(character_set)
+    return (headings, unique_characters, scene_char_map, page_count)
+
+
+def _parse_pdf_script(body: bytes) -> Tuple[List[dict], List[str], dict, int]:
+    """Extract scenes and characters from PDF text. Returns same shape as _parse_json_script."""
+    from pypdf import PdfReader
+    reader = PdfReader(io.BytesIO(body))
+    page_count = len(reader.pages)
+    headings = []
+    character_set = set()
+    scene_char_map = {}
+    scene_heading_re = re.compile(r"^(INT\.|EXT\.|INT\./EXT\.|I/E|EST\.)\s", re.IGNORECASE)
+    for pagenum, page in enumerate(reader.pages, 1):
+        text = page.extract_text() or ""
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        for line in lines:
+            if scene_heading_re.match(line):
+                headings.append({
+                    "heading": line[:255],
+                    "page_number": f"Page {pagenum}",
+                    "length_in_eighths": 1,
+                })
+                scene_char_map[len(headings) - 1] = set()
+            elif line.isupper() and len(line) < 50 and re.match(r"^[A-Z][A-Z\s\-']+$", line):
+                name = re.sub(r"\s*\([^)]*\)", "", line).strip().rstrip(". ")
+                if name:
+                    character_set.add(name)
+                    if headings:
+                        scene_char_map[len(headings) - 1].add(name)
+    unique_characters = sorted(character_set)
+    return (headings, unique_characters, scene_char_map, page_count)
+
+
+# POST /scripts/{script_id}/parse
+@router.post("/scripts/{script_id}/parse")
+def parse_script(
+    script_id: str,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    script = _get_script_and_ensure_access(db, script_id, user_id)
+    if getattr(script, "is_locked", False):
+        raise HTTPException(status_code=403, detail="Script is locked. Unlock it to re-parse.")
+    body, is_pdf = _get_script_file_bytes(script)
+    if body[:20].strip().startswith(b"{") or body[:20].strip().startswith(b"["):
+        headings, unique_characters, scene_char_map, page_count = _parse_json_script(body)
+    elif is_pdf:
+        headings, unique_characters, scene_char_map, page_count = _parse_pdf_script(body)
+    else:
+        raise HTTPException(status_code=400, detail="File format not recognized (expected PDF or JSON).")
+    script_uuid = script.id
+    # Delete in FK order: scene_characters -> scenes, characters
+    existing_scenes = list(db.exec(select(Scene).where(Scene.script_id == script_uuid)).all())
+    for scene in existing_scenes:
+        for sc in db.exec(select(SceneCharacter).where(SceneCharacter.scene_id == scene.id)).all():
+            db.delete(sc)
+    for s in existing_scenes:
+        db.delete(s)
+    for c in db.exec(select(Character).where(Character.script_id == script_uuid)).all():
+        db.delete(c)
+    db.commit()
+    # Insert characters
+    char_id_by_name = {}
+    for name in unique_characters:
+        ch = Character(script_id=script_uuid, user_id=user_id, name=name)
+        db.add(ch)
+        db.flush()
+        char_id_by_name[name] = ch.id
+    # Insert scenes and scene_characters
+    scene_ids = []
+    for i, h in enumerate(headings):
+        sc = Scene(
+            script_id=script_uuid,
+            user_id=user_id,
+            heading=h["heading"],
+            page_number=h.get("page_number", ""),
+            length_in_eighths=h.get("length_in_eighths"),
+            scene_number=i + 1,
+        )
+        db.add(sc)
+        db.flush()
+        scene_ids.append(sc.id)
+        for cname in scene_char_map.get(i, set()):
+            cid = char_id_by_name.get(cname)
+            if cid:
+                db.add(SceneCharacter(scene_id=sc.id, character_id=cid, user_id=user_id))
+    script.page_count = page_count
+    db.add(script)
+    db.commit()
+    cache_delete(scripts_stats_key(script_id))
+    return {"success": True, "data": {"scenes": len(headings), "characters": len(unique_characters)}}
 
 
 # DELETE /scripts/{script_id}

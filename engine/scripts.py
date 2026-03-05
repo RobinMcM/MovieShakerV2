@@ -548,6 +548,7 @@ def parse_script(
     for scene in existing_scenes:
         for sc in db.exec(select(SceneCharacter).where(SceneCharacter.scene_id == scene.id)).all():
             db.delete(sc)
+    db.flush()  # Emit scene_character DELETEs before deleting scenes (FK constraint)
     for s in existing_scenes:
         db.delete(s)
     for c in db.exec(select(Character).where(Character.script_id == script_uuid)).all():

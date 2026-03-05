@@ -16,6 +16,9 @@ class UserProfile(SQLModel, table=True):
     phone: Optional[str] = None
     address: Optional[str] = None
     admin: bool = Field(default=False)
+    role: str = Field(default="producer")  # "admin" | "producer"
+    producer_tier: str = Field(default="standard")  # "standard" | "indie" | "production_company"
+    blocked: bool = Field(default=False)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

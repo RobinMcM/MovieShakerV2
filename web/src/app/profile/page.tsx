@@ -23,6 +23,11 @@ interface Profile {
     phone?: string | null;
     address?: string | null;
     admin: boolean;
+    role?: string;
+    producer_tier?: string;
+    blocked?: boolean;
+    project_limit?: number;
+    owned_project_count?: number;
     created_at?: string | null;
     updated_at?: string | null;
 }
@@ -135,11 +140,19 @@ function ProfilePage() {
                     <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                         Profile
                     </h1>
-                    {profile?.admin && (
-                        <span className="text-xs font-semibold px-2 py-1 rounded bg-primary/20 text-primary">
-                            Admin
-                        </span>
-                    )}
+                    <span className="text-xs font-semibold px-2 py-1 rounded bg-muted text-muted-foreground capitalize">
+                        {profile?.role === "admin" ? "Admin" : "Producer"}
+                        {profile?.role === "producer" && profile?.producer_tier && (
+                            <> · {profile.producer_tier.replace("_", " ")}</>
+                        )}
+                    </span>
+                    {profile?.role === "producer" &&
+                        typeof profile?.owned_project_count === "number" &&
+                        typeof profile?.project_limit === "number" && (
+                            <span className="text-xs text-muted-foreground">
+                                {profile.owned_project_count} / {profile.project_limit} projects
+                            </span>
+                        )}
                 </div>
 
                 {verifiedBanner === "success" && (

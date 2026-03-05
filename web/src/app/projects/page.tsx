@@ -50,10 +50,18 @@ const filmTypeOptions = [
 
 const aspectRatioOptions = ["16:9", "9:16", "2.35:1", "4:3", "1:1"];
 
+interface ProfileStats {
+    role?: string;
+    producer_tier?: string;
+    project_limit?: number;
+    owned_project_count?: number;
+}
+
 function ProjectsPage() {
     const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [profile, setProfile] = useState<ProfileStats | null>(null);
 
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -75,6 +83,7 @@ function ProjectsPage() {
 
     useEffect(() => {
         fetchProjects();
+        api.get<ProfileStats>("/profile/").then(setProfile).catch(() => setProfile(null));
     }, []);
 
     async function fetchProjects() {
@@ -181,7 +190,16 @@ function ProjectsPage() {
                 <div className="flex justify-between items-center mb-8">
                     <div>
                         <h1 className="text-3xl font-bold text-primary">My Projects</h1>
-                        <p className="text-muted-foreground mt-1">Manage your film and series productions</p>
+                        <p className="text-muted-foreground mt-1">
+                            Manage your film and series productions
+                            {profile?.role === "producer" &&
+                                typeof profile?.owned_project_count === "number" &&
+                                typeof profile?.project_limit === "number" && (
+                                    <span className="ml-2">
+                                        ({profile.owned_project_count} / {profile.project_limit} projects)
+                                    </span>
+                                )}
+                        </p>
                     </div>
 
                     <Dialog open={isDialogOpen} onOpenChange={(open: boolean) => {

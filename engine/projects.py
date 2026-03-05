@@ -5,10 +5,13 @@ from sqlmodel import Session, select
 from typing import List, Optional
 from pydantic import BaseModel
 from db import get_session
-from models import Project, ProjectMember
+from models import Project, ProjectMember, UserProfile
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
 from cache import cache_get, cache_set, cache_delete, PROJECTS_LIST_TTL
+
+# Producer tier project limits (owned projects)
+PRODUCER_TIER_LIMITS = {"standard": 5, "indie": 25, "production_company": 999}
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -63,7 +66,23 @@ def create_project(
     db: Session = Depends(get_session)
 ):
     user_id = session.get_user_id()
-    
+    profile = db.get(UserProfile, user_id)
+    if not profile:
+        profile = UserProfile(user_id=user_id)
+        db.add(profile)
+        db.commit()
+        db.refresh(profile)
+    if profile.blocked:
+        raise HTTPException(status_code=403, detail="Account is blocked")
+    if profile.role != "admin":
+        limit = PRODUCER_TIER_LIMITS.get(profile.producer_tier, 5)
+        count = db.exec(select(Project).where(Project.owner_id == user_id)).all()
+        if len(count) >= limit:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Project limit reached for your plan ({limit} projects). Contact support to upgrade."
+            )
+
     # 1. Create Project
     new_project = Project(
         name=project_data.name,
@@ -118,6 +137,9 @@ def list_projects(
         user_id = session.get_user_id()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"session.get_user_id: {e!s}") from e
+    profile = db.get(UserProfile, user_id)
+    if profile and profile.blocked:
+        raise HTTPException(status_code=403, detail="Account is blocked")
 
     cache_key = _projects_cache_key(user_id)
     cached = cache_get(cache_key)

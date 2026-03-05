@@ -11,6 +11,29 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@db:5432/mov
 engine = create_engine(DATABASE_URL, echo=True)
 
 
+def _migrate_user_profile_roles():
+    """Add role, producer_tier, blocked to user_profile; backfill role from admin."""
+    with engine.connect() as conn:
+        with conn.begin():
+            for col, typ in [
+                ("role", "VARCHAR NOT NULL DEFAULT 'producer'"),
+                ("producer_tier", "VARCHAR NOT NULL DEFAULT 'standard'"),
+                ("blocked", "BOOLEAN NOT NULL DEFAULT FALSE"),
+            ]:
+                try:
+                    conn.execute(
+                        text(f"ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS {col} {typ}")
+                    )
+                except Exception as e:
+                    logger.warning("Migration user_profile %s: %s", col, e)
+            try:
+                conn.execute(
+                    text("UPDATE user_profile SET role = 'admin' WHERE admin = TRUE")
+                )
+            except Exception as e:
+                logger.warning("Migration user_profile backfill role: %s", e)
+
+
 def _migrate_user_profile_email_verified():
     """Add email_verified_at to user_profile if missing."""
     with engine.connect() as conn:
@@ -59,6 +82,7 @@ def init_db():
     )
     SQLModel.metadata.create_all(engine)
     _migrate_user_profile_email_verified()
+    _migrate_user_profile_roles()
     _migrate_project_table()
 
 

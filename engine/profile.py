@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from db import get_session
-from models import UserProfile, EmailVerificationToken
+from models import UserProfile, EmailVerificationToken, Project
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
 from sqlmodel import Session, select
@@ -38,6 +38,11 @@ class ProfileResponse(BaseModel):
     phone: Optional[str] = None
     address: Optional[str] = None
     admin: bool = False
+    role: str = "producer"
+    producer_tier: str = "standard"
+    blocked: bool = False
+    project_limit: int = 5
+    owned_project_count: int = 0
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -73,6 +78,14 @@ async def _get_auth_email_masked(user_id: str) -> Optional[str]:
     return None
 
 
+def _profile_project_stats(profile: UserProfile, user_id: str, db: Session) -> tuple[int, int]:
+    """Return (project_limit, owned_project_count) for profile."""
+    tier_limits = {"standard": 5, "indie": 25, "production_company": 999}
+    limit = tier_limits.get(profile.producer_tier, 5) if profile.role != "admin" else 999
+    count = len(db.exec(select(Project).where(Project.owner_id == user_id)).all())
+    return limit, count
+
+
 @router.get("", response_model=ProfileResponse)
 @router.get("/", response_model=ProfileResponse)
 async def get_profile(
@@ -82,14 +95,17 @@ async def get_profile(
     user_id = session.get_user_id()
     profile = db.get(UserProfile, user_id)
 
-    auth_email_masked = await _get_auth_email_masked(user_id)
-
     if not profile:
         profile = UserProfile(user_id=user_id)
         db.add(profile)
         db.commit()
         db.refresh(profile)
+    if profile.blocked:
+        raise HTTPException(status_code=403, detail="Account is blocked")
 
+    auth_email_masked = await _get_auth_email_masked(user_id)
+
+    project_limit, owned_count = _profile_project_stats(profile, user_id, db)
     return ProfileResponse(
         user_id=profile.user_id,
         name=profile.name,
@@ -101,6 +117,11 @@ async def get_profile(
         phone=profile.phone,
         address=profile.address,
         admin=profile.admin,
+        role=profile.role,
+        producer_tier=profile.producer_tier,
+        blocked=profile.blocked,
+        project_limit=project_limit,
+        owned_project_count=owned_count,
         created_at=profile.created_at,
         updated_at=profile.updated_at,
     )
@@ -143,6 +164,7 @@ async def send_verification_email(
     await _create_and_send_verification(user_id, profile.communication_email, db)
     db.refresh(profile)
     auth_email_masked = await _get_auth_email_masked(user_id)
+    project_limit, owned_count = _profile_project_stats(profile, user_id, db)
     return ProfileResponse(
         user_id=profile.user_id,
         name=profile.name,
@@ -154,6 +176,11 @@ async def send_verification_email(
         phone=profile.phone,
         address=profile.address,
         admin=profile.admin,
+        role=profile.role,
+        producer_tier=profile.producer_tier,
+        blocked=profile.blocked,
+        project_limit=project_limit,
+        owned_project_count=owned_count,
         created_at=profile.created_at,
         updated_at=profile.updated_at,
     )
@@ -191,7 +218,13 @@ async def update_profile(
         db.commit()
         db.refresh(profile)
 
+    if profile.blocked:
+        raise HTTPException(status_code=403, detail="Account is blocked")
+
     data = body.model_dump() if hasattr(body, "model_dump") else body.dict(exclude_unset=True)
+    # Only allow updating non-admin fields via self; role/blocked/producer_tier set via User Management
+    for k in ("role", "blocked", "producer_tier"):
+        data.pop(k, None)
     new_communication_email = data.get("communication_email")
     if new_communication_email is not None:
         new_communication_email = (new_communication_email or "").strip() or None
@@ -211,7 +244,7 @@ async def update_profile(
         await _create_and_send_verification(user_id, profile.communication_email, db)
 
     auth_email_masked = await _get_auth_email_masked(user_id)
-
+    project_limit, owned_count = _profile_project_stats(profile, user_id, db)
     return ProfileResponse(
         user_id=profile.user_id,
         name=profile.name,
@@ -223,6 +256,11 @@ async def update_profile(
         phone=profile.phone,
         address=profile.address,
         admin=profile.admin,
+        role=profile.role,
+        producer_tier=profile.producer_tier,
+        blocked=profile.blocked,
+        project_limit=project_limit,
+        owned_project_count=owned_count,
         created_at=profile.created_at,
         updated_at=profile.updated_at,
     )

@@ -1,12 +1,14 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Film, User, LogOut } from "lucide-react";
+import { Film, User, LogOut, Users, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSessionContext, signOut } from "supertokens-auth-react/recipe/session";
 import { ModeToggle } from "@/components/mode-toggle";
 import { useAuthReady } from "@/contexts/AuthReadyContext";
+import { api } from "@/lib/api";
 
 /** Guest header when auth is not ready (no SuperTokens wrapper). No session hooks. */
 export function HeaderGuest() {
@@ -37,14 +39,29 @@ export function AppHeader() {
     return <Header />;
 }
 
+interface ProfileRole {
+    role?: string;
+}
+
 export function Header() {
     const session = useSessionContext();
     const router = useRouter();
+    const [profile, setProfile] = useState<ProfileRole | null>(null);
+
+    useEffect(() => {
+        if (!session.loading && session.doesSessionExist) {
+            api.get<ProfileRole>("/profile/").then(setProfile).catch(() => setProfile(null));
+        } else {
+            setProfile(null);
+        }
+    }, [session.loading, session.doesSessionExist]);
 
     async function onLogout() {
         await signOut();
         router.push("/");
     }
+
+    const isAdmin = profile?.role === "admin";
 
     return (
         <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
@@ -62,6 +79,22 @@ export function Header() {
                             <Link href="/projects">
                                 <Button variant="ghost">Projects</Button>
                             </Link>
+                            {isAdmin && (
+                                <>
+                                    <Link href="/admin/users">
+                                        <Button variant="ghost" size="sm" title="User Management">
+                                            <Users className="h-4 w-4 mr-1" />
+                                            User Management
+                                        </Button>
+                                    </Link>
+                                    <Link href="/admin/email">
+                                        <Button variant="ghost" size="sm" title="Email Management">
+                                            <Mail className="h-4 w-4 mr-1" />
+                                            Email Management
+                                        </Button>
+                                    </Link>
+                                </>
+                            )}
                             <Link href="/profile">
                                 <Button variant="ghost" size="icon" title="Profile">
                                     <User className="h-5 w-5" />

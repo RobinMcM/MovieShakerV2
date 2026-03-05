@@ -19,6 +19,8 @@ from projects import router as projects_router
 from profile import router as profile_router, verify_router
 from scripts import router as scripts_router
 from notifications import router as notifications_router
+from auth_deps import require_admin
+from admin import router as admin_router
 
 # --- Configuration ---
 # TODO: Move to config.py
@@ -114,6 +116,7 @@ app.include_router(projects_router)
 app.include_router(profile_router)
 app.include_router(notifications_router)
 app.include_router(scripts_router)
+app.include_router(admin_router)
 
 # --- Routes ---
 @app.get("/")
@@ -125,9 +128,8 @@ def health_check():
     return {"status": "healthy"}
 
 @app.get("/users")
-async def get_users():
-    # Retrieve all users (no pagination for now, simple implementation)
-    # Default tenant_id is "public"
+async def get_users(_admin: None = Depends(require_admin)):
+    # Admin only. Default tenant_id is "public"
     users_response = await get_users_oldest_first("public")
     return {"users": users_response.users}
 

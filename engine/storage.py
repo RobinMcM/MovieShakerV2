@@ -78,11 +78,17 @@ def save_script_file(
         key = relative_file_path(user_id, project_id, script_id, filename)
         body = content.read() if hasattr(content, "read") else content
         client = _spaces_client()
+        if filename.lower().endswith(".pdf"):
+            content_type = "application/pdf"
+        elif filename.lower().endswith(".json"):
+            content_type = "application/json"
+        else:
+            content_type = "application/octet-stream"
         client.put_object(
             Bucket=DO_SPACES_BUCKET,
             Key=key,
             Body=body,
-            ContentType="application/pdf" if filename.lower().endswith(".pdf") else "application/octet-stream",
+            ContentType=content_type,
         )
         return
 

@@ -290,9 +290,16 @@ def get_script_file(
     script = _get_script_and_ensure_access(db, script_id, user_id)
 
     if variant == "json":
+        if uses_spaces():
+            json_key = relative_file_path(script.user_id, str(script.project_id), str(script.id), "script.json")
+            stream_result = get_script_file_stream(json_key)
+            if stream_result is None:
+                raise HTTPException(status_code=404, detail="Script JSON not found. Parse the script first.")
+            body, _ = stream_result
+            return Response(content=body, media_type="application/json")
         path = script_json_path(script.user_id, str(script.project_id), str(script.id))
         if not path.exists():
-            raise HTTPException(status_code=404, detail="Script JSON not found")
+            raise HTTPException(status_code=404, detail="Script JSON not found. Parse the script first.")
         return FileResponse(path, media_type="application/json")
     else:
         if uses_spaces():
@@ -476,6 +483,17 @@ def _parse_json_script(body: bytes) -> Tuple[List[dict], List[str], dict, int]:
     return (headings, unique_characters, scene_char_map, page_count)
 
 
+def _build_script_json(headings: List[dict], unique_characters: List[str], scene_char_map: dict, page_count: int) -> bytes:
+    """Build JSON document { metadata: { page_count }, elements: [...] } for saving as script.json."""
+    elements: List[dict] = []
+    for i, h in enumerate(headings):
+        elements.append({"type": "scene_heading", "text": h.get("heading", "")})
+        for cname in sorted(scene_char_map.get(i, set())):
+            elements.append({"type": "character", "text": cname})
+    doc = {"metadata": {"page_count": page_count}, "elements": elements}
+    return json.dumps(doc, indent=2).encode("utf-8")
+
+
 def _parse_pdf_script(body: bytes) -> Tuple[List[dict], List[str], dict, int]:
     """Extract scenes and characters from PDF text. Returns same shape as _parse_json_script."""
     from pypdf import PdfReader
@@ -564,6 +582,16 @@ def parse_script(
     db.add(script)
     db.commit()
     cache_delete(scripts_stats_key(script_id))
+    # Persist script.json in same location as script.pdf (local or Spaces)
+    json_bytes = _build_script_json(headings, unique_characters, scene_char_map, page_count)
+    save_script_file(
+        script.user_id,
+        str(script.project_id),
+        str(script.id),
+        "script.json",
+        io.BytesIO(json_bytes),
+        len(json_bytes),
+    )
     return {"success": True, "data": {"scenes": len(headings), "characters": len(unique_characters)}}
 
 

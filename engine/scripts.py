@@ -491,7 +491,7 @@ def _parse_json_script(body: bytes) -> Tuple[List[dict], List[str], dict, int]:
 
 # Canonical script.json types (source of truth)
 SCRIPT_JSON_TYPES = frozenset(
-    {"scene_heading", "action", "character", "dialogue", "parenthetical", "transition", "page_number", "general"}
+    {"scene_heading", "scene_number", "action", "character", "dialogue", "parenthetical", "transition", "page_number", "general"}
 )
 
 
@@ -603,7 +603,7 @@ def _parse_pdf_to_script_document(body: bytes, script_name: str = "") -> Optiona
         laparams = LAParams()
         device = PDFPageAggregator(rsrc, laparams=laparams)
         interpreter = PDFPageInterpreter(rsrc, device)
-        all_lines: List[Tuple[int, float, float, str]] = []  # (page_num, x, y, text)
+        all_lines: List[Tuple[int, float, float, str]] = []  # (page_num, x_left, y, text) — x_left for alignment
         line_height_tol = 5
         for page_num, page in enumerate(PDFPage.get_pages(io.BytesIO(body)), 1):
             interpreter.process_page(page)
@@ -616,9 +616,9 @@ def _parse_pdf_to_script_document(body: bytes, script_name: str = "") -> Optiona
                             if not text:
                                 continue
                             x0, y0, x1, y1 = line.bbox
-                            x_center = (x0 + x1) / 2
+                            x_left = x0  # Use left edge so left-aligned action isn't misclassified as dialogue
                             y_center = (y0 + y1) / 2
-                            all_lines.append((page_num, x_center, y_center, text))
+                            all_lines.append((page_num, x_left, y_center, text))
         if not all_lines:
             return None
         page_count = max(t[0] for t in all_lines)
@@ -634,7 +634,9 @@ def _parse_pdf_to_script_document(body: bytes, script_name: str = "") -> Optiona
         grouped: List[Tuple[int, float, float, str]] = []
         for page_num, x, y, text in body_lines:
             if grouped and grouped[-1][0] == page_num and abs(grouped[-1][2] - y) <= line_height_tol:
-                grouped[-1] = (page_num, (grouped[-1][1] + x) / 2, grouped[-1][2], grouped[-1][3] + " " + text)
+                # Keep leftmost x so wrapped action stays left-aligned
+                x_min = min(grouped[-1][1], x)
+                grouped[-1] = (page_num, x_min, grouped[-1][2], grouped[-1][3] + " " + text)
             else:
                 grouped.append((page_num, x, y, text))
         scene_heading_re = re.compile(r"^(INT\.|EXT\.|INT\./EXT\.|I/E|EST\.)(?:\s|$)", re.IGNORECASE)
@@ -642,8 +644,11 @@ def _parse_pdf_to_script_document(body: bytes, script_name: str = "") -> Optiona
         elements: List[dict] = []
         last_el: Optional[dict] = None
         last_y: float = -1e9
+        scene_num = 0
+        # Transition by content (FADE IN:, CUT TO:, etc.) regardless of position
+        transition_re = re.compile(r"^FADE\s", re.I)
         for page_num, x, y, text in grouped:
-            is_centered = 150 < x < 400
+            is_centered = 150 < x < 400  # x is left edge: left-aligned action has small x
             is_parenthetical = text.startswith("(") and text.endswith(")")
             starts_scene = bool(scene_heading_re.match(text))
             is_page_num = bool(re.match(r"^\d+\.?$", text)) and y > 500 and x > 450
@@ -653,6 +658,8 @@ def _parse_pdf_to_script_document(body: bytes, script_name: str = "") -> Optiona
                 el_type = "page_number"
             elif starts_scene:
                 el_type = "scene_heading"
+            elif text.endswith("TO:") or transition_re.match(text):
+                el_type = "transition"
             elif is_centered and is_upper and not is_parenthetical:
                 el_type = "character"
             elif is_centered and is_parenthetical:
@@ -660,15 +667,21 @@ def _parse_pdf_to_script_document(body: bytes, script_name: str = "") -> Optiona
             elif is_centered:
                 if last_el and last_el.get("type") in ("character", "parenthetical", "dialogue"):
                     el_type = "dialogue"
-                elif text.endswith("TO:") or re.match(r"^FADE", text, re.I):
-                    el_type = "transition"
                 else:
                     el_type = "dialogue"
+                # "NAME (cont'd)" only (dialogue on next line) -> character
+                if re.match(r"^[A-Z][A-Z0-9\s]+?\s*\(cont'd\)\s*$", text, re.IGNORECASE):
+                    el_type = "character"
             else:
                 el_type = "action"
             # script-rules: do not merge two scene_headings; do not merge across parenthetical
+            # (cont'd) lines are character + dialogue: never merge into previous dialogue
+            contd_match = el_type == "dialogue" and re.match(
+                r"^([A-Z][A-Z0-9\s]+?)\s*\(cont'd\)\s+(.+)$", text, re.IGNORECASE
+            )
             should_merge = (
-                last_el is not None
+                not contd_match
+                and last_el is not None
                 and last_el.get("_page") == page_num
                 and last_el.get("type") == el_type
                 and abs(last_y - y) <= MERGE_Y_TOLERANCE
@@ -679,6 +692,22 @@ def _parse_pdf_to_script_document(body: bytes, script_name: str = "") -> Optiona
             if should_merge and last_el is not None:
                 last_el["text"] = (last_el["text"] or "") + " " + text
             else:
+                if el_type == "scene_heading":
+                    scene_num += 1
+                    last_el = {"type": "scene_heading", "number": str(scene_num), "text": text, "_page": page_num}
+                    elements.append(last_el)
+                    last_y = y
+                    continue
+                # (cont'd) = same character after action: emit character "NAME (cont'd)" then dialogue
+                if el_type == "dialogue" and contd_match:
+                    m = contd_match
+                    name_part = m.group(1).strip() + " (cont'd)"
+                    dialogue_part = m.group(2).strip()
+                    elements.append({"type": "character", "text": name_part, "_page": page_num})
+                    last_el = {"type": "dialogue", "text": dialogue_part, "_page": page_num}
+                    elements.append(last_el)
+                    last_y = y
+                    continue
                 last_el = {"type": el_type, "text": text, "_page": page_num}
                 elements.append(last_el)
             last_y = y

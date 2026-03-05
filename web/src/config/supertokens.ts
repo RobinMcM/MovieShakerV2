@@ -13,6 +13,23 @@ export const SuperTokensConfig = {
         apiBasePath: "/auth",
         websiteBasePath: "/auth",
     },
+    getRedirectionURL: async (context: { action: string; newSessionCreated?: boolean; redirectToPath?: string }) => {
+        if (context.action !== "SUCCESS" || !context.newSessionCreated) {
+            return undefined;
+        }
+        try {
+            const res = await fetch(`${apiDomain}/profile/`, { credentials: "include" });
+            if (res.ok) {
+                const profile = await res.json();
+                if (profile?.role === "admin") {
+                    return "/admin/users";
+                }
+            }
+        } catch {
+            // fall through to default
+        }
+        return context.redirectToPath ?? "/projects";
+    },
     recipeList: [EmailPassword.init(), Session.init()],
 };
 

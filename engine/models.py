@@ -82,4 +82,36 @@ class Script(SQLModel, table=True):
     episode: Optional[str] = None
     file_path: str = Field()  # relative: {user_id}/{project_id}/{script_id}/script.pdf
     is_current: bool = Field(default=False)
+    is_locked: bool = Field(default=False)
+    page_count: Optional[int] = None
     uploaded_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Scene(SQLModel, table=True):
+    """Parsed scene for a script (heading, page, length in eighths)."""
+    __tablename__ = "scenes"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    script_id: uuid.UUID = Field(foreign_key="script.id", index=True)
+    user_id: str = Field(index=True)
+    heading: str = Field()
+    page_number: str = Field(default="")
+    length_in_eighths: Optional[int] = None
+    scene_number: Optional[int] = None
+
+
+class Character(SQLModel, table=True):
+    """Parsed character for a script."""
+    __tablename__ = "characters"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    script_id: uuid.UUID = Field(foreign_key="script.id", index=True)
+    user_id: str = Field(index=True)
+    name: str = Field()
+
+
+class SceneCharacter(SQLModel, table=True):
+    """Link between scene and character (character appears in scene)."""
+    __tablename__ = "scene_characters"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    scene_id: uuid.UUID = Field(foreign_key="scene.id", index=True)
+    character_id: uuid.UUID = Field(foreign_key="character.id", index=True)
+    user_id: str = Field(index=True)

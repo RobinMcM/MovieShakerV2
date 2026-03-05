@@ -14,7 +14,7 @@ from sqlmodel import Session, select
 from pydantic import BaseModel
 
 from db import get_session
-from models import ProjectMember, Script
+from models import Character, ProjectMember, Scene, SceneCharacter, Script
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
 from cache import (
@@ -50,6 +50,8 @@ class ScriptResponse(BaseModel):
     series: Optional[str] = None
     episode: Optional[str] = None
     description: Optional[str] = None
+    is_locked: bool = False
+    page_count: Optional[int] = None
 
 
 class ScriptListResponse(BaseModel):
@@ -58,6 +60,25 @@ class ScriptListResponse(BaseModel):
 
 class StatsResponse(BaseModel):
     stats: dict  # { "scenes": n, "characters": n }
+
+
+class SceneResponse(BaseModel):
+    id: str
+    heading: str
+    page_number: str
+    length_in_eighths: Optional[int] = None
+    scene_number: Optional[int] = None
+
+
+class CharacterResponse(BaseModel):
+    id: str
+    name: str
+
+
+class SceneCharacterResponse(BaseModel):
+    id: str
+    scene_id: str
+    character_id: str
 
 
 def _ensure_project_member(db: Session, project_id: str, user_id: str) -> None:
@@ -92,7 +113,22 @@ def _script_to_response(s: Script) -> ScriptResponse:
         series=s.series,
         episode=s.episode,
         description=s.description,
+        is_locked=getattr(s, "is_locked", False),
+        page_count=getattr(s, "page_count", None),
     )
+
+
+# GET /scripts/{script_id}
+@router.get("/scripts/{script_id}")
+def get_script(
+    script_id: str,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    script = _get_script_and_ensure_access(db, script_id, user_id)
+    data = _script_to_response(script)
+    return {"success": True, "data": data.model_dump()}
 
 
 # GET /projects/{project_id}/scripts
@@ -274,6 +310,80 @@ def get_script_file(
             media_type="application/pdf",
             filename="script.pdf",
         )
+
+
+# GET /scripts/{script_id}/scenes
+@router.get("/scripts/{script_id}/scenes")
+def get_script_scenes(
+    script_id: str,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    _get_script_and_ensure_access(db, script_id, user_id)
+    stmt = (
+        select(Scene)
+        .where(Scene.script_id == uuid.UUID(script_id))
+        .order_by(Scene.scene_number.asc(), Scene.id.asc())
+    )
+    scenes = list(db.exec(stmt).all())
+    data = [
+        SceneResponse(
+            id=str(s.id),
+            heading=s.heading,
+            page_number=s.page_number or "",
+            length_in_eighths=s.length_in_eighths,
+            scene_number=s.scene_number,
+        )
+        for s in scenes
+    ]
+    return {"success": True, "data": data}
+
+
+# GET /scripts/{script_id}/characters
+@router.get("/scripts/{script_id}/characters")
+def get_script_characters(
+    script_id: str,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    _get_script_and_ensure_access(db, script_id, user_id)
+    stmt = (
+        select(Character)
+        .where(Character.script_id == uuid.UUID(script_id))
+        .order_by(Character.name.asc())
+    )
+    characters = list(db.exec(stmt).all())
+    data = [CharacterResponse(id=str(c.id), name=c.name) for c in characters]
+    return {"success": True, "data": data}
+
+
+# GET /scripts/{script_id}/scene-characters
+@router.get("/scripts/{script_id}/scene-characters")
+def get_script_scene_characters(
+    script_id: str,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    _get_script_and_ensure_access(db, script_id, user_id)
+    # Join scene_character -> scene to filter by script_id
+    stmt = (
+        select(SceneCharacter)
+        .join(Scene, SceneCharacter.scene_id == Scene.id)
+        .where(Scene.script_id == uuid.UUID(script_id))
+    )
+    rows = list(db.exec(stmt).all())
+    data = [
+        SceneCharacterResponse(
+            id=str(r.id),
+            scene_id=str(r.scene_id),
+            character_id=str(r.character_id),
+        )
+        for r in rows
+    ]
+    return {"success": True, "data": data}
 
 
 # DELETE /scripts/{script_id}

@@ -74,6 +74,22 @@ def _migrate_project_table():
                     logger.warning("Migration add column %s: %s", col, e)
 
 
+def _migrate_script_table():
+    """Add is_locked, page_count to script table if missing."""
+    with engine.connect() as conn:
+        with conn.begin():
+            for col, typ in [
+                ("is_locked", "BOOLEAN NOT NULL DEFAULT FALSE"),
+                ("page_count", "INTEGER"),
+            ]:
+                try:
+                    conn.execute(
+                        text(f"ALTER TABLE script ADD COLUMN IF NOT EXISTS {col} {typ}")
+                    )
+                except Exception as e:
+                    logger.warning("Migration script %s: %s", col, e)
+
+
 def init_db():
     # Ensure models are registered (import side-effect)
     from models import (  # noqa: F401
@@ -81,6 +97,9 @@ def init_db():
         ProjectMember,
         UserProfile,
         Script,
+        Scene,
+        Character,
+        SceneCharacter,
         EmailVerificationToken,
         Notification,
     )
@@ -89,6 +108,7 @@ def init_db():
     _migrate_user_profile_roles()
     _migrate_user_profile_drop_admin()
     _migrate_project_table()
+    _migrate_script_table()
 
 
 def get_session():

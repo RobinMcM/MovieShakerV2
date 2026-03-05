@@ -50,7 +50,7 @@ init(
 app = FastAPI(title="MovieShaker Engine (Indie)")
 
 # Allowed web origins for CORS. Add production frontend URL via CORS_ORIGINS env (comma-separated).
-# Fallback when CORS_ORIGINS is not set in container (e.g. production .env not loaded).
+# When CORS_ORIGINS is not set, always add default production origins so CORS works regardless of other env.
 _DEFAULT_PRODUCTION_ORIGINS = [
     "https://movieshaker.com",
     "https://ooocreatives.com",
@@ -62,10 +62,10 @@ _CORS_ORIGINS = [f"http://localhost:{WEB_PORT}", "http://localhost:5174"]
 _env_origins = os.getenv("CORS_ORIGINS", "").strip()
 if _env_origins:
     _CORS_ORIGINS = _CORS_ORIGINS + [o.strip() for o in _env_origins.split(",") if o.strip()]
-elif os.getenv("SUPERTOKENS_CONNECTION_URI", "").strip():
-    # Production (SuperTokens configured): use fallback so CORS works even if CORS_ORIGINS wasn't passed to container
+else:
+    # No CORS_ORIGINS set: add default production origins so auth/session/refresh etc. work from production frontend
     _CORS_ORIGINS = _CORS_ORIGINS + _DEFAULT_PRODUCTION_ORIGINS
-    logger.warning("CORS_ORIGINS empty; using default production origins. Set CORS_ORIGINS in env to override.")
+    logger.info("CORS_ORIGINS not set; using default production origins. Set CORS_ORIGINS in env to override.")
 
 
 def _cors_headers(request=None):

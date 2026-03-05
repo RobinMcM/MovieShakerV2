@@ -10,6 +10,7 @@ build/
 *.pyc
 __pycache__/
 engine/venv/
+.venv/
 engine/__pycache__/
 web/node_modules/
 web/dist/

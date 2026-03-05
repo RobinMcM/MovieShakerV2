@@ -546,10 +546,50 @@ def _parse_pdf_script(body: bytes) -> Tuple[List[dict], List[str], dict, int]:
     return (headings, unique_characters, scene_char_map, page_count)
 
 
-def _parse_pdf_script_full(body: bytes) -> Optional[Tuple[List[dict], int]]:
+def _extract_title_page_metadata(
+    page1_lines: List[Tuple[float, float, str]], script_name: str
+) -> dict:
     """
-    Extract full screenplay elements from PDF using position-based classification (legacy heuristics).
-    Returns (elements, page_count) or None on failure (caller should fall back to _parse_pdf_script).
+    Build metadata from title page (page 1) lines. Each item is (x_center, y_center, text).
+    script_name is fallback for title.
+    """
+    now_iso = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    metadata = {
+        "title": script_name or "Untitled",
+        "author": "Unknown",
+        "created": now_iso,
+        "draft": "MovieShaker (Imported)",
+    }
+    # Centered lines typically 150 < x < 450; title often in upper-mid Y (e.g. 300-500 in pdf coords)
+    by_y = sorted(page1_lines, key=lambda t: -t[1])
+    found_by = False
+    for x, y, text in by_y:
+        t = text.strip()
+        if not t:
+            continue
+        is_centered = 100 < x < 450
+        if is_centered and not re.match(r"^\d+\.?$", t):
+            if re.match(r"^(written\s+by|screenplay\s+by|story\s+by|by)\s*:?$", t, re.I):
+                found_by = True
+                continue
+            if found_by and metadata["author"] == "Unknown":
+                metadata["author"] = t
+                found_by = False
+                continue
+            if metadata["title"] == (script_name or "Untitled") and len(t) > 1 and 200 < y < 600:
+                metadata["title"] = t
+        if re.search(r"\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{2,4}|(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}", t, re.I):
+            metadata["created"] = now_iso  # could parse date; keep simple
+        if re.match(r"^(first|second|revised|production|final)\s+draft\.?$", t, re.I):
+            metadata["draft"] = t
+    return metadata
+
+
+def _parse_pdf_to_script_document(body: bytes, script_name: str = "") -> Optional[dict]:
+    """
+    Parse PDF to canonical script.json document per script-rules.md.
+    Page 1 = title page (metadata only). Body elements from page 2+.
+    Returns {"metadata": {title, author, created, draft, page_count}, "elements": [...]} or None.
     """
     try:
         from pdfminer.converter import PDFPageAggregator
@@ -581,9 +621,18 @@ def _parse_pdf_script_full(body: bytes) -> Optional[Tuple[List[dict], int]]:
                             all_lines.append((page_num, x_center, y_center, text))
         if not all_lines:
             return None
-        all_lines.sort(key=lambda t: (t[0], -t[2], t[1]))
+        page_count = max(t[0] for t in all_lines)
+        # Title page (page 1) -> metadata only
+        page1_lines = [(x, y, t) for p, x, y, t in all_lines if p == 1]
+        metadata = _extract_title_page_metadata(page1_lines, script_name)
+        metadata["page_count"] = page_count
+        # Body: page 2+ only
+        body_lines = [(p, x, y, t) for p, x, y, t in all_lines if p >= 2]
+        if not body_lines:
+            return {"metadata": metadata, "elements": []}
+        body_lines.sort(key=lambda t: (t[0], -t[2], t[1]))
         grouped: List[Tuple[int, float, float, str]] = []
-        for page_num, x, y, text in all_lines:
+        for page_num, x, y, text in body_lines:
             if grouped and grouped[-1][0] == page_num and abs(grouped[-1][2] - y) <= line_height_tol:
                 grouped[-1] = (page_num, (grouped[-1][1] + x) / 2, grouped[-1][2], grouped[-1][3] + " " + text)
             else:
@@ -617,12 +666,15 @@ def _parse_pdf_script_full(body: bytes) -> Optional[Tuple[List[dict], int]]:
                     el_type = "dialogue"
             else:
                 el_type = "action"
+            # script-rules: do not merge two scene_headings; do not merge across parenthetical
             should_merge = (
                 last_el is not None
                 and last_el.get("_page") == page_num
                 and last_el.get("type") == el_type
                 and abs(last_y - y) <= MERGE_Y_TOLERANCE
-                and not (el_type == "scene_heading")  # never merge two scene headings
+                and not (el_type == "scene_heading")
+                and el_type != "parenthetical"
+                and last_el.get("type") != "parenthetical"
             )
             if should_merge and last_el is not None:
                 last_el["text"] = (last_el["text"] or "") + " " + text
@@ -632,10 +684,20 @@ def _parse_pdf_script_full(body: bytes) -> Optional[Tuple[List[dict], int]]:
             last_y = y
         for el in elements:
             el.pop("_page", None)
-        page_count = max((t[0] for t in grouped), default=1)
-        return (elements, page_count)
+        return {"metadata": metadata, "elements": elements}
     except Exception:
         return None
+
+
+def _parse_pdf_script_full(body: bytes, script_name: str = "") -> Optional[Tuple[List[dict], dict]]:
+    """
+    Parse PDF to full elements + metadata per script-rules.md.
+    Returns (elements, metadata) or None. Kept for compatibility with parse route.
+    """
+    doc = _parse_pdf_to_script_document(body, script_name)
+    if doc is None:
+        return None
+    return (doc["elements"], doc["metadata"])
 
 
 def _read_script_json(script: Script) -> Optional[Tuple[List[dict], dict]]:
@@ -755,13 +817,18 @@ def parse_script(
             full_elements = [{"type": (e.get("type") or "action").strip().lower(), "text": (e.get("text") or "").strip()} for e in raw_elements]
             script_metadata = {**raw_meta, "page_count": raw_meta.get("page_count", page_count)}
     elif is_pdf:
-        full_result = _parse_pdf_script_full(body)
+        full_result = _parse_pdf_script_full(body, script_name=script.name or "")
         if full_result is not None:
-            full_elements, page_count = full_result
-            headings, unique_characters, scene_char_map, page_count = _derive_db_from_elements(full_elements, page_count)
-            script_metadata = {"page_count": page_count}
+            full_elements, script_metadata = full_result
+            page_count = script_metadata.get("page_count", 1)
+            headings, unique_characters, scene_char_map, page_count = _derive_db_from_elements(
+                full_elements, page_count
+            )
         else:
-            headings, unique_characters, scene_char_map, page_count = _parse_pdf_script(body)
+            raise HTTPException(
+                status_code=422,
+                detail="Failed to parse PDF. Ensure the file is a valid screenplay PDF.",
+            )
     else:
         raise HTTPException(status_code=400, detail="File format not recognized (expected PDF or JSON).")
     script_uuid = script.id

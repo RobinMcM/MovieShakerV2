@@ -84,7 +84,7 @@ def test_full_json_round_trip():
 
 
 def test_parse_pdf_script_full_invalid_returns_none():
-    """Invalid or non-PDF bytes should return None (fallback to reduced parse)."""
+    """Invalid or non-PDF bytes should return None."""
     assert _parse_pdf_script_full(b"not a pdf") is None
     assert _parse_pdf_script_full(b"") is None
     assert _parse_pdf_script_full(b'{"elements": []}') is None
@@ -103,10 +103,11 @@ def test_parse_pdf_script_full_minimal_pdf():
     except Exception:
         pdf_bytes = b"%PDF-1.4 minimal"
     result = _parse_pdf_script_full(pdf_bytes)
-    # Either we get (elements, page_count) or None (e.g. blank page → no text lines)
+    # Either we get (elements, metadata) or None (e.g. blank page → no text lines)
     if result is not None:
-        elements, page_count = result
+        elements, metadata = result
         assert isinstance(elements, list)
-        assert page_count >= 1
+        assert isinstance(metadata, dict)
+        assert metadata.get("page_count", 0) >= 1
         for el in elements:
             assert "type" in el and "text" in el

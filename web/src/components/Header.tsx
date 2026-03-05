@@ -48,13 +48,18 @@ export function Header() {
     const router = useRouter();
     const [profile, setProfile] = useState<ProfileRole | null>(null);
 
+    const hasSession =
+        !session.loading &&
+        "doesSessionExist" in session &&
+        (session as { doesSessionExist: boolean }).doesSessionExist;
+
     useEffect(() => {
-        if (!session.loading && session.doesSessionExist) {
+        if (hasSession) {
             api.get<ProfileRole>("/profile/").then(setProfile).catch(() => setProfile(null));
         } else {
             setProfile(null);
         }
-    }, [session.loading, session.doesSessionExist]);
+    }, [hasSession]);
 
     async function onLogout() {
         await signOut();
@@ -74,7 +79,7 @@ export function Header() {
                 </Link>
                 <div className="flex items-center gap-4">
                     <ModeToggle />
-                    {!session.loading && session.doesSessionExist ? (
+                    {hasSession ? (
                         <>
                             <Link href="/projects">
                                 <Button variant="ghost">Projects</Button>

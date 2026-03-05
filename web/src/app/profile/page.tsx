@@ -22,7 +22,6 @@ interface Profile {
     username?: string | null;
     phone?: string | null;
     address?: string | null;
-    admin: boolean;
     role?: string;
     producer_tier?: string;
     blocked?: boolean;

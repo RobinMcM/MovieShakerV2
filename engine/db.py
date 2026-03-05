@@ -12,7 +12,7 @@ engine = create_engine(DATABASE_URL, echo=True)
 
 
 def _migrate_user_profile_roles():
-    """Add role, producer_tier, blocked to user_profile; backfill role from admin."""
+    """Add role, producer_tier, blocked to user_profile if missing."""
     with engine.connect() as conn:
         with conn.begin():
             for col, typ in [
@@ -26,12 +26,16 @@ def _migrate_user_profile_roles():
                     )
                 except Exception as e:
                     logger.warning("Migration user_profile %s: %s", col, e)
+
+
+def _migrate_user_profile_drop_admin():
+    """Drop legacy admin column; role is the source of truth."""
+    with engine.connect() as conn:
+        with conn.begin():
             try:
-                conn.execute(
-                    text("UPDATE user_profile SET role = 'admin' WHERE admin = TRUE")
-                )
+                conn.execute(text("ALTER TABLE user_profile DROP COLUMN IF EXISTS admin"))
             except Exception as e:
-                logger.warning("Migration user_profile backfill role: %s", e)
+                logger.warning("Migration user_profile drop admin: %s", e)
 
 
 def _migrate_user_profile_email_verified():
@@ -83,6 +87,7 @@ def init_db():
     SQLModel.metadata.create_all(engine)
     _migrate_user_profile_email_verified()
     _migrate_user_profile_roles()
+    _migrate_user_profile_drop_admin()
     _migrate_project_table()
 
 

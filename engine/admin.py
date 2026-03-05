@@ -90,7 +90,6 @@ async def admin_update_user(
         if body.role not in ("admin", "producer"):
             raise HTTPException(status_code=400, detail="role must be admin or producer")
         profile.role = body.role
-        profile.admin = body.role == "admin"
     if body.producer_tier is not None:
         if body.producer_tier not in ("standard", "indie", "production_company"):
             raise HTTPException(

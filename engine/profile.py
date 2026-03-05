@@ -37,7 +37,6 @@ class ProfileResponse(BaseModel):
     username: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
-    admin: bool = False
     role: str = "producer"
     producer_tier: str = "standard"
     blocked: bool = False
@@ -116,7 +115,6 @@ async def get_profile(
         username=profile.username,
         phone=profile.phone,
         address=profile.address,
-        admin=profile.admin,
         role=profile.role,
         producer_tier=profile.producer_tier,
         blocked=profile.blocked,
@@ -175,7 +173,6 @@ async def send_verification_email(
         username=profile.username,
         phone=profile.phone,
         address=profile.address,
-        admin=profile.admin,
         role=profile.role,
         producer_tier=profile.producer_tier,
         blocked=profile.blocked,
@@ -255,7 +252,6 @@ async def update_profile(
         username=profile.username,
         phone=profile.phone,
         address=profile.address,
-        admin=profile.admin,
         role=profile.role,
         producer_tier=profile.producer_tier,
         blocked=profile.blocked,

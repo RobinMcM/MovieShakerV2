@@ -17,7 +17,7 @@ interface Profile {
     username?: string | null;
     phone?: string | null;
     address?: string | null;
-    admin: boolean;
+    role?: string;
     created_at?: string | null;
     updated_at?: string | null;
 }
@@ -104,7 +104,7 @@ export default function Profile() {
                     <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                         Profile
                     </h1>
-                    {profile?.admin && (
+                    {profile?.role === "admin" && (
                         <span className="text-xs font-semibold px-2 py-1 rounded bg-primary/20 text-primary">
                             Admin
                         </span>

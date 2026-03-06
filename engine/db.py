@@ -102,6 +102,7 @@ def init_db():
         SceneCharacter,
         EmailVerificationToken,
         Notification,
+        ContactSubmission,
     )
     SQLModel.metadata.create_all(engine)
     _migrate_user_profile_email_verified()

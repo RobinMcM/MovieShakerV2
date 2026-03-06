@@ -115,3 +115,14 @@ class SceneCharacter(SQLModel, table=True):
     scene_id: uuid.UUID = Field(foreign_key="scenes.id", index=True)
     character_id: uuid.UUID = Field(foreign_key="characters.id", index=True)
     user_id: str = Field(index=True)
+
+
+class ContactSubmission(SQLModel, table=True):
+    """Public contact form submissions (no auth required)."""
+    __tablename__ = "contact_submission"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    name: str = Field(max_length=100)
+    email: str = Field(max_length=255)
+    message: str = Field()
+    honeypot: Optional[str] = Field(default=None, max_length=500)  # spam check
+    created_at: datetime = Field(default_factory=datetime.utcnow)

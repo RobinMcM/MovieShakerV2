@@ -694,7 +694,7 @@ def _parse_pdf_to_script_document(body: bytes, script_name: str = "") -> Optiona
             else:
                 if el_type == "scene_heading":
                     scene_num += 1
-                    last_el = {"type": "scene_heading", "number": str(scene_num), "text": text, "_page": page_num}
+                    last_el = {"type": "scene_heading", "scene": str(scene_num), "text": text, "_page": page_num}
                     elements.append(last_el)
                     last_y = y
                     continue

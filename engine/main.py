@@ -8,19 +8,12 @@ from supertokens_python.framework.fastapi import get_middleware
 from supertokens_python.asyncio import get_users_oldest_first
 from starlette.middleware.cors import CORSMiddleware
 import uvicorn
-import os
 import logging
-from pathlib import Path
-from dotenv import load_dotenv
-
-# Load .env from engine directory and project root (dev CORS_ORIGINS, etc.)
-_env_dir = Path(__file__).resolve().parent
-load_dotenv(_env_dir / ".env")
-load_dotenv(_env_dir.parent / ".env")
 
 logger = logging.getLogger(__name__)
 
 # Local imports
+from config import load_settings
 from db import init_db
 from projects import router as projects_router
 from profile import router as profile_router, verify_router
@@ -30,43 +23,18 @@ from auth_deps import require_admin
 from admin import router as admin_router
 from contact import router as contact_router
 
-# --- Configuration ---
-# TODO: Move to config.py
-API_PORT = int(os.getenv("API_PORT", "8000"))
-WEB_PORT = int(os.getenv("WEB_PORT", "5173"))
-API_BASE_URL = os.getenv("API_BASE_URL", f"http://localhost:{API_PORT}").rstrip("/")
-WEBSITE_DOMAIN = os.getenv(
-    "WEBSITE_DOMAIN",
-    os.getenv("WEB_HOST", f"http://localhost:{WEB_PORT}"),
-).rstrip("/")
-
-
-def _split_csv_env(name: str) -> list[str]:
-    value = os.getenv(name, "").strip()
-    if not value:
-        return []
-    return [item.strip().rstrip("/") for item in value.split(",") if item.strip()]
-
-
-def _dedupe(values: list[str]) -> list[str]:
-    seen: set[str] = set()
-    out: list[str] = []
-    for value in values:
-        if value and value not in seen:
-            seen.add(value)
-            out.append(value)
-    return out
+settings = load_settings()
 
 init(
     app_info=InputAppInfo(
         app_name="MovieShaker Engine",
-        api_domain=API_BASE_URL,
-        website_domain=WEBSITE_DOMAIN,
+        api_domain=settings.api_base_url,
+        website_domain=settings.website_domain,
         api_base_path="/auth",
         website_base_path="/auth"
     ),
     supertokens_config=SupertokensConfig(
-        connection_uri=os.getenv("SUPERTOKENS_CONNECTION_URI", "http://supertokens:3567"),
+        connection_uri=settings.supertokens_connection_uri,
         # api_key="<YOUR_API_KEY>"
     ),
     framework='fastapi',
@@ -79,24 +47,7 @@ init(
 
 app = FastAPI(title="MovieShaker Engine (Indie)")
 
-# Allowed web origins for CORS. CORS_ORIGINS can add extra origins (comma-separated).
-# Keep safe defaults always enabled so production does not break if env is missing/misconfigured.
-_DEFAULT_PRODUCTION_ORIGINS = [
-    "https://movieshaker.com",
-    "https://www.movieshaker.com",
-    "https://ooocreatives.com",
-    "https://afilminabox.com",
-    "https://reelinvesting.com",
-    "https://dolphin-app-9dvbj.ondigitalocean.app",
-]
-_DEV_ORIGINS = [
-    f"http://localhost:{WEB_PORT}",
-    "http://localhost:5174",
-    "http://localhost:3000",
-    "http://localhost:3001",
-]
-_env_origins = _split_csv_env("CORS_ORIGINS")
-_CORS_ORIGINS = _dedupe(_DEV_ORIGINS + _DEFAULT_PRODUCTION_ORIGINS + _env_origins + [WEBSITE_DOMAIN])
+_CORS_ORIGINS = settings.cors_origins
 
 
 def _cors_headers(request=None):
@@ -117,9 +68,13 @@ def global_exception_handler(request, exc):
     if isinstance(exc, HTTPException):
         raise exc  # Use default FastAPI handling (keeps status code)
     logger.exception("Unhandled exception: %s", exc)
+    # Never leak raw exception details in production responses.
+    error_detail = "Internal server error"
+    if not settings.is_production:
+        error_detail = f"Internal server error: {exc}"
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal server error", "error": str(exc)},
+        content={"detail": error_detail},
         headers=_cors_headers(request),
     )
 
@@ -128,7 +83,12 @@ def global_exception_handler(request, exc):
 @app.on_event("startup")
 def on_startup():
     init_db()
-    logger.info("SuperTokens app_info api_domain=%s website_domain=%s", API_BASE_URL, WEBSITE_DOMAIN)
+    logger.info(
+        "Environment=%s SuperTokens api_domain=%s website_domain=%s",
+        settings.app_env,
+        settings.api_base_url,
+        settings.website_domain,
+    )
     logger.info("CORS allowed origins (%d): %s", len(_CORS_ORIGINS), _CORS_ORIGINS)
 
 # --- Middleware ---
@@ -167,4 +127,4 @@ async def get_users(_admin: None = Depends(require_admin)):
     return {"users": users_response.users}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=API_PORT)
+    uvicorn.run(app, host="0.0.0.0", port=settings.api_port)

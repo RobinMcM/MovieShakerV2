@@ -3,22 +3,42 @@
 .agent/
 .do/
 
-# Dependencies & Build
-node_modules/
-dist/
-build/
-*.pyc
-__pycache__/
-engine/venv/
-.venv/
-engine/__pycache__/
-web/node_modules/
-web/dist/
-
 # Environment
 .env
 .env.*
 !*.example
 
-# Legacy Archive (Excluded from new repo)
+# Dependencies
+node_modules/
+web/node_modules/
+
+# Build artifacts
+dist/
+build/
+out/
+.next/
+**/.next/
+.turbo/
+coverage/
+
+# Python artifacts
+*.pyc
+__pycache__/
+.pytest_cache/
+*.pytest_cache/
+engine/venv/
+.venv/
+engine/__pycache__/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Stale/legacy folders not part of active app
+web-next/
+web 2/
+
+# Legacy Archive (excluded from active repo)
 .archive/

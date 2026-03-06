@@ -16,9 +16,9 @@ export function Footer() {
                         </p>
                     </div>
                     <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
-                        <Link href="#" className="hover:text-primary transition-colors">About Us</Link>
-                        <Link href="#" className="hover:text-primary transition-colors">Our Team</Link>
-                        <Link href="#" className="hover:text-primary transition-colors">Careers</Link>
+                        <Link href="/about" className="hover:text-primary transition-colors">About Us</Link>
+                        <Link href="/team" className="hover:text-primary transition-colors">Our Team</Link>
+                        <Link href="/careers" className="hover:text-primary transition-colors">Careers</Link>
                         <Link href="/contact" className="hover:text-primary transition-colors">Contact</Link>
                         <Link href="/privacy" className="hover:text-primary transition-colors">Privacy Policy</Link>
                         <Link href="/terms" className="hover:text-primary transition-colors">Terms of Service</Link>

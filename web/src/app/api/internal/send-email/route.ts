@@ -4,9 +4,18 @@ import { VerificationEmail } from "@/emails/VerificationEmail";
 import { NotificationEmail } from "@/emails/NotificationEmail";
 import React from "react";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
+let resendClient: Resend | null = null;
+
+function getResendClient(): Resend {
+  if (resendClient) return resendClient;
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    throw new Error("Email sending not configured (RESEND_API_KEY)");
+  }
+  resendClient = new Resend(apiKey);
+  return resendClient;
+}
 
 export async function POST(request: NextRequest) {
   if (!process.env.RESEND_API_KEY) {
@@ -57,6 +66,7 @@ async function handleVerification(body: Record<string, unknown>) {
     );
   }
 
+  const resend = getResendClient();
   const from =
     process.env.RESEND_FROM ?? "MovieShaker <onboarding@resend.dev>";
 
@@ -93,6 +103,7 @@ async function handleNotification(body: Record<string, unknown>) {
   const ctaLabel =
     typeof body.ctaLabel === "string" && body.ctaLabel ? body.ctaLabel : undefined;
 
+  const resend = getResendClient();
   const from =
     process.env.RESEND_FROM ?? "MovieShaker <onboarding@resend.dev>";
 

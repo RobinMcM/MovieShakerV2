@@ -10,6 +10,13 @@ from starlette.middleware.cors import CORSMiddleware
 import uvicorn
 import os
 import logging
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env from engine directory and project root (dev CORS_ORIGINS, etc.)
+_env_dir = Path(__file__).resolve().parent
+load_dotenv(_env_dir / ".env")
+load_dotenv(_env_dir.parent / ".env")
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +28,7 @@ from scripts import router as scripts_router
 from notifications import router as notifications_router
 from auth_deps import require_admin
 from admin import router as admin_router
+from contact import router as contact_router
 
 # --- Configuration ---
 # TODO: Move to config.py
@@ -58,7 +66,13 @@ _DEFAULT_PRODUCTION_ORIGINS = [
     "https://reelinvesting.com",
     "https://dolphin-app-9dvbj.ondigitalocean.app",
 ]
-_CORS_ORIGINS = [f"http://localhost:{WEB_PORT}", "http://localhost:5174"]
+# Include Next.js default/alternate dev ports so session/refresh works from web in dev
+_CORS_ORIGINS = [
+    f"http://localhost:{WEB_PORT}",
+    "http://localhost:5174",
+    "http://localhost:3000",
+    "http://localhost:3001",
+]
 _env_origins = os.getenv("CORS_ORIGINS", "").strip()
 if _env_origins:
     _CORS_ORIGINS = _CORS_ORIGINS + [o.strip() for o in _env_origins.split(",") if o.strip()]
@@ -117,6 +131,7 @@ app.include_router(profile_router)
 app.include_router(notifications_router)
 app.include_router(scripts_router)
 app.include_router(admin_router)
+app.include_router(contact_router)
 
 # --- Routes ---
 @app.get("/")

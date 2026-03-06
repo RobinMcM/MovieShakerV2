@@ -48,7 +48,9 @@ services:
       - "8000:8000"
     environment:
       - SUPERTOKENS_CONNECTION_URI=http://supertokens:3567
-      - WEB_HOST=http://localhost:3000
+      - API_BASE_URL=${API_BASE_URL:-http://localhost:8000}
+      - WEBSITE_DOMAIN=${WEBSITE_DOMAIN:-http://localhost:3000}
+      - WEB_HOST=${WEBSITE_DOMAIN:-http://localhost:3000}
       - CORS_ORIGINS=${CORS_ORIGINS:-}
       - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@db:5432/movieshaker}
       - VALKEY_URL=redis://valkey:6379/0

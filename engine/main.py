@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import JSONResponse
-from supertokens_python import init, InputAppInfo, SupertokensConfig, AppInfo, get_all_cors_headers
+from supertokens_python import init, InputAppInfo, SupertokensConfig, get_all_cors_headers
 from supertokens_python.recipe import emailpassword, session, dashboard
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
@@ -32,14 +32,36 @@ from contact import router as contact_router
 
 # --- Configuration ---
 # TODO: Move to config.py
-API_PORT = 8000
-WEB_PORT = 5173
+API_PORT = int(os.getenv("API_PORT", "8000"))
+WEB_PORT = int(os.getenv("WEB_PORT", "5173"))
+API_BASE_URL = os.getenv("API_BASE_URL", f"http://localhost:{API_PORT}").rstrip("/")
+WEBSITE_DOMAIN = os.getenv(
+    "WEBSITE_DOMAIN",
+    os.getenv("WEB_HOST", f"http://localhost:{WEB_PORT}"),
+).rstrip("/")
+
+
+def _split_csv_env(name: str) -> list[str]:
+    value = os.getenv(name, "").strip()
+    if not value:
+        return []
+    return [item.strip().rstrip("/") for item in value.split(",") if item.strip()]
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        if value and value not in seen:
+            seen.add(value)
+            out.append(value)
+    return out
 
 init(
     app_info=InputAppInfo(
         app_name="MovieShaker Engine",
-        api_domain=f"http://localhost:{API_PORT}",
-        website_domain=f"http://localhost:{WEB_PORT}",
+        api_domain=API_BASE_URL,
+        website_domain=WEBSITE_DOMAIN,
         api_base_path="/auth",
         website_base_path="/auth"
     ),
@@ -57,29 +79,24 @@ init(
 
 app = FastAPI(title="MovieShaker Engine (Indie)")
 
-# Allowed web origins for CORS. Add production frontend URL via CORS_ORIGINS env (comma-separated).
-# When CORS_ORIGINS is not set, always add default production origins so CORS works regardless of other env.
+# Allowed web origins for CORS. CORS_ORIGINS can add extra origins (comma-separated).
+# Keep safe defaults always enabled so production does not break if env is missing/misconfigured.
 _DEFAULT_PRODUCTION_ORIGINS = [
     "https://movieshaker.com",
+    "https://www.movieshaker.com",
     "https://ooocreatives.com",
     "https://afilminabox.com",
     "https://reelinvesting.com",
     "https://dolphin-app-9dvbj.ondigitalocean.app",
 ]
-# Include Next.js default/alternate dev ports so session/refresh works from web in dev
-_CORS_ORIGINS = [
+_DEV_ORIGINS = [
     f"http://localhost:{WEB_PORT}",
     "http://localhost:5174",
     "http://localhost:3000",
     "http://localhost:3001",
 ]
-_env_origins = os.getenv("CORS_ORIGINS", "").strip()
-if _env_origins:
-    _CORS_ORIGINS = _CORS_ORIGINS + [o.strip() for o in _env_origins.split(",") if o.strip()]
-else:
-    # No CORS_ORIGINS set: add default production origins so auth/session/refresh etc. work from production frontend
-    _CORS_ORIGINS = _CORS_ORIGINS + _DEFAULT_PRODUCTION_ORIGINS
-    logger.info("CORS_ORIGINS not set; using default production origins. Set CORS_ORIGINS in env to override.")
+_env_origins = _split_csv_env("CORS_ORIGINS")
+_CORS_ORIGINS = _dedupe(_DEV_ORIGINS + _DEFAULT_PRODUCTION_ORIGINS + _env_origins + [WEBSITE_DOMAIN])
 
 
 def _cors_headers(request=None):
@@ -111,6 +128,7 @@ def global_exception_handler(request, exc):
 @app.on_event("startup")
 def on_startup():
     init_db()
+    logger.info("SuperTokens app_info api_domain=%s website_domain=%s", API_BASE_URL, WEBSITE_DOMAIN)
     logger.info("CORS allowed origins (%d): %s", len(_CORS_ORIGINS), _CORS_ORIGINS)
 
 # --- Middleware ---

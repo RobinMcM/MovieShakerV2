@@ -128,6 +128,38 @@ def _migrate_scene_characters_table():
                     logger.warning("Migration scene_characters %s: %s", col, e)
 
 
+def _migrate_scenes_scene_cost_columns():
+    """Add scene cost modifier columns to scenes table if missing."""
+    with engine.connect() as conn:
+        with conn.begin():
+            for col, typ in [
+                ("location_type", "VARCHAR"),
+                ("is_night_shoot", "BOOLEAN"),
+                ("has_stunts", "BOOLEAN"),
+                ("has_vfx", "BOOLEAN"),
+                ("extras_count", "INTEGER"),
+                ("creative_impact", "INTEGER"),
+            ]:
+                try:
+                    conn.execute(
+                        text(f"ALTER TABLE scenes ADD COLUMN IF NOT EXISTS {col} {typ}")
+                    )
+                except Exception as e:
+                    logger.warning("Migration scenes %s: %s", col, e)
+
+
+def _migrate_characters_cast_tier():
+    """Add cast_tier to characters table if missing."""
+    with engine.connect() as conn:
+        with conn.begin():
+            try:
+                conn.execute(
+                    text("ALTER TABLE characters ADD COLUMN IF NOT EXISTS cast_tier VARCHAR")
+                )
+            except Exception as e:
+                logger.warning("Migration characters cast_tier: %s", e)
+
+
 def init_db():
     # Ensure models are registered (import side-effect)
     from models import (  # noqa: F401
@@ -140,6 +172,8 @@ def init_db():
         SceneCharacter,
         Budget,
         BudgetLineItem,
+        SceneCostConfig,
+        SceneCost,
         EmailVerificationToken,
         Notification,
         ContactSubmission,
@@ -152,6 +186,8 @@ def init_db():
     _migrate_script_table()
     _migrate_scenes_table()
     _migrate_scene_characters_table()
+    _migrate_scenes_scene_cost_columns()
+    _migrate_characters_cast_tier()
 
 
 def get_session():

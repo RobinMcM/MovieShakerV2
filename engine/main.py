@@ -20,6 +20,7 @@ from profile import router as profile_router, verify_router
 from scripts import router as scripts_router
 from notifications import router as notifications_router
 from budget import router as budget_router
+from scene_costs import router as scene_costs_router
 from auth_deps import require_admin
 from admin import router as admin_router
 from contact import router as contact_router
@@ -110,6 +111,7 @@ app.include_router(profile_router)
 app.include_router(notifications_router)
 app.include_router(scripts_router)
 app.include_router(budget_router)
+app.include_router(scene_costs_router)
 app.include_router(admin_router)
 app.include_router(contact_router)
 

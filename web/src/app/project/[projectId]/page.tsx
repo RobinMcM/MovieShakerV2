@@ -29,7 +29,6 @@ import {
     Calendar,
     List,
     Users,
-    UsersRound,
     Palette,
     Settings,
     Eye,
@@ -399,16 +398,7 @@ function ProjectPage() {
                                             </CardContent>
                                         </Card>
                                     </Link>
-                                    <Link href={`/project/${projectId}/crewmanagement`}>
-                                        <Card className="h-full transition-all hover:shadow-lg hover:border-primary/50 cursor-pointer">
-                                            <CardContent className="flex flex-col items-center justify-center p-6 space-y-3">
-                                                <UsersRound className="h-12 w-12 text-primary" />
-                                                <span className="font-semibold text-base">Crew Management</span>
-                                                <p className="text-xs text-muted-foreground text-center">Organize team and assign roles</p>
-                                            </CardContent>
-                                        </Card>
-                                    </Link>
-                                    <Link href={`/scene-costs?project=${projectId}`}>
+                                    <Link href={`/project/${projectId}/scene-costs`}>
                                         <Card className="h-full transition-all hover:shadow-lg hover:border-primary/50 cursor-pointer">
                                             <CardContent className="flex flex-col items-center justify-center p-6 space-y-3">
                                                 <BarChart3 className="h-12 w-12 text-primary" />

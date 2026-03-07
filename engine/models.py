@@ -104,6 +104,13 @@ class Scene(SQLModel, table=True):
     scene_location: Optional[str] = Field(default=None)
     scene_details: Optional[str] = Field(default=None)
     location_details: Optional[str] = Field(default=None)
+    # Scene cost modifiers (nullable; migrated in db.py)
+    location_type: Optional[str] = Field(default=None)  # studio | local_interior | urban_exterior | remote
+    is_night_shoot: Optional[bool] = Field(default=None)
+    has_stunts: Optional[bool] = Field(default=None)
+    has_vfx: Optional[bool] = Field(default=None)
+    extras_count: Optional[int] = Field(default=None)
+    creative_impact: Optional[int] = Field(default=None)
 
 
 class Character(SQLModel, table=True):
@@ -113,6 +120,7 @@ class Character(SQLModel, table=True):
     script_id: uuid.UUID = Field(foreign_key="script.id", index=True)
     user_id: str = Field(index=True)
     name: str = Field()
+    cast_tier: Optional[str] = Field(default=None)  # lead | supporting | day_player
 
 
 class SceneCharacter(SQLModel, table=True):
@@ -152,6 +160,38 @@ class BudgetLineItem(SQLModel, table=True):
     estimated_amount: Optional[float] = Field(default=None)
     percentage: Optional[float] = Field(default=None)
     sort_order: Optional[int] = Field(default=None)
+
+
+class SceneCostConfig(SQLModel, table=True):
+    """Scene cost configuration per project (shoot days, strategy). One per project."""
+    __tablename__ = "scene_cost_config"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    project_id: uuid.UUID = Field(foreign_key="project.id", index=True, unique=True)
+    shoot_days: int = Field(default=30)
+    strategy_id: str = Field(default="producer-centric")
+    base_cost_per_eighth: Optional[float] = Field(default=None)
+    allocatable_budget: Optional[float] = Field(default=None)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class SceneCost(SQLModel, table=True):
+    """Cached scene cost row (one per scene per config). Recalculated on POST calculate or config/modifier change."""
+    __tablename__ = "scene_cost"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    scene_id: uuid.UUID = Field(foreign_key="scenes.id", index=True)
+    config_id: uuid.UUID = Field(foreign_key="scene_cost_config.id", index=True)
+    base_cost: float = Field()
+    cast_modifier: float = Field()
+    location_modifier: float = Field()
+    complexity_modifier: float = Field()
+    final_cost: float = Field()
+    target_budget: float = Field()
+    status: str = Field()  # under | on-target | over
+    cast_percentage: float = Field()
+    crew_percentage: float = Field()
+    location_percentage: float = Field()
+    art_percentage: float = Field()
+    logistics_percentage: float = Field()
 
 
 class ContactSubmission(SQLModel, table=True):

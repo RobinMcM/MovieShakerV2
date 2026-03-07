@@ -181,7 +181,7 @@ function BudgetingPageInner() {
           </Button>
           {budgetData?.budget && (
             <Button variant="default" size="sm" asChild>
-              <Link href={`/scene-costs?project=${projectId}`}>
+              <Link href={`/project/${projectId}/scene-costs`}>
                 <Film className="h-4 w-4 mr-2" />
                 Scene Costs
               </Link>

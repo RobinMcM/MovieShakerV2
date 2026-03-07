@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
 
 /**
- * Legacy URL: /crew?project=<id>
- * Redirects to project page (crew registration removed; third-party API used instead).
+ * Legacy URL: /scene-costs?project=<id>
+ * Redirects to the new route: /project/[projectId]/scene-costs
  */
-export default async function CrewRedirectPage({
+export default async function SceneCostsRedirectPage({
   searchParams,
 }: {
   searchParams: Promise<{ project?: string }>;
@@ -12,7 +12,7 @@ export default async function CrewRedirectPage({
   const params = await searchParams;
   const projectId = params?.project;
   if (projectId && typeof projectId === "string") {
-    redirect(`/project/${projectId}`);
+    redirect(`/project/${projectId}/scene-costs`);
   }
   redirect("/projects");
 }

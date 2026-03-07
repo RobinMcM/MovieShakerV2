@@ -174,6 +174,7 @@ def init_db():
         BudgetLineItem,
         SceneCostConfig,
         SceneCost,
+        TramLine,
         EmailVerificationToken,
         Notification,
         ContactSubmission,

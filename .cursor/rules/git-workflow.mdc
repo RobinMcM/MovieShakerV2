@@ -1,0 +1,10 @@
+---
+description: Git workflow - stage changes after edits; user commits in Cursor
+alwaysApply: true
+---
+
+# Git Workflow
+
+- **After making any code or config changes** in this project, run `git add -A` so all changes are staged. The user will commit via Cursor's Source Control UI.
+- **Do not run `git commit` or `git push`** unless the user explicitly asks you to (e.g. "commit and push", "push to git", "commit these changes").
+- When the user says they will "commit via Cursor" or "commit myself", only stage changes with `git add -A`; never run commit or push.

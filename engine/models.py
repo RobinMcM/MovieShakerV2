@@ -194,6 +194,28 @@ class SceneCost(SQLModel, table=True):
     logistics_percentage: float = Field()
 
 
+class TramLine(SQLModel, table=True):
+    """Shot coverage marker (tramline) on a scene: vertical bar with start/end %, x position, optional shot type and camera direction."""
+    __tablename__ = "tram_lines"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    scene_id: uuid.UUID = Field(foreign_key="scenes.id", index=True)
+    user_id: str = Field(index=True)
+    line_number: str = Field()  # A, B, C, ... AA, AB
+    shot_type: Optional[str] = Field(default=None)
+    camera_direction: Optional[str] = Field(default=None)
+    action_text: Optional[str] = Field(default=None)
+    character_names: Optional[str] = Field(default=None)
+    script_elements: Optional[str] = Field(default=None)  # JSONB stored as string in SQLModel
+    scene_mood: Optional[str] = Field(default=None)
+    scene_visual: Optional[str] = Field(default=None)
+    color: Optional[str] = Field(default=None)
+    start_y: float = Field()
+    end_y: float = Field()
+    x_position: float = Field()
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class ContactSubmission(SQLModel, table=True):
     """Public contact form submissions (no auth required)."""
     __tablename__ = "contact_submission"

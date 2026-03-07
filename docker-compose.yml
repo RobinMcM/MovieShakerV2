@@ -33,6 +33,9 @@ services:
     restart: unless-stopped
 
   # 3. The Muscle: FastAPI Engine (Python)
+  # No bind mount: reading app code from the image avoids macOS Docker errno 35 (resource deadlock).
+  # For engine code changes: rebuild with `docker compose build engine && docker compose up -d engine`,
+  # or run the engine locally (e.g. uvicorn main:app --reload) and keep only db/supertokens/valkey in Docker.
   engine:
     build:
       context: ./engine
@@ -61,8 +64,6 @@ services:
       - DO_SPACES_SECRET_ACCESS_KEY=${DO_SPACES_SECRET_ACCESS_KEY:-}
     networks:
       - indie_network
-    volumes:
-      - ./engine:/app
     restart: unless-stopped
 
   # 4. Reverse proxy: HTTPS for api.movieshaker.com -> engine
@@ -82,18 +83,20 @@ services:
     restart: unless-stopped
 
   # 5. The Face: Next.js Web (Development Mode)
+  # node_modules on a named volume reduces bind-mount I/O and can avoid errno -35 / tsconfig read failures on macOS.
+  # If you still see "Cannot read file tsconfig.json" or "Unknown system error -35", run web locally:
+  #   cd web && npm install && npm run dev  (with engine/db/supertokens/valkey in Docker).
   web:
     image: node:20-alpine
     working_dir: /app
     volumes:
       - ./web:/app
-      # Use a named volume for .next to avoid bind-mount issues on macOS (ENOENT renames, error -35).
-      # Also avoids wiping the build on every start so manifests exist before first request.
+      - web_node_modules:/app/node_modules
+      # Named volume for .next to avoid bind-mount issues on macOS (ENOENT, error -35).
       - web_next_cache:/app/.next
     ports:
       - "3000:3000"
-    # Turbopack can deadlock on bind mounts in Docker on macOS.
-    # Use webpack for stable local containerized dev startup.
+    # Use webpack (not Turbopack) for more stable behavior with bind mounts in Docker on macOS.
     command: sh -c "npm install && npx next dev --webpack -H 0.0.0.0"
     networks:
       - indie_network
@@ -126,3 +129,4 @@ volumes:
   postgres_data:
   caddy_data:
   web_next_cache:
+  web_node_modules:

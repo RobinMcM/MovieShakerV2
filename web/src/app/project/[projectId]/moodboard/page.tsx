@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { StructuredScriptRenderer } from "@/components/StructuredScriptRenderer";
 import { ScriptTextRenderer } from "@/components/ScriptTextRenderer";
+import type { ScriptElement } from "@/lib/scriptJsonUtils";
 import { TramLineSelect } from "./TramLineSelect";
 import { useMoodBoard } from "./useMoodBoard";
 import type { TramLineWithScene, CanvasComposition } from "./types";
@@ -252,7 +253,7 @@ function MoodBoardContent() {
                     <CardContent>
                       <div className="p-4 bg-muted/30 rounded-lg border border-border/50 font-mono text-sm whitespace-pre-wrap max-h-[300px] overflow-y-auto">
                         {selectedTramLine.script_elements && selectedTramLine.script_elements.length > 0 ? (
-                          <StructuredScriptRenderer elements={selectedTramLine.script_elements} />
+                          <StructuredScriptRenderer elements={selectedTramLine.script_elements as ScriptElement[]} />
                         ) : (
                           <ScriptTextRenderer text={selectedTramLine.action_text ?? ""} />
                         )}

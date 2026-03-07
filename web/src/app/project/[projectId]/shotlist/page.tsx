@@ -113,17 +113,17 @@ function ShotListContent() {
     return sorted;
   }, [scenesData]);
 
-  const currentSceneIndex =
-    selectedSceneId &&
-    sortedScenesData.findIndex((s) => s.scene.id === selectedSceneId);
+  const currentSceneIndex = selectedSceneId
+    ? sortedScenesData.findIndex((s) => s.scene.id === selectedSceneId)
+    : -1;
 
   const handlePreviousScene = () => {
-    if (currentSceneIndex == null || currentSceneIndex <= 0) return;
+    if (currentSceneIndex <= 0) return;
     selectScene(sortedScenesData[currentSceneIndex - 1].scene.id);
   };
 
   const handleNextScene = () => {
-    if (currentSceneIndex == null || currentSceneIndex >= sortedScenesData.length - 1)
+    if (currentSceneIndex < 0 || currentSceneIndex >= sortedScenesData.length - 1)
       return;
     selectScene(sortedScenesData[currentSceneIndex + 1].scene.id);
   };
@@ -451,7 +451,7 @@ function ShotListContent() {
                         className="h-12 w-12 shrink-0"
                         onClick={handleNextScene}
                         disabled={
-                          currentSceneIndex == null ||
+                          currentSceneIndex < 0 ||
                           currentSceneIndex >= sortedScenesData.length - 1
                         }
                         title="Next scene"
@@ -571,7 +571,7 @@ function ShotListContent() {
                                         line={line}
                                         isSelected={selectedLineId === line.id}
                                         sceneIndex={
-                                          currentSceneIndex != null
+                                          currentSceneIndex >= 0
                                             ? currentSceneIndex + 1
                                             : 0
                                         }
@@ -669,7 +669,7 @@ function ShotListContent() {
                                 style={{ backgroundColor: line.color }}
                               />
                               <span className="font-bold text-sm">
-                                {currentSceneIndex != null
+                                {currentSceneIndex >= 0
                                   ? currentSceneIndex + 1
                                   : 0}
                                 {line.lineNumber}

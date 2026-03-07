@@ -91,7 +91,7 @@ services:
       - "3000:3000"
     # Turbopack can deadlock on bind mounts in Docker on macOS.
     # Use webpack for stable local containerized dev startup.
-    command: sh -c "rm -rf .next && npm ci && npx next dev --webpack -H 0.0.0.0"
+    command: sh -c "rm -rf .next && npm install && npx next dev --webpack -H 0.0.0.0"
     networks:
       - indie_network
 

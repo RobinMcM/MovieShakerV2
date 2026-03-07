@@ -88,7 +88,7 @@ class Script(SQLModel, table=True):
 
 
 class Scene(SQLModel, table=True):
-    """Parsed scene for a script (heading, page, length in eighths)."""
+    """Parsed scene for a script (heading, page, length in eighths). Scheduling fields optional."""
     __tablename__ = "scenes"
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     script_id: uuid.UUID = Field(foreign_key="script.id", index=True)
@@ -97,6 +97,13 @@ class Scene(SQLModel, table=True):
     page_number: str = Field(default="")
     length_in_eighths: Optional[int] = None
     scene_number: Optional[int] = None
+    # Scheduling (nullable; add columns if missing: see migrations or ALTER TABLE)
+    shooting_day: Optional[str] = Field(default=None)
+    time_of_day_id: Optional[str] = Field(default=None)
+    continuity_day: Optional[int] = Field(default=None)
+    scene_location: Optional[str] = Field(default=None)
+    scene_details: Optional[str] = Field(default=None)
+    location_details: Optional[str] = Field(default=None)
 
 
 class Character(SQLModel, table=True):
@@ -115,6 +122,8 @@ class SceneCharacter(SQLModel, table=True):
     scene_id: uuid.UUID = Field(foreign_key="scenes.id", index=True)
     character_id: uuid.UUID = Field(foreign_key="characters.id", index=True)
     user_id: str = Field(index=True)
+    status: Optional[str] = Field(default=None)
+    notes: Optional[str] = Field(default=None)
 
 
 class ContactSubmission(SQLModel, table=True):

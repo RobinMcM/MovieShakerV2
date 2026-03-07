@@ -90,6 +90,44 @@ def _migrate_script_table():
                     logger.warning("Migration script %s: %s", col, e)
 
 
+def _migrate_scenes_table():
+    """Add scheduling columns to scenes table if missing."""
+    with engine.connect() as conn:
+        with conn.begin():
+            for col, typ in [
+                ("shooting_day", "VARCHAR"),
+                ("time_of_day_id", "VARCHAR"),
+                ("continuity_day", "INTEGER"),
+                ("scene_location", "VARCHAR"),
+                ("scene_details", "VARCHAR"),
+                ("location_details", "VARCHAR"),
+            ]:
+                try:
+                    conn.execute(
+                        text(f"ALTER TABLE scenes ADD COLUMN IF NOT EXISTS {col} {typ}")
+                    )
+                except Exception as e:
+                    logger.warning("Migration scenes %s: %s", col, e)
+
+
+def _migrate_scene_characters_table():
+    """Add status, notes to scene_characters table if missing."""
+    with engine.connect() as conn:
+        with conn.begin():
+            for col, typ in [
+                ("status", "VARCHAR"),
+                ("notes", "VARCHAR"),
+            ]:
+                try:
+                    conn.execute(
+                        text(
+                            f"ALTER TABLE scene_characters ADD COLUMN IF NOT EXISTS {col} {typ}"
+                        )
+                    )
+                except Exception as e:
+                    logger.warning("Migration scene_characters %s: %s", col, e)
+
+
 def init_db():
     # Ensure models are registered (import side-effect)
     from models import (  # noqa: F401
@@ -110,6 +148,8 @@ def init_db():
     _migrate_user_profile_drop_admin()
     _migrate_project_table()
     _migrate_script_table()
+    _migrate_scenes_table()
+    _migrate_scene_characters_table()
 
 
 def get_session():

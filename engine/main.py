@@ -126,5 +126,25 @@ async def get_users(_admin: None = Depends(require_admin)):
     users_response = await get_users_oldest_first("public")
     return {"users": users_response.users}
 
+
+# Reference data for scheduling (time of day)
+TIME_OF_DAY_OPTIONS = [
+    {"id": "day", "name": "Day", "sort_order": 1},
+    {"id": "night", "name": "Night", "sort_order": 2},
+    {"id": "dawn", "name": "Dawn", "sort_order": 3},
+    {"id": "dusk", "name": "Dusk", "sort_order": 4},
+    {"id": "morning", "name": "Morning", "sort_order": 5},
+    {"id": "afternoon", "name": "Afternoon", "sort_order": 6},
+    {"id": "evening", "name": "Evening", "sort_order": 7},
+    {"id": "continuous", "name": "Continuous", "sort_order": 8},
+]
+
+
+@app.get("/reference/time-of-day")
+def get_time_of_day_options():
+    """Return time-of-day reference list for scheduling."""
+    return {"data": TIME_OF_DAY_OPTIONS}
+
+
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=settings.api_port)

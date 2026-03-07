@@ -71,6 +71,12 @@ class SceneResponse(BaseModel):
     page_number: str
     length_in_eighths: Optional[int] = None
     scene_number: Optional[int] = None
+    shooting_day: Optional[str] = None
+    time_of_day_id: Optional[str] = None
+    continuity_day: Optional[int] = None
+    scene_location: Optional[str] = None
+    scene_details: Optional[str] = None
+    location_details: Optional[str] = None
 
 
 class CharacterResponse(BaseModel):
@@ -82,6 +88,8 @@ class SceneCharacterResponse(BaseModel):
     id: str
     scene_id: str
     character_id: str
+    status: Optional[str] = None
+    notes: Optional[str] = None
 
 
 def _ensure_project_member(db: Session, project_id: str, user_id: str) -> None:
@@ -344,6 +352,12 @@ def get_script_scenes(
             page_number=s.page_number or "",
             length_in_eighths=s.length_in_eighths,
             scene_number=s.scene_number,
+            shooting_day=getattr(s, "shooting_day", None),
+            time_of_day_id=getattr(s, "time_of_day_id", None),
+            continuity_day=getattr(s, "continuity_day", None),
+            scene_location=getattr(s, "scene_location", None),
+            scene_details=getattr(s, "scene_details", None),
+            location_details=getattr(s, "location_details", None),
         )
         for s in scenes
     ]
@@ -390,10 +404,132 @@ def get_script_scene_characters(
             id=str(r.id),
             scene_id=str(r.scene_id),
             character_id=str(r.character_id),
+            status=getattr(r, "status", None),
+            notes=getattr(r, "notes", None),
         )
         for r in rows
     ]
     return {"success": True, "data": data}
+
+
+# PUT /scenes/{scene_id}
+class SceneUpdateBody(BaseModel):
+    shooting_day: Optional[str] = None
+    time_of_day_id: Optional[str] = None
+    continuity_day: Optional[int] = None
+    scene_location: Optional[str] = None
+    scene_details: Optional[str] = None
+    location_details: Optional[str] = None
+
+
+@router.put("/scenes/{scene_id}")
+def update_scene(
+    scene_id: str,
+    body: SceneUpdateBody,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    scene = db.get(Scene, uuid.UUID(scene_id))
+    if not scene:
+        raise HTTPException(status_code=404, detail="Scene not found")
+    _get_script_and_ensure_access(db, str(scene.script_id), user_id)
+    updates = body.model_dump(exclude_unset=True)
+    for k, v in updates.items():
+        if hasattr(scene, k):
+            setattr(scene, k, v)
+    db.add(scene)
+    db.commit()
+    db.refresh(scene)
+    return {
+        "success": True,
+        "data": SceneResponse(
+            id=str(scene.id),
+            heading=scene.heading,
+            page_number=scene.page_number or "",
+            length_in_eighths=scene.length_in_eighths,
+            scene_number=scene.scene_number,
+            shooting_day=getattr(scene, "shooting_day", None),
+            time_of_day_id=getattr(scene, "time_of_day_id", None),
+            continuity_day=getattr(scene, "continuity_day", None),
+            scene_location=getattr(scene, "scene_location", None),
+            scene_details=getattr(scene, "scene_details", None),
+            location_details=getattr(scene, "location_details", None),
+        ),
+    }
+
+
+# PUT /scenes/bulk-update
+class BulkSceneUpdateBody(BaseModel):
+    scene_ids: list[str]
+    updates: dict  # e.g. {"scene_location": "Studio"}
+
+
+@router.put("/scenes/bulk-update")
+def bulk_update_scenes(
+    body: BulkSceneUpdateBody,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    allowed = {"shooting_day", "time_of_day_id", "continuity_day", "scene_location", "scene_details", "location_details"}
+    updates = {k: v for k, v in body.updates.items() if k in allowed}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No allowed fields to update")
+    for scene_id in body.scene_ids:
+        scene = db.get(Scene, uuid.UUID(scene_id))
+        if not scene:
+            continue
+        try:
+            _get_script_and_ensure_access(db, str(scene.script_id), user_id)
+        except HTTPException:
+            continue
+        for k, v in updates.items():
+            if hasattr(scene, k):
+                setattr(scene, k, v)
+        db.add(scene)
+    db.commit()
+    return {"success": True, "message": "Scenes updated"}
+
+
+# PUT /scripts/scene-characters/{scene_character_id}
+class SceneCharacterUpdateBody(BaseModel):
+    status: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@router.put("/scripts/scene-characters/{scene_character_id}")
+def update_scene_character(
+    scene_character_id: str,
+    body: SceneCharacterUpdateBody,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    sc = db.get(SceneCharacter, uuid.UUID(scene_character_id))
+    if not sc:
+        raise HTTPException(status_code=404, detail="Scene character not found")
+    scene = db.get(Scene, sc.scene_id)
+    if not scene:
+        raise HTTPException(status_code=404, detail="Scene not found")
+    _get_script_and_ensure_access(db, str(scene.script_id), user_id)
+    updates = body.model_dump(exclude_unset=True)
+    for k, v in updates.items():
+        if hasattr(sc, k):
+            setattr(sc, k, v)
+    db.add(sc)
+    db.commit()
+    db.refresh(sc)
+    return {
+        "success": True,
+        "data": SceneCharacterResponse(
+            id=str(sc.id),
+            scene_id=str(sc.scene_id),
+            character_id=str(sc.character_id),
+            status=getattr(sc, "status", None),
+            notes=getattr(sc, "notes", None),
+        ),
+    }
 
 
 # POST /scripts/{script_id}/set-current

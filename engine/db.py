@@ -138,6 +138,8 @@ def init_db():
         Scene,
         Character,
         SceneCharacter,
+        Budget,
+        BudgetLineItem,
         EmailVerificationToken,
         Notification,
         ContactSubmission,

@@ -126,6 +126,34 @@ class SceneCharacter(SQLModel, table=True):
     notes: Optional[str] = Field(default=None)
 
 
+class Budget(SQLModel, table=True):
+    """One budget per project. total_budget and template_id (strategy) set on generate."""
+    __tablename__ = "budget"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    project_id: uuid.UUID = Field(foreign_key="project.id", index=True, unique=True)
+    total_budget: float = Field()
+    template_id: Optional[str] = Field(default=None)  # strategy key e.g. producer-centric
+    currency: Optional[str] = Field(default="GBP")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class BudgetLineItem(SQLModel, table=True):
+    """Line items for a budget. view_type: template | timeline | budget | marketing."""
+    __tablename__ = "budget_line_item"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    budget_id: uuid.UUID = Field(foreign_key="budget.id", index=True)
+    view_type: str = Field(index=True)  # template | timeline | budget | marketing
+    category: Optional[str] = Field(default=None)
+    phase: Optional[str] = Field(default=None)
+    account_code: Optional[str] = Field(default=None)
+    item_name: str = Field()
+    notes: Optional[str] = Field(default=None)
+    estimated_amount: Optional[float] = Field(default=None)
+    percentage: Optional[float] = Field(default=None)
+    sort_order: Optional[int] = Field(default=None)
+
+
 class ContactSubmission(SQLModel, table=True):
     """Public contact form submissions (no auth required)."""
     __tablename__ = "contact_submission"

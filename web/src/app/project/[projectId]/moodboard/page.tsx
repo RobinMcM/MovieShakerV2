@@ -32,7 +32,7 @@ import type { ScriptElement } from "@/lib/scriptJsonUtils";
 import { TramLineSelect } from "./TramLineSelect";
 import { useMoodBoard } from "./useMoodBoard";
 import type { TramLineWithScene, CanvasComposition } from "./types";
-import type { DrawingCanvasRef } from "@/components/DrawingCanvas";
+import type { DrawingCanvasRef, DrawingCanvasProps } from "@/components/DrawingCanvas";
 
 const DrawingCanvas = dynamic(
   () => import("@/components/DrawingCanvas").then((m) => ({ default: m.DrawingCanvas })),
@@ -343,7 +343,7 @@ function MoodBoardContent() {
                         key={currentComposition?.id ?? `new-${selectedTramLine?.id}`}
                         ref={canvasRef}
                         tramLineId={selectedTramLine?.id ?? ""}
-                        initialData={currentComposition?.composition_data as { images?: unknown[]; lines?: unknown[] } | undefined}
+                        initialData={currentComposition?.composition_data as DrawingCanvasProps["initialData"]}
                         onSave={handleCanvasSave}
                         aspectRatio={project?.aspect_ratio ?? "16:9"}
                       />

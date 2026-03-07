@@ -66,19 +66,23 @@ class UpdateTramLineBody(BaseModel):
     action_text: Optional[str] = None
     character_names: Optional[str] = None
     script_elements: Optional[List[Any]] = None
+    scene_visual: Optional[str] = None
 
 
-def _row_to_response(row: TramLine) -> dict:
+def _row_to_response(row: TramLine, scene: Optional[Scene] = None) -> dict:
     out = {
         "id": str(row.id),
         "scene_id": str(row.scene_id),
         "line_number": row.line_number,
-        "color": row.color,
+        "color": row.color or "",
         "start_y": row.start_y,
         "end_y": row.end_y,
         "x_position": row.x_position,
         "camera_direction": row.camera_direction or "",
         "shot_type": row.shot_type,
+        "action_text": row.action_text,
+        "scene_mood": row.scene_mood,
+        "scene_visual": row.scene_visual,
     }
     if row.script_elements:
         try:
@@ -87,6 +91,14 @@ def _row_to_response(row: TramLine) -> dict:
             out["script_elements"] = None
     if row.character_names is not None:
         out["character_names"] = row.character_names
+    if scene is not None:
+        out["scenes"] = {
+            "id": str(scene.id),
+            "heading": scene.heading,
+            "scene_number": scene.scene_number,
+            "page_number": scene.page_number or "",
+            "script_id": str(scene.script_id),
+        }
     return out
 
 

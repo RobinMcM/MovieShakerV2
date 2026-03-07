@@ -175,6 +175,8 @@ def init_db():
         SceneCostConfig,
         SceneCost,
         TramLine,
+        MoodBoardComposition,
+        MoodBoardImageHistory,
         EmailVerificationToken,
         Notification,
         ContactSubmission,

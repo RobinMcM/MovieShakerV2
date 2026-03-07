@@ -1,0 +1,440 @@
+"use client";
+
+import { useState, useEffect, useRef, useCallback } from "react";
+import Link from "next/link";
+import { useParams, useSearchParams } from "next/navigation";
+import dynamic from "next/dynamic";
+import { SessionAuth } from "supertokens-auth-react/recipe/session";
+import { AppHeader } from "@/components/Header";
+import { Footer } from "@/components/Footer";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  User,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  Sparkles,
+  RefreshCw,
+  Maximize,
+  Loader2,
+} from "lucide-react";
+import { StructuredScriptRenderer } from "@/components/StructuredScriptRenderer";
+import { ScriptTextRenderer } from "@/components/ScriptTextRenderer";
+import { TramLineSelect } from "./TramLineSelect";
+import { useMoodBoard } from "./useMoodBoard";
+import type { TramLineWithScene, CanvasComposition } from "./types";
+import type { DrawingCanvasRef } from "@/components/DrawingCanvas";
+
+const DrawingCanvas = dynamic(
+  () => import("@/components/DrawingCanvas").then((m) => ({ default: m.DrawingCanvas })),
+  { ssr: false }
+);
+
+function getSceneNumber(tramLine: TramLineWithScene): string | number {
+  return tramLine.scenes?.scene_number ?? "?";
+}
+
+function MoodBoardContent() {
+  const params = useParams();
+  const searchParams = useSearchParams();
+  const projectId = (params?.projectId as string) ?? null;
+  const tramLineParam = searchParams?.get("tramLine");
+
+  const {
+    loading,
+    project,
+    tramLines,
+    characters,
+    compositions,
+    compositionsLoading,
+    loadCompositions,
+    setCompositions,
+    uploadImage,
+    saveComposition,
+    refetchCharacters,
+  } = useMoodBoard(projectId);
+
+  const [selectedTramLineId, setSelectedTramLineId] = useState<string | null>(
+    () => tramLineParam
+  );
+  const [currentCanvasIndex, setCurrentCanvasIndex] = useState(0);
+  const [isNewCanvas, setIsNewCanvas] = useState(false);
+  const [canvasNote, setCanvasNote] = useState("");
+  const [isScriptCollapsed, setIsScriptCollapsed] = useState(false);
+  const canvasRef = useRef<DrawingCanvasRef>(null);
+
+  useEffect(() => {
+    if (tramLineParam) setSelectedTramLineId(tramLineParam);
+  }, [tramLineParam]);
+
+  useEffect(() => {
+    loadCompositions(selectedTramLineId);
+  }, [selectedTramLineId, loadCompositions]);
+
+  const currentComposition: CanvasComposition | null = isNewCanvas
+    ? null
+    : compositions[currentCanvasIndex] ?? null;
+  const totalCanvases = compositions.length;
+  const displayCanvasNumber = isNewCanvas ? totalCanvases + 1 : currentCanvasIndex + 1;
+
+  useEffect(() => {
+    if (isNewCanvas) {
+      setCanvasNote("");
+    } else if (currentComposition?.composition_data?.note) {
+      setCanvasNote(String((currentComposition.composition_data as { note?: string }).note ?? ""));
+    } else {
+      setCanvasNote("");
+    }
+  }, [currentComposition, isNewCanvas]);
+
+  useEffect(() => {
+    setCurrentCanvasIndex(0);
+    setIsNewCanvas(false);
+    setCanvasNote("");
+  }, [selectedTramLineId]);
+
+  useEffect(() => {
+    if (compositions.length === 0 && !isNewCanvas) setIsNewCanvas(true);
+  }, [compositions.length, isNewCanvas]);
+
+  const selectedTramLine = tramLines.find((t) => t.id === selectedTramLineId);
+
+  const handleCanvasSave = useCallback(
+    async (blob: Blob, compositionData: Record<string, unknown>) => {
+      if (!selectedTramLineId || !projectId || !project) return;
+      try {
+        const file = new File([blob], `drawing-${Date.now()}.png`, {
+          type: "image/png",
+        });
+        await uploadImage({
+          tramLineId: selectedTramLineId,
+          file,
+          aspectRatio: project.aspect_ratio ?? "16:9",
+        });
+        const dataToSave = { ...compositionData, note: canvasNote };
+        await saveComposition({
+          tramLineId: selectedTramLineId,
+          compositionData: dataToSave,
+          compositionId: isNewCanvas ? undefined : currentComposition?.id,
+        });
+        if (isNewCanvas) {
+          loadCompositions(selectedTramLineId);
+          setIsNewCanvas(false);
+        }
+      } catch (e) {
+        console.error("Error saving canvas:", e);
+      }
+    },
+    [
+      selectedTramLineId,
+      projectId,
+      project,
+      canvasNote,
+      isNewCanvas,
+      currentComposition?.id,
+      uploadImage,
+      saveComposition,
+      loadCompositions,
+    ]
+  );
+
+  const handlePreviousCanvas = () => {
+    if (isNewCanvas) {
+      setIsNewCanvas(false);
+      setCurrentCanvasIndex(Math.max(0, compositions.length - 1));
+    } else if (currentCanvasIndex > 0) {
+      setCurrentCanvasIndex(currentCanvasIndex - 1);
+    }
+  };
+
+  const handleNextCanvas = () => {
+    if (currentCanvasIndex < compositions.length - 1 && !isNewCanvas) {
+      setCurrentCanvasIndex(currentCanvasIndex + 1);
+    }
+  };
+
+  const handleNewCanvas = () => {
+    setIsNewCanvas(true);
+    setCurrentCanvasIndex(compositions.length);
+  };
+
+  const handleVisualize = async () => {
+    if (!selectedTramLineId || !projectId || !canvasRef.current) return;
+    try {
+      const dataURL = await canvasRef.current.getCanvasDataURL();
+      window.location.href = `/project/${projectId}/visualize?scene=${selectedTramLine?.scene_id ?? ""}&tramLine=${selectedTramLineId}&moodboardImage=${encodeURIComponent(dataURL)}`;
+    } catch (e) {
+      console.error("Error generating visualization:", e);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      <AppHeader />
+      <main className="container mx-auto p-8">
+        <div className="flex flex-col items-center min-h-[60vh] space-y-6">
+          <div className="flex flex-col items-center w-full max-w-2xl p-8 border-2 border-dashed border-muted rounded-xl bg-muted/10 space-y-6">
+            <p className="text-lg font-medium">Select a Tram Line to begin</p>
+            <div className="w-full max-w-md">
+              <TramLineSelect
+                tramLines={tramLines}
+                selectedTramLineId={selectedTramLineId}
+                onSelect={(id) => setSelectedTramLineId(id)}
+              />
+            </div>
+
+            {selectedTramLineId && selectedTramLine && (
+              <div className="w-full space-y-4 animate-in fade-in slide-in-from-top-4 duration-300">
+                <div className="relative bg-gradient-to-br from-slate-900 to-slate-800 rounded-t-lg border-2 border-slate-700 shadow-xl overflow-hidden">
+                  <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-r from-yellow-400 via-slate-900 to-yellow-400 opacity-20" />
+                  <div className="pt-10 pb-4 px-6">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <div className="text-yellow-400 font-bold text-xs uppercase tracking-wider mb-1">Film</div>
+                        <div className="text-white font-mono">{project?.title ?? project?.name ?? "Untitled"}</div>
+                      </div>
+                      <div>
+                        <div className="text-yellow-400 font-bold text-xs uppercase tracking-wider mb-1">Director</div>
+                        <div className="text-white font-mono">{project?.director ?? "-"}</div>
+                      </div>
+                      <div>
+                        <div className="text-yellow-400 font-bold text-xs uppercase tracking-wider mb-1">Scene {getSceneNumber(selectedTramLine)}</div>
+                        <div className="text-white font-mono font-bold text-lg leading-tight">
+                          Scene {getSceneNumber(selectedTramLine)} {selectedTramLine.scenes?.heading ?? ""}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-yellow-400 font-bold text-xs uppercase tracking-wider mb-1">Shot</div>
+                        <div className="text-white font-mono font-bold text-lg">
+                          {selectedTramLine.line_number ?? "-"}
+                          {selectedTramLine.shot_type && (
+                            <span className="text-sm bg-yellow-400/20 text-yellow-300 px-2 py-0.5 rounded ml-2">
+                              {selectedTramLine.shot_type}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-yellow-400 font-bold text-xs uppercase tracking-wider mb-1">Date</div>
+                        <div className="text-white font-mono font-bold text-lg">{new Date().toLocaleDateString("en-GB")}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <Card>
+                  <CardHeader
+                    className="cursor-pointer"
+                    onClick={() => setIsScriptCollapsed(!isScriptCollapsed)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base text-muted-foreground">Script Section</CardTitle>
+                      <span className="text-muted-foreground">{isScriptCollapsed ? "▼" : "▲"}</span>
+                    </div>
+                  </CardHeader>
+                  {!isScriptCollapsed && (
+                    <CardContent>
+                      <div className="p-4 bg-muted/30 rounded-lg border border-border/50 font-mono text-sm whitespace-pre-wrap max-h-[300px] overflow-y-auto">
+                        {selectedTramLine.script_elements && selectedTramLine.script_elements.length > 0 ? (
+                          <StructuredScriptRenderer elements={selectedTramLine.script_elements} />
+                        ) : (
+                          <ScriptTextRenderer text={selectedTramLine.action_text ?? ""} />
+                        )}
+                      </div>
+                    </CardContent>
+                  )}
+                </Card>
+
+                <div className="flex flex-wrap gap-2 px-1">
+                  <span className="text-sm font-medium text-muted-foreground mr-2 flex items-center">Cast:</span>
+                  {selectedTramLine.character_names
+                    ? selectedTramLine.character_names.split(",").map((name, idx) => {
+                        const trimmed = name.trim();
+                        if (!trimmed) return null;
+                        const character = characters.find(
+                          (c) => c.name.toLowerCase() === trimmed.toLowerCase()
+                        );
+                        return (
+                          <div
+                            key={idx}
+                            draggable
+                            onDragStart={(e) => {
+                              const data = JSON.stringify({
+                                name: trimmed,
+                                src: (character as { character_image_url?: string })?.character_image_url ?? null,
+                                type: (character as { character_image_url?: string })?.character_image_url ? "image" : "placeholder",
+                              });
+                              e.dataTransfer.setData("application/json", data);
+                              if ((character as { character_image_url?: string })?.character_image_url) {
+                                e.dataTransfer.setData("text/plain", (character as { character_image_url?: string }).character_image_url!);
+                              }
+                              e.dataTransfer.effectAllowed = "copy";
+                            }}
+                            className="flex items-center gap-2 bg-secondary/50 rounded-full pr-3 pl-1 py-1 border border-border/50 cursor-grab"
+                          >
+                            <Avatar className="h-6 w-6">
+                              <AvatarImage
+                                src={(character as { character_image_url?: string })?.character_image_url}
+                                alt={trimmed}
+                                className="object-cover object-top"
+                              />
+                              <AvatarFallback className="bg-muted text-muted-foreground">
+                                <User className="h-4 w-4" />
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="text-sm font-medium">{trimmed}</span>
+                          </div>
+                        );
+                      })
+                    : (
+                      <span className="text-sm text-muted-foreground italic opacity-50">Select a shot to view cast</span>
+                    )}
+                </div>
+
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <CardTitle className="text-base text-muted-foreground">Ideas & Notes</CardTitle>
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={handlePreviousCanvas} disabled={currentCanvasIndex === 0 && !isNewCanvas}>
+                          <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                        <span className="text-sm font-medium min-w-[80px] text-center">
+                          Moodboard {displayCanvasNumber}
+                          {totalCanvases > 0 ? ` / ${isNewCanvas ? totalCanvases + 1 : totalCanvases}` : ""}
+                        </span>
+                        <Button variant="outline" size="sm" onClick={handleNextCanvas} disabled={isNewCanvas || currentCanvasIndex >= compositions.length - 1}>
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                        <Button variant="default" size="sm" onClick={handleNewCanvas} disabled={isNewCanvas}>
+                          <Plus className="h-4 w-4" /> Add
+                        </Button>
+                        <div className="w-px h-6 bg-border mx-1" />
+                        <Button variant="default" size="sm" className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white border-0" onClick={handleVisualize} disabled={!selectedTramLineId}>
+                          <Sparkles className="h-4 w-4 mr-2" /> Visualize
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {compositionsLoading ? (
+                      <div className="flex items-center justify-center py-12">
+                        <Loader2 className="h-6 w-6 animate-spin" />
+                      </div>
+                    ) : (
+                      <DrawingCanvas
+                        key={currentComposition?.id ?? `new-${selectedTramLine?.id}`}
+                        ref={canvasRef}
+                        tramLineId={selectedTramLine?.id ?? ""}
+                        initialData={currentComposition?.composition_data as { images?: unknown[]; lines?: unknown[] } | undefined}
+                        onSave={handleCanvasSave}
+                        aspectRatio={project?.aspect_ratio ?? "16:9"}
+                      />
+                    )}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-muted-foreground">Canvas Notes</label>
+                      <Textarea
+                        placeholder="Add notes about this moodboard composition..."
+                        value={canvasNote}
+                        onChange={(e) => setCanvasNote(e.target.value)}
+                        className="min-h-[100px] resize-y"
+                      />
+                      <p className="text-xs text-muted-foreground italic">Notes are saved when you save the canvas (Save in the toolbar above).</p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <div className="flex flex-col gap-2 mt-4 p-4 border rounded-lg bg-background/50">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-muted-foreground">Project Objects & Assets</h3>
+                    <Button variant="ghost" size="sm" onClick={() => refetchCharacters()} className="h-6 px-2 text-muted-foreground hover:text-foreground" title="Refresh">
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {characters.filter((c) => (c as { type?: string }).type !== "character").length > 0 ? (
+                      characters
+                        .filter((c) => (c as { type?: string }).type !== "character")
+                        .map((object) => (
+                          <div
+                            key={object.id}
+                            draggable={!!(object as { character_image_url?: string }).character_image_url}
+                            onDragStart={(e) => {
+                              const url = (object as { character_image_url?: string }).character_image_url;
+                              if (url) {
+                                e.dataTransfer.setData("application/json", JSON.stringify({ name: object.name, src: url }));
+                                e.dataTransfer.setData("text/plain", url);
+                                e.dataTransfer.effectAllowed = "copy";
+                              } else {
+                                e.preventDefault();
+                              }
+                            }}
+                            className={`relative group flex items-center gap-2 bg-secondary rounded-md p-2 border border-border cursor-grab hover:bg-accent ${!(object as { character_image_url?: string }).character_image_url ? "opacity-50 cursor-not-allowed" : ""}`}
+                          >
+                            {(object as { character_image_url?: string }).character_image_url && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  canvasRef.current?.addImage((object as { character_image_url?: string }).character_image_url!, true);
+                                }}
+                                className="absolute -top-2 -right-2 p-1 bg-primary text-primary-foreground rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110 z-10"
+                                title="Fill Canvas"
+                              >
+                                <Maximize className="h-3 w-3" />
+                              </button>
+                            )}
+                            <div className="h-8 w-8 rounded overflow-hidden bg-muted border border-border shrink-0">
+                              {(object as { character_image_url?: string }).character_image_url ? (
+                                <img
+                                  src={(object as { character_image_url?: string }).character_image_url}
+                                  alt={object.name}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <User className="h-4 w-4 m-auto text-muted-foreground" />
+                              )}
+                            </div>
+                            <span className="text-sm font-medium">{object.name}</span>
+                          </div>
+                        ))
+                    ) : (
+                      <div className="w-full py-4 text-center text-sm text-muted-foreground italic bg-muted/20 rounded border border-dashed border-border/50">
+                        No objects or assets found.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </main>
+      <Footer />
+    </div>
+  );
+}
+
+export default function MoodBoardPage() {
+  return (
+    <SessionAuth>
+      <MoodBoardContent />
+    </SessionAuth>
+  );
+}

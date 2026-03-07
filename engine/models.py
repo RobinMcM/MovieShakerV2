@@ -216,6 +216,31 @@ class TramLine(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class MoodBoardComposition(SQLModel, table=True):
+    """Mood board canvas composition per tram line (drawing data + note). Multiple per tram line allowed."""
+    __tablename__ = "mood_board_canvas_compositions"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    tram_line_id: uuid.UUID = Field(foreign_key="tram_lines.id", index=True)
+    user_id: str = Field(index=True)
+    composition_data: Optional[str] = Field(default=None)  # JSON
+    canvas_number: int = Field(default=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class MoodBoardImageHistory(SQLModel, table=True):
+    """Mood board image history (uploaded/generated images per tram line)."""
+    __tablename__ = "mood_board_image_history"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    tram_line_id: uuid.UUID = Field(foreign_key="tram_lines.id", index=True)
+    user_id: str = Field(index=True)
+    image_path: str = Field()
+    generation_method: str = Field(default="upload")
+    prompt: Optional[str] = Field(default=None)
+    aspect_ratio: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class ContactSubmission(SQLModel, table=True):
     """Public contact form submissions (no auth required)."""
     __tablename__ = "contact_submission"

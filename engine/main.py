@@ -22,6 +22,7 @@ from notifications import router as notifications_router
 from budget import router as budget_router
 from scene_costs import router as scene_costs_router
 from tram_lines import router as tram_lines_router
+from moodboard import router as moodboard_router
 from auth_deps import require_admin
 from admin import router as admin_router
 from contact import router as contact_router
@@ -114,6 +115,7 @@ app.include_router(scripts_router)
 app.include_router(budget_router)
 app.include_router(scene_costs_router)
 app.include_router(tram_lines_router)
+app.include_router(moodboard_router)
 app.include_router(admin_router)
 app.include_router(contact_router)
 

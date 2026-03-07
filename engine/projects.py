@@ -5,7 +5,7 @@ from sqlmodel import Session, select
 from typing import List, Optional
 from pydantic import BaseModel
 from db import get_session
-from models import Project, ProjectMember, UserProfile
+from models import Project, ProjectMember, UserProfile, Script, Scene, TramLine
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
 from cache import cache_get, cache_set, cache_delete, PROJECTS_LIST_TTL
@@ -196,6 +196,55 @@ def list_projects(
         pass
 
     return projects
+
+@router.get("/{project_id}/tram-lines")
+def list_project_tram_lines(
+    project_id: str,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    """List all tram lines for a project (current script's scenes), with scene info for moodboard."""
+    user_id = session.get_user_id()
+    member = db.exec(
+        select(ProjectMember).where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.user_id == user_id,
+        )
+    ).first()
+    if not member:
+        raise HTTPException(status_code=403, detail="Not a member of this project")
+    scripts = list(
+        db.exec(
+            select(Script).where(Script.project_id == project_id).order_by(Script.uploaded_at.desc())
+        ).all()
+    )
+    if not scripts:
+        return {"success": True, "tramLines": []}
+    current = next((s for s in scripts if s.is_current), scripts[0])
+    scenes = list(
+        db.exec(
+            select(Scene).where(Scene.script_id == current.id).order_by(Scene.scene_number.asc(), Scene.id.asc())
+        ).all()
+    )
+    scene_ids = [s.id for s in scenes]
+    if not scene_ids:
+        return {"success": True, "tramLines": []}
+    from tram_lines import _row_to_response
+    tram_lines = list(
+        db.exec(select(TramLine).where(TramLine.scene_id.in_(scene_ids))).all()
+    )
+    scene_by_id = {s.id: s for s in scenes}
+    scene_order = {s.id: i for i, s in enumerate(scenes)}
+    # Order by scene number then line_number
+    def order_key(tl):
+        return (scene_order.get(tl.scene_id, 999), (tl.line_number or ""))
+    tram_lines.sort(key=order_key)
+    out = []
+    for tl in tram_lines:
+        scene = scene_by_id.get(tl.scene_id)
+        out.append(_row_to_response(tl, scene))
+    return {"success": True, "tramLines": out}
+
 
 @router.put("/{project_id}", response_model=ProjectResponse)
 def update_project(

@@ -136,3 +136,36 @@ def delete_script_dir(user_id: str, project_id: str, script_id: str) -> None:
     d = script_dir(user_id, project_id, script_id)
     if d.exists():
         shutil.rmtree(d)
+
+
+# Moodboard image storage: moodboard/{user_id}/{tram_line_id}/{filename}
+def moodboard_relative_path(user_id: str, tram_line_id: str, filename: str) -> str:
+    return f"moodboard/{user_id}/{tram_line_id}/{filename}"
+
+
+def save_moodboard_image(
+    user_id: str, tram_line_id: str, filename: str, content: BinaryIO, size: int
+) -> str:
+    """Save moodboard image to storage. Returns relative path (key) for DB."""
+    if size > MAX_UPLOAD_BYTES:
+        raise ValueError(f"File size exceeds {MAX_UPLOAD_BYTES} bytes")
+    key = moodboard_relative_path(user_id, tram_line_id, filename)
+    if uses_spaces():
+        body = content.read() if hasattr(content, "read") else content
+        content_type = "image/png" if filename.lower().endswith(".png") else "image/jpeg"
+        if not filename.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
+            content_type = "application/octet-stream"
+        client = _spaces_client()
+        client.put_object(
+            Bucket=DO_SPACES_BUCKET,
+            Key=key,
+            Body=body,
+            ContentType=content_type,
+        )
+        return key
+    d = STORAGE_ROOT / "moodboard" / user_id / tram_line_id
+    d.mkdir(parents=True, exist_ok=True)
+    path = d / filename
+    with open(path, "wb") as f:
+        shutil.copyfileobj(content, f)
+    return key

@@ -33,6 +33,7 @@ import { TramLineSelect } from "./TramLineSelect";
 import { useMoodBoard } from "./useMoodBoard";
 import type { TramLineWithScene, CanvasComposition } from "./types";
 import type { DrawingCanvasRef, DrawingCanvasProps } from "@/components/DrawingCanvas";
+import { storageImageUrl } from "@/lib/api";
 
 const DrawingCanvas = dynamic(
   () => import("@/components/DrawingCanvas").then((m) => ({ default: m.DrawingCanvas })),
@@ -278,20 +279,19 @@ function MoodBoardContent() {
                             onDragStart={(e) => {
                               const data = JSON.stringify({
                                 name: trimmed,
-                                src: (character as { character_image_url?: string })?.character_image_url ?? null,
-                                type: (character as { character_image_url?: string })?.character_image_url ? "image" : "placeholder",
+                                src: storageImageUrl((character as { character_image_url?: string })?.character_image_url) ?? (character as { character_image_url?: string })?.character_image_url ?? null,
+                                type: (storageImageUrl((character as { character_image_url?: string })?.character_image_url) ?? (character as { character_image_url?: string })?.character_image_url) ? "image" : "placeholder",
                               });
                               e.dataTransfer.setData("application/json", data);
-                              if ((character as { character_image_url?: string })?.character_image_url) {
-                                e.dataTransfer.setData("text/plain", (character as { character_image_url?: string }).character_image_url!);
-                              }
+                              const castSrc = storageImageUrl((character as { character_image_url?: string })?.character_image_url) ?? (character as { character_image_url?: string })?.character_image_url;
+                              if (castSrc) e.dataTransfer.setData("text/plain", castSrc);
                               e.dataTransfer.effectAllowed = "copy";
                             }}
                             className="flex items-center gap-2 bg-secondary/50 rounded-full pr-3 pl-1 py-1 border border-border/50 cursor-grab"
                           >
                             <Avatar className="h-6 w-6">
                               <AvatarImage
-                                src={(character as { character_image_url?: string })?.character_image_url}
+                                src={storageImageUrl((character as { character_image_url?: string })?.character_image_url) ?? (character as { character_image_url?: string })?.character_image_url ?? undefined}
                                 alt={trimmed}
                                 className="object-cover object-top"
                               />
@@ -372,49 +372,52 @@ function MoodBoardContent() {
                     {characters.filter((c) => (c as { type?: string }).type !== "character").length > 0 ? (
                       characters
                         .filter((c) => (c as { type?: string }).type !== "character")
-                        .map((object) => (
-                          <div
-                            key={object.id}
-                            draggable={!!(object as { character_image_url?: string }).character_image_url}
-                            onDragStart={(e) => {
-                              const url = (object as { character_image_url?: string }).character_image_url;
-                              if (url) {
-                                e.dataTransfer.setData("application/json", JSON.stringify({ name: object.name, src: url }));
-                                e.dataTransfer.setData("text/plain", url);
-                                e.dataTransfer.effectAllowed = "copy";
-                              } else {
-                                e.preventDefault();
-                              }
-                            }}
-                            className={`relative group flex items-center gap-2 bg-secondary rounded-md p-2 border border-border cursor-grab hover:bg-accent ${!(object as { character_image_url?: string }).character_image_url ? "opacity-50 cursor-not-allowed" : ""}`}
-                          >
-                            {(object as { character_image_url?: string }).character_image_url && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  canvasRef.current?.addImage((object as { character_image_url?: string }).character_image_url!, true);
-                                }}
-                                className="absolute -top-2 -right-2 p-1 bg-primary text-primary-foreground rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110 z-10"
-                                title="Fill Canvas"
-                              >
-                                <Maximize className="h-3 w-3" />
-                              </button>
-                            )}
-                            <div className="h-8 w-8 rounded overflow-hidden bg-muted border border-border shrink-0">
-                              {(object as { character_image_url?: string }).character_image_url ? (
-                                <img
-                                  src={(object as { character_image_url?: string }).character_image_url}
-                                  alt={object.name}
-                                  className="h-full w-full object-cover"
-                                />
-                              ) : (
-                                <User className="h-4 w-4 m-auto text-muted-foreground" />
+                        .map((object) => {
+                          const objImgUrl = (object as { character_image_url?: string }).character_image_url;
+                          const objImgSrc = storageImageUrl(objImgUrl) ?? objImgUrl ?? null;
+                          return (
+                            <div
+                              key={object.id}
+                              draggable={!!objImgSrc}
+                              onDragStart={(e) => {
+                                if (objImgSrc) {
+                                  e.dataTransfer.setData("application/json", JSON.stringify({ name: object.name, src: objImgSrc }));
+                                  e.dataTransfer.setData("text/plain", objImgSrc);
+                                  e.dataTransfer.effectAllowed = "copy";
+                                } else {
+                                  e.preventDefault();
+                                }
+                              }}
+                              className={`relative group flex items-center gap-2 bg-secondary rounded-md p-2 border border-border cursor-grab hover:bg-accent ${!objImgSrc ? "opacity-50 cursor-not-allowed" : ""}`}
+                            >
+                              {objImgSrc && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    canvasRef.current?.addImage(objImgSrc, true);
+                                  }}
+                                  className="absolute -top-2 -right-2 p-1 bg-primary text-primary-foreground rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110 z-10"
+                                  title="Fill Canvas"
+                                >
+                                  <Maximize className="h-3 w-3" />
+                                </button>
                               )}
+                              <div className="h-8 w-8 rounded overflow-hidden bg-muted border border-border shrink-0">
+                                {objImgSrc ? (
+                                  <img
+                                    src={objImgSrc}
+                                    alt={object.name}
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <User className="h-4 w-4 m-auto text-muted-foreground" />
+                                )}
+                              </div>
+                              <span className="text-sm font-medium">{object.name}</span>
                             </div>
-                            <span className="text-sm font-medium">{object.name}</span>
-                          </div>
-                        ))
+                          );
+                        })
                     ) : (
                       <div className="w-full py-4 text-center text-sm text-muted-foreground italic bg-muted/20 rounded border border-dashed border-border/50">
                         No objects or assets found.

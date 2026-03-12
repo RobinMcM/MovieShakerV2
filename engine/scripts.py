@@ -82,6 +82,13 @@ class SceneResponse(BaseModel):
 class CharacterResponse(BaseModel):
     id: str
     name: str
+    script_id: Optional[str] = None
+    type: Optional[str] = None
+    casting_notes: Optional[str] = None
+    character_image_url: Optional[str] = None
+    hide_from_view: Optional[bool] = None
+    aspect_ratio: Optional[str] = None
+    series_group: Optional[str] = None
 
 
 class SceneCharacterResponse(BaseModel):
@@ -379,8 +386,70 @@ def get_script_characters(
         .order_by(Character.name.asc())
     )
     characters = list(db.exec(stmt).all())
-    data = [CharacterResponse(id=str(c.id), name=c.name) for c in characters]
+    data = [
+        CharacterResponse(
+            id=str(c.id),
+            name=c.name,
+            script_id=str(c.script_id),
+            type=getattr(c, "type", None) or "character",
+            casting_notes=getattr(c, "casting_notes", None),
+            character_image_url=getattr(c, "character_image_url", None),
+            hide_from_view=getattr(c, "hide_from_view", False),
+            aspect_ratio=getattr(c, "aspect_ratio", None),
+            series_group=getattr(c, "series_group", None),
+        )
+        for c in characters
+    ]
     return {"success": True, "data": data}
+
+
+class CreateCharacterBody(BaseModel):
+    name: str
+    type: Optional[str] = "character"  # "character" | "object" | "scene"
+    casting_notes: Optional[str] = None
+    aspect_ratio: Optional[str] = None
+    series_group: Optional[str] = None
+
+
+# POST /scripts/{script_id}/characters
+@router.post("/scripts/{script_id}/characters", status_code=201)
+def create_script_character(
+    script_id: str,
+    body: CreateCharacterBody,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    script = _get_script_and_ensure_access(db, script_id, user_id)
+    char_type = (body.type or "character").lower()
+    if char_type not in ("character", "object", "scene"):
+        char_type = "character"
+    character = Character(
+        script_id=uuid.UUID(script_id),
+        user_id=user_id,
+        name=body.name.strip(),
+        type=char_type,
+        casting_notes=body.casting_notes.strip() if body.casting_notes else None,
+        aspect_ratio=body.aspect_ratio or None,
+        series_group=body.series_group or None,
+    )
+    db.add(character)
+    db.commit()
+    db.refresh(character)
+    return {
+        "success": True,
+        "data": CharacterResponse(
+            id=str(character.id),
+            name=character.name,
+            script_id=str(character.script_id),
+            type=character.type,
+            casting_notes=character.casting_notes,
+            character_image_url=character.character_image_url,
+            hide_from_view=character.hide_from_view,
+            aspect_ratio=character.aspect_ratio,
+            series_group=character.series_group,
+        ),
+    }
 
 
 # GET /scripts/{script_id}/scene-characters

@@ -160,6 +160,26 @@ def _migrate_characters_cast_tier():
                 logger.warning("Migration characters cast_tier: %s", e)
 
 
+def _migrate_characters_objects_fields():
+    """Add Objects page fields to characters table if missing."""
+    with engine.connect() as conn:
+        with conn.begin():
+            for col, typ in [
+                ("type", "VARCHAR NOT NULL DEFAULT 'character'"),
+                ("casting_notes", "VARCHAR"),
+                ("character_image_url", "VARCHAR"),
+                ("hide_from_view", "BOOLEAN NOT NULL DEFAULT FALSE"),
+                ("aspect_ratio", "VARCHAR"),
+                ("series_group", "VARCHAR"),
+            ]:
+                try:
+                    conn.execute(
+                        text(f"ALTER TABLE characters ADD COLUMN IF NOT EXISTS {col} {typ}")
+                    )
+                except Exception as e:
+                    logger.warning("Migration characters %s: %s", col, e)
+
+
 def init_db():
     # Ensure models are registered (import side-effect)
     from models import (  # noqa: F401
@@ -191,6 +211,7 @@ def init_db():
     _migrate_scene_characters_table()
     _migrate_scenes_scene_cost_columns()
     _migrate_characters_cast_tier()
+    _migrate_characters_objects_fields()
 
 
 def get_session():

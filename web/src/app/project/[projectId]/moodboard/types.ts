@@ -65,4 +65,8 @@ export interface CharacterMood {
   script_id: string;
   type?: string;
   character_image_url?: string | null;
+  casting_notes?: string | null;
+  hide_from_view?: boolean;
+  aspect_ratio?: string | null;
+  series_group?: string | null;
 }

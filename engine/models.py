@@ -114,13 +114,20 @@ class Scene(SQLModel, table=True):
 
 
 class Character(SQLModel, table=True):
-    """Parsed character for a script."""
+    """Parsed character for a script; also used for objects/scenes (type=object|scene)."""
     __tablename__ = "characters"
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     script_id: uuid.UUID = Field(foreign_key="script.id", index=True)
     user_id: str = Field(index=True)
     name: str = Field()
     cast_tier: Optional[str] = Field(default=None)  # lead | supporting | day_player
+    # Objects page / mood board
+    type: str = Field(default="character")  # "character" | "object" | "scene"
+    casting_notes: Optional[str] = Field(default=None)
+    character_image_url: Optional[str] = Field(default=None)
+    hide_from_view: bool = Field(default=False)
+    aspect_ratio: Optional[str] = Field(default=None)
+    series_group: Optional[str] = Field(default=None)
 
 
 class SceneCharacter(SQLModel, table=True):

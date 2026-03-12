@@ -67,6 +67,13 @@ export async function apiPostForm<T>(endpoint: string, formData: FormData): Prom
     return response.json();
 }
 
+/** Build full URL for stored image (moodboard/objects). Paths are served at /api/storage/{path}. */
+export function storageImageUrl(pathOrUrl: string | null | undefined): string | null {
+    if (!pathOrUrl) return null;
+    if (pathOrUrl.startsWith("http")) return pathOrUrl;
+    return `${API_URL}/api/storage/${pathOrUrl}`;
+}
+
 export const api = {
     get: <T>(endpoint: string) => apiRequest<T>(endpoint, { method: "GET" }),
     post: <T>(endpoint: string, body: unknown) => apiRequest<T>(endpoint, { method: "POST", body }),

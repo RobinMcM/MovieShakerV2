@@ -120,6 +120,31 @@ def get_script_file_stream(relative_path: str) -> Optional[Tuple[bytes, str]]:
         return None
 
 
+def get_storage_file(relative_path: str) -> Optional[Tuple[bytes, str]]:
+    """
+    Return (body, content_type) for moodboard/ or objects/ keys.
+    For local: read from STORAGE_ROOT. For Spaces: use S3 get_object.
+    """
+    if not relative_path or ".." in relative_path:
+        return None
+    if not relative_path.startswith(("moodboard/", "objects/")):
+        return None
+    if uses_spaces():
+        return get_script_file_stream(relative_path)
+    path = STORAGE_ROOT / relative_path
+    if not path.is_file():
+        return None
+    try:
+        body = path.read_bytes()
+        ext = path.suffix.lower()
+        content_type = "image/png" if ext == ".png" else "image/jpeg"
+        if ext in (".gif", ".webp"):
+            content_type = f"image/{ext[1:]}"
+        return (body, content_type)
+    except Exception:
+        return None
+
+
 def delete_script_dir(user_id: str, project_id: str, script_id: str) -> None:
     if uses_spaces():
         prefix = f"{user_id}/{project_id}/{script_id}/"
@@ -164,6 +189,41 @@ def save_moodboard_image(
         )
         return key
     d = STORAGE_ROOT / "moodboard" / user_id / tram_line_id
+    d.mkdir(parents=True, exist_ok=True)
+    path = d / filename
+    with open(path, "wb") as f:
+        shutil.copyfileobj(content, f)
+    return key
+
+
+# Character/object image storage: objects/{user_id}/{objects|scenes}/{character_id}.{ext}
+def character_image_relative_path(user_id: str, character_id: str, filename: str, is_scene: bool = False) -> str:
+    subdir = "scenes" if is_scene else "objects"
+    return f"objects/{user_id}/{subdir}/{filename}"
+
+
+def save_character_image(
+    user_id: str, character_id: str, filename: str, content: BinaryIO, size: int, is_scene: bool = False
+) -> str:
+    """Save character/object image. Returns relative path (key) for DB character_image_url."""
+    if size > MAX_UPLOAD_BYTES:
+        raise ValueError(f"File size exceeds {MAX_UPLOAD_BYTES} bytes")
+    key = character_image_relative_path(user_id, character_id, filename, is_scene)
+    if uses_spaces():
+        body = content.read() if hasattr(content, "read") else content
+        content_type = "image/png" if filename.lower().endswith(".png") else "image/jpeg"
+        if not filename.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
+            content_type = "application/octet-stream"
+        client = _spaces_client()
+        client.put_object(
+            Bucket=DO_SPACES_BUCKET,
+            Key=key,
+            Body=body,
+            ContentType=content_type,
+        )
+        return key
+    subdir = "scenes" if is_scene else "objects"
+    d = STORAGE_ROOT / "objects" / user_id / subdir
     d.mkdir(parents=True, exist_ok=True)
     path = d / filename
     with open(path, "wb") as f:

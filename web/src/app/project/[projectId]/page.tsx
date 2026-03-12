@@ -434,7 +434,7 @@ function ProjectPage() {
                                             </CardContent>
                                         </Card>
                                     </Link>
-                                    <Link href={`/visualize?project=${projectId}`}>
+                                    <Link href={`/project/${projectId}/visualize`}>
                                         <Card className="h-full transition-all hover:shadow-lg hover:border-primary/50 cursor-pointer">
                                             <CardContent className="flex flex-col items-center justify-center p-6 space-y-3">
                                                 <Eye className="h-12 w-12 text-primary" />

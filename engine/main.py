@@ -25,6 +25,9 @@ from tram_lines import router as tram_lines_router
 from moodboard import router as moodboard_router
 from characters import router as characters_router
 from storage_routes import router as storage_router
+from video_history import router as video_history_router
+from compiled_videos import router as compiled_videos_router
+from visualize_config import router as visualize_config_router
 from auth_deps import require_admin
 from admin import router as admin_router
 from contact import router as contact_router
@@ -120,6 +123,9 @@ app.include_router(tram_lines_router)
 app.include_router(moodboard_router)
 app.include_router(characters_router)
 app.include_router(storage_router)
+app.include_router(video_history_router)
+app.include_router(compiled_videos_router)
+app.include_router(visualize_config_router)
 app.include_router(admin_router)
 app.include_router(contact_router)
 

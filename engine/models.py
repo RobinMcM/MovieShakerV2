@@ -248,6 +248,45 @@ class MoodBoardImageHistory(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class MoodBoardVideoHistory(SQLModel, table=True):
+    """Video history per tram line (AI-generated or continuation videos)."""
+    __tablename__ = "mood_board_video_history"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    tram_line_id: uuid.UUID = Field(foreign_key="tram_lines.id", index=True)
+    user_id: str = Field(index=True)
+    video_path: str = Field()  # URL or storage path
+    task_id: Optional[str] = Field(default=None)
+    generation_method: str = Field(default="ai_runway")  # ai_runway | ai_vidu
+    prompt: Optional[str] = Field(default=None)
+    aspect_ratio: Optional[str] = Field(default=None)
+    duration: Optional[int] = Field(default=None)
+    take_number: Optional[int] = Field(default=None)
+    channel: Optional[int] = Field(default=None)
+    source_type: Optional[str] = Field(default=None)
+    source_image_path: Optional[str] = Field(default=None)
+    source_video_id: Optional[str] = Field(default=None)
+    is_print: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class MoodBoardCompiledVideo(SQLModel, table=True):
+    """Stitched (compiled) video per tram line / channel."""
+    __tablename__ = "mood_board_compiled_videos"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    tram_line_id: uuid.UUID = Field(foreign_key="tram_lines.id", index=True)
+    project_id: uuid.UUID = Field(foreign_key="project.id", index=True)
+    user_id: str = Field(index=True)
+    compiled_video_path: str = Field()  # URL or storage path
+    source_video_ids: Optional[str] = Field(default=None)  # JSON array of UUIDs
+    status: str = Field(default="pending")  # pending | completed | failed
+    completed_at: Optional[datetime] = Field(default=None)
+    error_message: Optional[str] = Field(default=None)
+    is_main_print: Optional[bool] = Field(default=None)
+    youtube_upload_status: Optional[str] = Field(default=None)
+    channel_number: Optional[int] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class ContactSubmission(SQLModel, table=True):
     """Public contact form submissions (no auth required)."""
     __tablename__ = "contact_submission"

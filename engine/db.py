@@ -197,6 +197,8 @@ def init_db():
         TramLine,
         MoodBoardComposition,
         MoodBoardImageHistory,
+        MoodBoardVideoHistory,
+        MoodBoardCompiledVideo,
         EmailVerificationToken,
         Notification,
         ContactSubmission,

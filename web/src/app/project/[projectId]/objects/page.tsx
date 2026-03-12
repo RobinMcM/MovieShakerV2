@@ -307,13 +307,15 @@ function ObjectsContent() {
     }
   };
 
-  const handleUpload = async (characterId: string, file: File) => {
+  const handleUpload = async (characterId: string, file: File): Promise<string | undefined> => {
     setUploadingId(characterId);
     try {
-      await uploadImage(characterId, file);
+      const url = await uploadImage(characterId, file);
       setToastMessage({ title: "Image uploaded" });
+      return url;
     } catch {
       setToastMessage({ title: "Failed to upload image", variant: "destructive" });
+      return undefined;
     } finally {
       setUploadingId(null);
     }

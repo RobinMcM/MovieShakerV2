@@ -80,6 +80,53 @@ class GatewayClient:
 
         return response.json()
 
+    def execute_text(
+        self,
+        *,
+        prompt: str,
+        model: str | None = None,
+        response_format: str = "text",
+        dry_run: bool = False,
+    ) -> dict:
+        """
+        Execute a text-generation request via the gateway.
+
+        Uses the same /api/execute contract as media generation.
+        Tries provider-less routing first, then common provider fallbacks.
+        """
+        if response_format not in {"text", "json"}:
+            raise GatewayClientError("response_format must be 'text' or 'json'")
+
+        payload = {"prompt": prompt, "response_format": response_format}
+        if model:
+            payload["model"] = model
+
+        attempts = [
+            {"media_type": "text-generation", "payload": payload, "dry_run": dry_run},
+            {"provider": "openai", "media_type": "text-generation", "payload": payload, "dry_run": dry_run},
+            {"provider": "anthropic", "media_type": "text-generation", "payload": payload, "dry_run": dry_run},
+        ]
+        last_detail = "Unknown gateway error"
+
+        with httpx.Client(timeout=self.timeout_seconds, verify=self.verify_tls) as client:
+            for body in attempts:
+                response = client.post(
+                    f"{self.base_url}/api/execute",
+                    json=body,
+                    headers=self._headers(),
+                )
+                if response.status_code < 400:
+                    return response.json()
+                detail = response.text
+                try:
+                    response_body = response.json()
+                    detail = response_body.get("message") or response_body.get("detail") or detail
+                except Exception:
+                    pass
+                last_detail = detail
+
+        raise GatewayClientError(f"Gateway text generation failed: {last_detail}")
+
     def get_status(self, job_id: str) -> dict:
         with httpx.Client(timeout=self.timeout_seconds, verify=self.verify_tls) as client:
             response = client.get(

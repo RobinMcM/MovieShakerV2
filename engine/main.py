@@ -31,6 +31,7 @@ from visualize_config import router as visualize_config_router
 from auth_deps import require_admin
 from admin import router as admin_router
 from contact import router as contact_router
+from film_in_a_box import router as film_in_a_box_router
 
 settings = load_settings()
 
@@ -128,6 +129,7 @@ app.include_router(compiled_videos_router)
 app.include_router(visualize_config_router)
 app.include_router(admin_router)
 app.include_router(contact_router)
+app.include_router(film_in_a_box_router)
 
 # --- Routes ---
 @app.get("/")

@@ -200,6 +200,7 @@ def init_db():
         MoodBoardVideoHistory,
         MoodBoardCompiledVideo,
         GatewayUsageEvent,
+        FilmInABoxItem,
         EmailVerificationToken,
         Notification,
         ContactSubmission,

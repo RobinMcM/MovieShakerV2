@@ -307,6 +307,20 @@ class GatewayUsageEvent(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class FilmInABoxItem(SQLModel, table=True):
+    """Saved Film in a Box generations (project-scoped or standalone history)."""
+    __tablename__ = "film_in_a_box_item"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: str = Field(index=True)
+    project_id: Optional[uuid.UUID] = Field(default=None, foreign_key="project.id", index=True)
+    name: str = Field()
+    content_type: str = Field(default="FILM")  # FILM | DOC
+    content_json: str = Field()  # Serialized generation output
+    prompt: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class ContactSubmission(SQLModel, table=True):
     """Public contact form submissions (no auth required)."""
     __tablename__ = "contact_submission"

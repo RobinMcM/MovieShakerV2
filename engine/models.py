@@ -66,6 +66,7 @@ class Project(SQLModel, table=True):
     series: Optional[str] = None
     episode: Optional[str] = None
     aspect_ratio: str = Field(default="16:9")
+    creation_method: str = Field(default="standard")  # "standard" | "film_in_a_box"
     
     created_at: datetime = Field(default_factory=datetime.utcnow)
     owner_id: str = Field(index=True) # SuperTokens User ID of the creator ("MovieMaker")

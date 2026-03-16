@@ -206,11 +206,18 @@ function ProjectsPage() {
                         setIsDialogOpen(open);
                         if (!open) resetForm();
                     }}>
-                        <DialogTrigger asChild>
-                            <Button size="lg">
-                                <Plus className="mr-2 h-4 w-4" /> New Project
+                        <div className="flex items-center gap-2">
+                            <Button size="lg" variant="outline" asChild>
+                                <Link href="/film-in-a-box">
+                                    <Clapperboard className="mr-2 h-4 w-4" /> a Film in a Box
+                                </Link>
                             </Button>
-                        </DialogTrigger>
+                            <DialogTrigger asChild>
+                                <Button size="lg">
+                                    <Plus className="mr-2 h-4 w-4" /> New Project
+                                </Button>
+                            </DialogTrigger>
+                        </div>
                         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                             <DialogHeader className="pb-0 text-center sm:text-center">
                                 <DialogTitle className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
@@ -355,7 +362,12 @@ function ProjectsPage() {
                         <Film className="h-10 w-10 text-muted-foreground mx-auto mb-4" />
                         <h3 className="text-lg font-medium">No projects yet</h3>
                         <p className="text-muted-foreground mb-6">Start your first production today.</p>
-                        <Button onClick={() => setIsDialogOpen(true)} variant="outline">Create Project</Button>
+                        <div className="flex justify-center gap-2">
+                            <Button onClick={() => setIsDialogOpen(true)} variant="outline">Create Project</Button>
+                            <Button variant="outline" asChild>
+                                <Link href="/film-in-a-box">a Film in a Box</Link>
+                            </Button>
+                        </div>
                     </div>
                 )}
 

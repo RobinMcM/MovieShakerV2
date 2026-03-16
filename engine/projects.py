@@ -57,6 +57,7 @@ class ProjectResponse(BaseModel):
     series: Optional[str] = None
     episode: Optional[str] = None
     aspect_ratio: str
+    creation_method: str = "standard"
     role: str # The user's role in this project
 
 @router.post("/", response_model=ProjectResponse)
@@ -95,6 +96,7 @@ def create_project(
         series=project_data.series,
         episode=project_data.episode,
         aspect_ratio=project_data.aspect_ratio,
+        creation_method="standard",
         owner_id=user_id
     )
     db.add(new_project)
@@ -124,6 +126,7 @@ def create_project(
         series=new_project.series,
         episode=new_project.episode,
         aspect_ratio=new_project.aspect_ratio,
+        creation_method=new_project.creation_method,
         role="owner"
     )
 
@@ -182,6 +185,7 @@ def list_projects(
                 series=project.series,
                 episode=project.episode,
                 aspect_ratio=project.aspect_ratio,
+                creation_method=getattr(project, "creation_method", "standard"),
                 role=role
             ))
         except Exception as e:
@@ -294,6 +298,7 @@ def update_project(
         series=project.series,
         episode=project.episode,
         aspect_ratio=project.aspect_ratio,
+        creation_method=getattr(project, "creation_method", "standard"),
         role=member.role
     )
 

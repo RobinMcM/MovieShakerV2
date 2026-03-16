@@ -64,6 +64,7 @@ def _migrate_project_table():
         ("series", "VARCHAR"),
         ("episode", "VARCHAR"),
         ("aspect_ratio", "VARCHAR NOT NULL DEFAULT '16:9'"),
+        ("creation_method", "VARCHAR NOT NULL DEFAULT 'standard'"),
     ]
     with engine.connect() as conn:
         with conn.begin():

@@ -50,6 +50,7 @@ interface ProjectData {
     series?: string | null;
     episode?: string | null;
     director?: string | null;
+    creation_method?: string | null;
     role: string;
 }
 
@@ -344,15 +345,17 @@ function ProjectPage() {
                                     Quick Actions
                                 </h3>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    <Link href={`/film-in-a-box?project=${projectId}`}>
-                                        <Card className="h-full transition-all hover:shadow-lg hover:border-primary/50 cursor-pointer bg-primary/5 border-primary/20">
-                                            <CardContent className="flex flex-col items-center justify-center p-6 space-y-3">
-                                                <Clapperboard className="h-12 w-12 text-primary" />
-                                                <span className="font-semibold text-base">Film in a Box</span>
-                                                <p className="text-xs text-muted-foreground text-center">AI-Powered Production Planning</p>
-                                            </CardContent>
-                                        </Card>
-                                    </Link>
+                                    {project.creation_method === "film_in_a_box" && (
+                                        <Link href={`/film-in-a-box?project=${projectId}`}>
+                                            <Card className="h-full transition-all hover:shadow-lg hover:border-primary/50 cursor-pointer bg-primary/5 border-primary/20">
+                                                <CardContent className="flex flex-col items-center justify-center p-6 space-y-3">
+                                                    <Clapperboard className="h-12 w-12 text-primary" />
+                                                    <span className="font-semibold text-base">a Film in a Box</span>
+                                                    <p className="text-xs text-muted-foreground text-center">AI-Powered Production Planning</p>
+                                                </CardContent>
+                                            </Card>
+                                        </Link>
+                                    )}
                                     <Link href={`/the-film-festival?project=${projectId}`}>
                                         <Card className="h-full transition-all hover:shadow-lg hover:border-purple-500/50 cursor-pointer bg-gradient-to-br from-purple-500/5 to-pink-500/5 border-purple-500/20">
                                             <CardContent className="flex flex-col items-center justify-center p-6 space-y-3">

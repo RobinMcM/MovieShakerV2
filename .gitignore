@@ -42,3 +42,10 @@ web 2/
 
 # Legacy Archive (excluded from active repo)
 .archive/
+
+# User-uploaded storage (never commit user data)
+engine/storage/
+
+# npm/build ghost artefacts
+web/next
+web/movieshaker-web@0.1.0

@@ -63,6 +63,12 @@ interface ConfigStatusResponse {
     };
 }
 
+interface GatewayModel {
+    id: string;
+    name?: string;
+    provider?: string;
+}
+
 function FilmInABoxPage() {
     const modelOverride = (process.env.NEXT_PUBLIC_FILM_IN_A_BOX_MODEL || "").trim();
     const router = useRouter();
@@ -79,6 +85,8 @@ function FilmInABoxPage() {
     const [docResult, setDocResult] = useState<DocResult | null>(null);
     const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
     const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+    const [selectedModel, setSelectedModel] = useState("");
+    const [modelSearch, setModelSearch] = useState("");
 
     const [projectDetails, setProjectDetails] = useState<ProjectData | null>(null);
     const [configStatus, setConfigStatus] = useState<ConfigStatusResponse["config"] | null>(null);
@@ -165,6 +173,42 @@ function FilmInABoxPage() {
         loadSavedItems();
     }, [loadSavedItems]);
 
+    const allModels = useMemo<GatewayModel[]>(() => {
+        return Array.isArray(configStatus?.models) ? configStatus.models : [];
+    }, [configStatus?.models]);
+
+    const filteredModels = useMemo<GatewayModel[]>(() => {
+        const query = modelSearch.trim().toLowerCase();
+        if (!query) return allModels;
+        return allModels.filter((model) => {
+            const id = model.id.toLowerCase();
+            const name = (model.name || "").toLowerCase();
+            const provider = (model.provider || "").toLowerCase();
+            return id.includes(query) || name.includes(query) || provider.includes(query);
+        });
+    }, [allModels, modelSearch]);
+
+    useEffect(() => {
+        if (allModels.length === 0) {
+            setSelectedModel("");
+            return;
+        }
+        if (selectedModel && allModels.some((model) => model.id === selectedModel)) {
+            return;
+        }
+        const overrideModel = modelOverride
+            ? allModels.find((model) => model.id === modelOverride)
+            : undefined;
+        setSelectedModel(overrideModel?.id || allModels[0].id);
+    }, [allModels, modelOverride, selectedModel]);
+
+    const modelsForSelect = useMemo<GatewayModel[]>(() => {
+        if (!selectedModel) return filteredModels;
+        if (filteredModels.some((model) => model.id === selectedModel)) return filteredModels;
+        const selectedModelData = allModels.find((model) => model.id === selectedModel);
+        return selectedModelData ? [selectedModelData, ...filteredModels] : filteredModels;
+    }, [allModels, filteredModels, selectedModel]);
+
     const handleGenerate = async () => {
         clearMessage();
         if (!title.trim() || !prompt.trim()) {
@@ -193,7 +237,7 @@ function FilmInABoxPage() {
                 prompt: prompt.trim(),
                 type,
                 previousContent: isContinuing ? (type === "FILM" ? filmResult : docResult) : undefined,
-                model: modelOverride || undefined,
+                model: selectedModel || modelOverride || undefined,
             });
 
             if (type === "FILM") {
@@ -395,6 +439,49 @@ function FilmInABoxPage() {
                                             : "Describe your story idea, characters, and tone..."
                                     }
                                 />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="model-search">Model</Label>
+                                <Input
+                                    id="model-search"
+                                    value={modelSearch}
+                                    onChange={(e) => setModelSearch(e.target.value)}
+                                    placeholder="Search models by id, name, or provider..."
+                                    disabled={!configStatus?.gatewayConnected || !configStatus?.hasGatewayKey || allModels.length === 0}
+                                />
+                                <Select
+                                    value={selectedModel}
+                                    onValueChange={setSelectedModel}
+                                    disabled={
+                                        !configStatus?.gatewayConnected ||
+                                        !configStatus?.hasGatewayKey ||
+                                        allModels.length === 0
+                                    }
+                                >
+                                    <SelectTrigger id="model-select">
+                                        <SelectValue placeholder="Select model" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {modelsForSelect.map((model) => (
+                                            <SelectItem key={model.id} value={model.id}>
+                                                {model.name || model.id}
+                                                {model.provider ? ` (${model.provider})` : ""}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                {!configStatus?.gatewayConnected || !configStatus?.hasGatewayKey ? (
+                                    <p className="text-xs text-muted-foreground">Model selection is available when the AI gateway is ready.</p>
+                                ) : allModels.length === 0 ? (
+                                    <p className="text-xs text-muted-foreground">No models returned by gateway.</p>
+                                ) : filteredModels.length === 0 ? (
+                                    <p className="text-xs text-muted-foreground">No models match your search. Current selection is retained.</p>
+                                ) : (
+                                    <p className="text-xs text-muted-foreground">
+                                        Showing {filteredModels.length} of {allModels.length} model{allModels.length === 1 ? "" : "s"}.
+                                    </p>
+                                )}
                             </div>
                         </CardContent>
                         <div className="p-6 pt-0">

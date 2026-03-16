@@ -17,7 +17,7 @@ from models import FilmInABoxItem, Project, ProjectMember, UserProfile
 router = APIRouter(prefix="/api/film-in-a-box", tags=["film-in-a-box"])
 settings = load_settings()
 PRODUCER_TIER_LIMITS = {"standard": 5, "indie": 25, "production_company": 999}
-FILM_IN_A_BOX_MODEL = "openai/gpt-5.1-chat"
+FILM_IN_A_BOX_MODEL = "google/gemma-3-12b-it:free"
 
 
 class GenerateBody(BaseModel):
@@ -25,6 +25,7 @@ class GenerateBody(BaseModel):
     prompt: str
     type: str  # FILM | DOC
     previousContent: Optional[Any] = None
+    model: Optional[str] = None
 
 
 class SaveBody(BaseModel):
@@ -236,10 +237,14 @@ def generate(
         raise HTTPException(status_code=503, detail="Gateway API key is not configured")
 
     try:
+        selected_model = (body.model or FILM_IN_A_BOX_MODEL).strip()
+        if not selected_model:
+            raise HTTPException(status_code=400, detail="Model is required")
+
         if content_type == "FILM":
             prompt = _film_prompt(body.title.strip(), body.prompt.strip(), body.previousContent)
             gateway_response = _gateway_client().execute_text(
-                model=FILM_IN_A_BOX_MODEL,
+                model=selected_model,
                 messages=_build_gateway_messages(prompt, want_json=False),
             )
             text = _extract_text_from_gateway(gateway_response)
@@ -249,7 +254,7 @@ def generate(
 
         prompt = _doc_prompt(body.title.strip(), body.prompt.strip(), body.previousContent)
         gateway_response = _gateway_client().execute_text(
-            model=FILM_IN_A_BOX_MODEL,
+            model=selected_model,
             messages=_build_gateway_messages(prompt, want_json=True),
         )
         raw_text = _extract_text_from_gateway(gateway_response)

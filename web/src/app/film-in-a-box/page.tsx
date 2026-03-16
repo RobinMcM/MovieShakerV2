@@ -64,6 +64,7 @@ interface ConfigStatusResponse {
 }
 
 function FilmInABoxPage() {
+    const modelOverride = (process.env.NEXT_PUBLIC_FILM_IN_A_BOX_MODEL || "").trim();
     const router = useRouter();
     const searchParams = useSearchParams();
     const projectId = searchParams.get("project");
@@ -192,6 +193,7 @@ function FilmInABoxPage() {
                 prompt: prompt.trim(),
                 type,
                 previousContent: isContinuing ? (type === "FILM" ? filmResult : docResult) : undefined,
+                model: modelOverride || undefined,
             });
 
             if (type === "FILM") {

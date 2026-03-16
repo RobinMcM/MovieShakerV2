@@ -199,6 +199,7 @@ def init_db():
         MoodBoardImageHistory,
         MoodBoardVideoHistory,
         MoodBoardCompiledVideo,
+        GatewayUsageEvent,
         EmailVerificationToken,
         Notification,
         ContactSubmission,

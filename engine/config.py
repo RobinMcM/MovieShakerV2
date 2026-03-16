@@ -38,6 +38,10 @@ class Settings:
     website_domain: str
     supertokens_connection_uri: str
     cors_origins: list[str]
+    gateway_base_url: str
+    gateway_internal_api_key: str
+    gateway_timeout_seconds: float
+    gateway_verify_tls: bool
 
     @property
     def is_production(self) -> bool:
@@ -71,6 +75,7 @@ def load_settings() -> Settings:
     ]
     env_origins = _split_csv_env("CORS_ORIGINS")
     cors_origins = _dedupe(dev_origins + default_production_origins + env_origins + [website_domain])
+    gateway_verify_tls = os.getenv("GATEWAY_VERIFY_TLS", "false").strip().lower() in {"1", "true", "yes"}
 
     return Settings(
         app_env=os.getenv("APP_ENV", os.getenv("ENVIRONMENT", "development")).strip().lower(),
@@ -80,4 +85,8 @@ def load_settings() -> Settings:
         website_domain=website_domain,
         supertokens_connection_uri=os.getenv("SUPERTOKENS_CONNECTION_URI", "http://supertokens:3567"),
         cors_origins=cors_origins,
+        gateway_base_url=os.getenv("GATEWAY_BASE_URL", "https://134.209.184.66").rstrip("/"),
+        gateway_internal_api_key=os.getenv("GATEWAY_INTERNAL_API_KEY", "").strip(),
+        gateway_timeout_seconds=float(os.getenv("GATEWAY_TIMEOUT_SECONDS", "45")),
+        gateway_verify_tls=gateway_verify_tls,
     )

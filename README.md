@@ -104,6 +104,13 @@ Copy `.env.example` to `.env` at repo root, then set values for your environment
 - `RESEND_API_KEY` (web email route)
 - `INTERNAL_API_KEY` (shared secret engine <-> web internal email route)
 
+### Gateway variables (AI source of truth)
+
+- `GATEWAY_BASE_URL` (example: `https://134.209.184.66`)
+- `GATEWAY_INTERNAL_API_KEY` (shared secret for engine -> gateway)
+- `GATEWAY_TIMEOUT_SECONDS` (optional; default `45`)
+- `GATEWAY_VERIFY_TLS` (optional; `false` for self-signed/IP certs)
+
 ### Frontend variables (`web/.env.local`)
 
 - `NEXT_PUBLIC_API_URL` (example: `http://localhost:8000`)

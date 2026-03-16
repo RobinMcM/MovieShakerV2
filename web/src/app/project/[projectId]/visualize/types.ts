@@ -3,12 +3,19 @@
  */
 
 export interface ApiConfig {
-  hasRunwayKey: boolean;
-  hasViduKey: boolean;
-  testModeEnabled: boolean;
+  sourceOfTruth: "gateway";
+  gatewayConnected: boolean;
+  hasGatewayKey: boolean;
+  models: GatewayModel[];
 }
 
-export type Provider = "runway" | "vidu";
+export type Provider = "gateway";
+
+export interface GatewayModel {
+  id: string;
+  name: string;
+  provider?: string | null;
+}
 
 export interface VideoHistoryItem {
   id: string;
@@ -25,6 +32,7 @@ export interface VideoHistoryItem {
   source_type?: string | null;
   source_image_path?: string | null;
   source_video_id?: string | null;
+  status?: string | null;
 }
 
 export interface CompiledVideo {
@@ -50,6 +58,5 @@ export interface CompiledVideoWithTramLine extends CompiledVideo {
 }
 
 export const PROVIDERS: { id: Provider; name: string; description: string }[] = [
-  { id: "runway", name: "Runway", description: "RunwayML Gen-4" },
-  { id: "vidu", name: "Vidu", description: "Vidu AI" },
+  { id: "gateway", name: "Gateway", description: "Gateway-backed model routing" },
 ];

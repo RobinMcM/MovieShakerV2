@@ -1,17 +1,19 @@
 """
 Visualize API config and stitch placeholder.
-- GET /api/config/status: returns hasRunwayKey, hasViduKey, testModeEnabled (placeholder: from env or API service).
+- GET /api/config/status: returns gateway connectivity and model metadata.
 - POST /api/video/stitch: placeholder for custom stitch server integration.
 """
-import os
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
+from config import load_settings
+from gateway_client import GatewayClient
 
 router = APIRouter(tags=["visualize-config"])
+settings = load_settings()
 
 
 @router.get("/api/config/status")
@@ -19,18 +21,30 @@ def get_config_status(
     session: SessionContainer = Depends(verify_session()),
 ):
     """
-    Placeholder: API keys are managed by your API service.
-    Returns booleans so the client can show provider options.
+    Gateway is the source of truth for model availability.
     """
-    has_runway = os.environ.get("RUNWAY_API_KEY", "").strip() != ""
-    has_vidu = os.environ.get("VIDU_API_KEY", "").strip() != ""
-    test_mode = os.environ.get("VISUALIZE_TEST_MODE", "true").lower() in ("1", "true", "yes")
+    client = GatewayClient(
+        base_url=settings.gateway_base_url,
+        api_key=settings.gateway_internal_api_key,
+        timeout_seconds=settings.gateway_timeout_seconds,
+        verify_tls=settings.gateway_verify_tls,
+    )
+    connected = client.health() if settings.gateway_base_url else False
+    models = client.get_models() if connected and settings.gateway_internal_api_key else []
+    compact_models = []
+    for model in models:
+        compact_models.append({
+            "id": model.get("id"),
+            "name": model.get("name") or model.get("id"),
+            "provider": model.get("provider"),
+        })
     return {
         "success": True,
         "config": {
-            "hasRunwayKey": has_runway or test_mode,
-            "hasViduKey": has_vidu or test_mode,
-            "testModeEnabled": test_mode,
+            "sourceOfTruth": "gateway",
+            "gatewayConnected": connected,
+            "hasGatewayKey": bool(settings.gateway_internal_api_key),
+            "models": compact_models,
         },
     }
 

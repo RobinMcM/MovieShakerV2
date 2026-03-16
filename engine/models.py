@@ -256,7 +256,7 @@ class MoodBoardVideoHistory(SQLModel, table=True):
     user_id: str = Field(index=True)
     video_path: str = Field()  # URL or storage path
     task_id: Optional[str] = Field(default=None)
-    generation_method: str = Field(default="ai_runway")  # ai_runway | ai_vidu
+    generation_method: str = Field(default="gateway_fal")
     prompt: Optional[str] = Field(default=None)
     aspect_ratio: Optional[str] = Field(default=None)
     duration: Optional[int] = Field(default=None)
@@ -285,6 +285,26 @@ class MoodBoardCompiledVideo(SQLModel, table=True):
     youtube_upload_status: Optional[str] = Field(default=None)
     channel_number: Optional[int] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class GatewayUsageEvent(SQLModel, table=True):
+    """Usage/cost ledger for gateway-backed generation requests."""
+    __tablename__ = "gateway_usage_events"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: str = Field(index=True)
+    project_id: uuid.UUID = Field(foreign_key="project.id", index=True)
+    tram_line_id: uuid.UUID = Field(foreign_key="tram_lines.id", index=True)
+    video_history_id: Optional[uuid.UUID] = Field(default=None, foreign_key="mood_board_video_history.id", index=True)
+    gateway_job_id: Optional[str] = Field(default=None, index=True)
+    provider: str = Field(default="fal")
+    model: Optional[str] = Field(default=None)
+    media_type: Optional[str] = Field(default=None)
+    status: str = Field(default="submitted")
+    estimate_json: Optional[str] = Field(default=None)
+    actual_usage_json: Optional[str] = Field(default=None)
+    raw_response_json: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class ContactSubmission(SQLModel, table=True):

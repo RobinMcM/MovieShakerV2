@@ -7,6 +7,7 @@ import { SessionAuth } from "supertokens-auth-react/recipe/session";
 import { AppHeader } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   Select,
@@ -39,6 +40,7 @@ import {
   Star,
   Film,
   Sparkles,
+  Play,
 } from "lucide-react";
 import { TramLineSelect } from "../moodboard/TramLineSelect";
 import { useVisualize } from "./useVisualize";
@@ -73,8 +75,11 @@ function VisualizeContent() {
   } = useVisualize(projectId);
 
   const [selectedTramLine, setSelectedTramLine] = useState<string | null>(null);
-  const [selectedProvider, setSelectedProvider] = useState<Provider>("runway");
+  const [selectedProvider, setSelectedProvider] = useState<Provider>("gateway");
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
+  const [prompt, setPrompt] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [pollingVideoId, setPollingVideoId] = useState<string | null>(null);
   const [videoToDelete, setVideoToDelete] = useState<{ id: string; path: string } | null>(null);
   const [compiledToDelete, setCompiledToDelete] = useState<{ id: string; path: string } | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -101,12 +106,9 @@ function VisualizeContent() {
     generatedImageUrl ||
     (currentLine?.scene_visual ? `${API_URL}/api/storage/${currentLine.scene_visual}` : null);
 
-  const hasRunway = apiConfig?.hasRunwayKey ?? false;
-  const hasVidu = apiConfig?.hasViduKey ?? false;
-  const availableProviders: Provider[] = [];
-  if (hasRunway) availableProviders.push("runway");
-  if (hasVidu) availableProviders.push("vidu");
-  if (availableProviders.length === 0) availableProviders.push("runway");
+  const gatewayConnected = apiConfig?.gatewayConnected ?? false;
+  const hasGatewayKey = apiConfig?.hasGatewayKey ?? false;
+  const availableProviders: Provider[] = ["gateway"];
 
   const channelGroups = videoHistory.reduce<Record<number, VideoHistoryItem[]>>((acc, v) => {
     const ch = v.Channel ?? 0;
@@ -117,6 +119,86 @@ function VisualizeContent() {
   const sortedChannels = Object.keys(channelGroups)
     .map(Number)
     .sort((a, b) => a - b);
+
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const pollVideoUntilTerminal = async (videoId: string) => {
+    setPollingVideoId(videoId);
+    const maxAttempts = 40;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      try {
+        const statusRes = await api.get<{
+          success: boolean;
+          status: string;
+          error?: string | null;
+          video?: VideoHistoryItem;
+        }>(`api/video-history/${videoId}/status`);
+        const status = statusRes.status;
+        if (status === "completed") {
+          if (selectedTramLine) {
+            await loadVideoHistory(selectedTramLine);
+          }
+          setToastMessage("Video generation completed.");
+          setPollingVideoId(null);
+          return;
+        }
+        if (status === "failed") {
+          setToastMessage(statusRes.error || "Video generation failed.");
+          setPollingVideoId(null);
+          if (selectedTramLine) {
+            await loadVideoHistory(selectedTramLine);
+          }
+          return;
+        }
+      } catch {
+        // Keep polling for transient failures.
+      }
+      await sleep(3000);
+    }
+    setPollingVideoId(null);
+    setToastMessage("Generation is still processing. Refresh in a few moments.");
+  };
+
+  const handleGenerateVideo = async () => {
+    if (!selectedTramLine) {
+      setToastMessage("Select a shot first.");
+      return;
+    }
+    setIsGenerating(true);
+    try {
+      const nextChannel = 1;
+      const currentChannelVideos = (channelGroups[nextChannel] ?? []).filter((v) => !!v.video_path);
+      const nextTake = currentChannelVideos.length + 1;
+      const res = await api.post<{
+        success: boolean;
+        video: VideoHistoryItem;
+        gateway: { job_id?: string | null; job_status?: string };
+      }>("api/video-history/generate", {
+        tram_line_id: selectedTramLine,
+        prompt: prompt.trim() || currentLine?.action_text || "Cinematic shot",
+        aspect_ratio: project?.aspect_ratio || "16:9",
+        channel: nextChannel,
+        take_number: nextTake,
+        media_type: "video-generation",
+        source_image_path: currentLine?.scene_visual || null,
+        source_image_data_url: generatedImageUrl || null,
+      });
+      await loadVideoHistory(selectedTramLine);
+      const createdVideoId = res.video?.id;
+      if (res.gateway?.job_status === "completed") {
+        setToastMessage("Video generated.");
+      } else if (createdVideoId) {
+        setToastMessage("Generation started.");
+        void pollVideoUntilTerminal(createdVideoId);
+      } else {
+        setToastMessage("Generation submitted.");
+      }
+    } catch (e) {
+      setToastMessage(e instanceof Error ? e.message : "Failed to start video generation.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   const handleStitch = async (channelNumber: number) => {
     const printed = videoHistory
@@ -190,16 +272,15 @@ function VisualizeContent() {
                 <SelectContent>
                   {availableProviders.map((id) => (
                     <SelectItem key={id} value={id}>
-                      {id === "runway" ? "Runway" : "Vidu"}
+                      Gateway
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {availableProviders.length === 0 && (
-                <p className="text-sm text-muted-foreground mt-2">
-                  API service placeholder. Configure keys or test mode.
-                </p>
-              )}
+              <p className="text-sm text-muted-foreground mt-2">
+                Source of truth: Gateway
+                {!hasGatewayKey ? " (missing internal key)" : gatewayConnected ? " (connected)" : " (not reachable)"}
+              </p>
             </div>
             {tramLines.length > 0 ? (
               <div>
@@ -219,7 +300,7 @@ function VisualizeContent() {
         <Card>
           <CardHeader>
             <CardTitle>Video Generation</CardTitle>
-            <CardDescription>Generate video from moodboard image (placeholder: connect your API service)</CardDescription>
+            <CardDescription>Generate video through the gateway model router</CardDescription>
           </CardHeader>
           <CardContent>
             {!imageUrl ? (
@@ -237,9 +318,20 @@ function VisualizeContent() {
                   />
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Video generation (Runway/Vidu) will be connected via your API service. Buttons: Generate Video,
-                  Extract last frame, Generate continuation.
+                  Gateway generation supports prompt + optional moodboard source image.
                 </p>
+                <div className="space-y-3 max-w-xl">
+                  <Textarea
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    placeholder={currentLine?.action_text || "Describe the cinematic shot..."}
+                    className="min-h-[100px]"
+                  />
+                  <Button onClick={handleGenerateVideo} disabled={isGenerating || !gatewayConnected}>
+                    {isGenerating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
+                    Generate Video
+                  </Button>
+                </div>
               </div>
             )}
           </CardContent>
@@ -272,14 +364,26 @@ function VisualizeContent() {
                             {videos.map((video) => (
                               <div key={video.id} className="space-y-2">
                                 <div className="relative aspect-video rounded-md overflow-hidden bg-black border">
-                                  <video
-                                    src={getVideoUrl(video.video_path)}
-                                    controls
-                                    preload="metadata"
-                                    className="w-full h-full object-cover"
-                                  />
+                                  {video.video_path ? (
+                                    <video
+                                      src={getVideoUrl(video.video_path)}
+                                      controls
+                                      preload="metadata"
+                                      className="w-full h-full object-cover"
+                                    />
+                                  ) : (
+                                    <div className="w-full h-full flex flex-col items-center justify-center text-white/80 gap-2">
+                                      <Loader2 className="h-5 w-5 animate-spin" />
+                                      <span className="text-xs">
+                                        {pollingVideoId === video.id || video.status === "processing"
+                                          ? "Processing..."
+                                          : "Pending..."}
+                                      </span>
+                                    </div>
+                                  )}
                                   <button
                                     type="button"
+                                    disabled={!video.video_path}
                                     onClick={() =>
                                       toggleVideoPrint(
                                         video.id,
@@ -291,7 +395,9 @@ function VisualizeContent() {
                                   >
                                     <Star
                                       className={`h-5 w-5 ${
-                                        video.is_print ? "fill-yellow-400 text-yellow-400" : "text-white"
+                                        video.video_path && video.is_print
+                                          ? "fill-yellow-400 text-yellow-400"
+                                          : "text-white"
                                       }`}
                                     />
                                   </button>

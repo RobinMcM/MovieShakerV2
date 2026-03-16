@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=20 <22"
+    "node": "20.x"
   },
   "scripts": {
     "predev": "node -e \"const m=parseInt(process.versions.node,10);if(m>=22){console.error('\\nNode '+process.versions.node+' causes ERR_INVALID_PACKAGE_CONFIG. Use Node 20: nvm use (or install Node 20 LTS), then npm run dev.\\n');process.exit(1);}\"",

@@ -9,7 +9,7 @@ import { Loader2, Clapperboard, Save, Plus, ArrowLeft, FileText, Video, User } f
 import { AppHeader } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -395,12 +395,12 @@ function FilmInABoxPage() {
                                 />
                             </div>
                         </CardContent>
-                        <CardFooter>
+                        <div className="p-6 pt-0">
                             <Button onClick={handleGenerate} disabled={loading} className="w-full">
                                 {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Clapperboard className="mr-2 h-4 w-4" />}
                                 {hasContent ? "Generate / Continue" : "Generate Script / Plan"}
                             </Button>
-                        </CardFooter>
+                        </div>
                     </Card>
 
                     <div className="lg:col-span-2">

@@ -17,6 +17,7 @@ from models import FilmInABoxItem, Project, ProjectMember, UserProfile
 router = APIRouter(prefix="/api/film-in-a-box", tags=["film-in-a-box"])
 settings = load_settings()
 PRODUCER_TIER_LIMITS = {"standard": 5, "indie": 25, "production_company": 999}
+FILM_IN_A_BOX_MODEL = "openai/gpt-5.1-chat"
 
 
 class GenerateBody(BaseModel):
@@ -68,6 +69,22 @@ def _gateway_client() -> GatewayClient:
 def _extract_text_from_gateway(response: dict) -> str:
     if not isinstance(response, dict):
         return ""
+
+    # Common gateway format: {"result": {"choices":[{"message":{"content":"..."}}]}}
+    result_block = response.get("result")
+    if isinstance(result_block, dict):
+        choices = result_block.get("choices")
+        if isinstance(choices, list) and choices:
+            first = choices[0]
+            if isinstance(first, dict):
+                message = first.get("message")
+                if isinstance(message, dict):
+                    content = message.get("content")
+                    if isinstance(content, str) and content.strip():
+                        return content.strip()
+                text_val = first.get("text")
+                if isinstance(text_val, str) and text_val.strip():
+                    return text_val.strip()
 
     for key in ("text", "result", "output", "content", "message"):
         value = response.get(key)
@@ -189,6 +206,19 @@ def _normalize_doc_result(candidate: Any) -> dict:
     }
 
 
+def _build_gateway_messages(prompt: str, want_json: bool) -> list[dict[str, str]]:
+    system = (
+        "You are a professional film development assistant."
+        " Keep responses practical and production-oriented."
+    )
+    if want_json:
+        system += " Return strict JSON only with no markdown."
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": prompt},
+    ]
+
+
 @router.post("/generate")
 def generate(
     body: GenerateBody,
@@ -209,8 +239,8 @@ def generate(
         if content_type == "FILM":
             prompt = _film_prompt(body.title.strip(), body.prompt.strip(), body.previousContent)
             gateway_response = _gateway_client().execute_text(
-                prompt=prompt,
-                response_format="text",
+                model=FILM_IN_A_BOX_MODEL,
+                messages=_build_gateway_messages(prompt, want_json=False),
             )
             text = _extract_text_from_gateway(gateway_response)
             if not text:
@@ -219,8 +249,8 @@ def generate(
 
         prompt = _doc_prompt(body.title.strip(), body.prompt.strip(), body.previousContent)
         gateway_response = _gateway_client().execute_text(
-            prompt=prompt,
-            response_format="json",
+            model=FILM_IN_A_BOX_MODEL,
+            messages=_build_gateway_messages(prompt, want_json=True),
         )
         raw_text = _extract_text_from_gateway(gateway_response)
         json_candidate = _extract_json_block(raw_text)

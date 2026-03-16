@@ -13,6 +13,11 @@ def test_extract_text_from_gateway_prefers_message_content():
     assert _extract_text_from_gateway(response) == "hello from gateway"
 
 
+def test_extract_text_from_gateway_supports_result_choices_shape():
+    response = {"result": {"choices": [{"message": {"content": "nested hello"}}]}}
+    assert _extract_text_from_gateway(response) == "nested hello"
+
+
 def test_normalize_doc_result_guarantees_shape():
     result = _normalize_doc_result({"logline": "L", "bRollWishlist": ["A"]})
     assert result["logline"] == "L"

@@ -83,49 +83,43 @@ class GatewayClient:
     def execute_text(
         self,
         *,
-        prompt: str,
-        model: str | None = None,
-        response_format: str = "text",
+        model: str,
+        messages: list[dict[str, str]],
         dry_run: bool = False,
     ) -> dict:
         """
-        Execute a text-generation request via the gateway.
-
-        Uses the same /api/execute contract as media generation.
-        Tries provider-less routing first, then common provider fallbacks.
+        Execute a text-completion request via OpenRouter through gateway.
+        Matches chatbot contract used against usageflows /api/execute.
         """
-        if response_format not in {"text", "json"}:
-            raise GatewayClientError("response_format must be 'text' or 'json'")
+        if not model.strip():
+            raise GatewayClientError("Model is required for text generation")
+        if not isinstance(messages, list) or not messages:
+            raise GatewayClientError("Messages are required for text generation")
 
-        payload = {"prompt": prompt, "response_format": response_format}
-        if model:
-            payload["model"] = model
-
-        attempts = [
-            {"media_type": "text-generation", "payload": payload, "dry_run": dry_run},
-            {"provider": "openai", "media_type": "text-generation", "payload": payload, "dry_run": dry_run},
-            {"provider": "anthropic", "media_type": "text-generation", "payload": payload, "dry_run": dry_run},
-        ]
-        last_detail = "Unknown gateway error"
-
+        body = {
+            "provider": "openrouter",
+            "job_type": "text-completion",
+            "payload": {
+                "model": model,
+                "messages": messages,
+            },
+            "dry_run": dry_run,
+        }
         with httpx.Client(timeout=self.timeout_seconds, verify=self.verify_tls) as client:
-            for body in attempts:
-                response = client.post(
-                    f"{self.base_url}/api/execute",
-                    json=body,
-                    headers=self._headers(),
-                )
-                if response.status_code < 400:
-                    return response.json()
-                detail = response.text
-                try:
-                    response_body = response.json()
-                    detail = response_body.get("message") or response_body.get("detail") or detail
-                except Exception:
-                    pass
-                last_detail = detail
-
-        raise GatewayClientError(f"Gateway text generation failed: {last_detail}")
+            response = client.post(
+                f"{self.base_url}/api/execute",
+                json=body,
+                headers=self._headers(),
+            )
+        if response.status_code >= 400:
+            detail = response.text
+            try:
+                response_body = response.json()
+                detail = response_body.get("message") or response_body.get("detail") or detail
+            except Exception:
+                pass
+            raise GatewayClientError(f"Gateway text generation failed: {detail}")
+        return response.json()
 
     def get_status(self, job_id: str) -> dict:
         with httpx.Client(timeout=self.timeout_seconds, verify=self.verify_tls) as client:

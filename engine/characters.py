@@ -4,6 +4,7 @@ Routes: PUT /characters/{id}, DELETE /characters/{id}, POST /api/characters/uplo
 POST /api/characters/{id}/generate-image.
 """
 import os
+import time
 import uuid
 from typing import Optional
 from urllib.parse import urlparse
@@ -120,6 +121,39 @@ def _stable_filename(character: Character, fallback_ext: str) -> str:
     return f"{character.id}.{fallback_ext}"
 
 
+def _resolve_image_url_from_gateway(
+    client: GatewayClient,
+    first_response: dict,
+) -> tuple[Optional[str], dict]:
+    image_url = _extract_generated_image_url(first_response)
+    if image_url:
+        return image_url, first_response
+
+    job_id = first_response.get("job_id")
+    if not isinstance(job_id, str) or not job_id.strip():
+        return None, first_response
+
+    deadline = time.monotonic() + max(10.0, settings.gateway_timeout_seconds * 2)
+    latest_response = first_response
+    while time.monotonic() < deadline:
+        try:
+            latest_response = client.get_status(job_id)
+        except GatewayClientError:
+            break
+
+        status = str(latest_response.get("job_status") or "").strip().lower()
+        image_url = _extract_generated_image_url(latest_response)
+        if image_url:
+            return image_url, latest_response
+        if status in {"failed", "error", "cancelled"}:
+            return None, latest_response
+        if status in {"completed", "succeeded", "done"}:
+            return None, latest_response
+        time.sleep(1.0)
+
+    return None, latest_response
+
+
 @router.put("/characters/{character_id}")
 def update_character(
     character_id: str,
@@ -193,18 +227,33 @@ def generate_character_image(
         "prompt": prompt,
         "aspect_ratio": (body.aspect_ratio or character.aspect_ratio or "1:1"),
     }
+    gateway = _gateway_client()
     try:
-        response = _gateway_client().execute_fal(
+        response = gateway.execute_fal(
             media_type="image-generation",
             payload=payload,
             model=selected_model,
             dry_run=body.dry_run,
         )
     except GatewayClientError as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        if not selected_model:
+            raise HTTPException(status_code=502, detail=str(exc))
+        # If profile-selected model is invalid for this media type, try gateway default route.
+        try:
+            response = gateway.execute_fal(
+                media_type="image-generation",
+                payload=payload,
+                model=None,
+                dry_run=body.dry_run,
+            )
+        except GatewayClientError:
+            raise HTTPException(status_code=502, detail=str(exc))
 
-    image_url = _extract_generated_image_url(response)
+    image_url, final_gateway_response = _resolve_image_url_from_gateway(gateway, response)
     if not image_url:
+        error_message = final_gateway_response.get("error") if isinstance(final_gateway_response, dict) else None
+        if isinstance(error_message, str) and error_message.strip():
+            raise HTTPException(status_code=502, detail=f"Image generation failed: {error_message.strip()}")
         raise HTTPException(status_code=502, detail="Gateway did not return an image URL")
 
     try:
@@ -228,7 +277,7 @@ def generate_character_image(
 
     character.character_image_url = path_key
     db.add(character)
-    credits_cost = extract_credit_cost(response)
+    credits_cost = extract_credit_cost(final_gateway_response if isinstance(final_gateway_response, dict) else response)
     balance = apply_credit_cost(db, user_id, credits_cost)
     db.commit()
     db.refresh(character)

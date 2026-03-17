@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
-import { Loader2, Clapperboard, Save, Plus, ArrowLeft, FileText, Video, User } from "lucide-react";
+import { Loader2, Clapperboard, Save, ArrowLeft, FileText, Video, User } from "lucide-react";
 
 import { AppHeader } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -295,19 +295,6 @@ function FilmInABoxPage() {
         }
     };
 
-    const handleNewDraft = () => {
-        clearMessage();
-        setType("FILM");
-        setPrompt("");
-        setFilmResult(null);
-        setDocResult(null);
-        if (projectId && projectDetails?.name) {
-            setTitle(projectDetails.name);
-            return;
-        }
-        setTitle("");
-    };
-
     const backHref = projectId ? `/project/${projectId}` : "/projects";
     const gatewaySummary = useMemo(() => {
         if (!configStatus) return "Gateway status unavailable";
@@ -381,10 +368,6 @@ function FilmInABoxPage() {
                                 <CardTitle>Project Details</CardTitle>
                                 <CardDescription>Define your story parameters.</CardDescription>
                             </div>
-                            <Button variant="ghost" size="sm" onClick={handleNewDraft}>
-                                <Plus className="h-4 w-4 mr-2" />
-                                New
-                            </Button>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             {!projectId && savedItems.length > 0 && (
@@ -507,9 +490,12 @@ function FilmInABoxPage() {
                                             <CardTitle>Screenplay Draft</CardTitle>
                                         </CardHeader>
                                         <CardContent>
-                                            <pre className="whitespace-pre-wrap font-mono text-sm bg-muted p-4 rounded-md overflow-x-auto">
-                                                {filmResult}
-                                            </pre>
+                                            <Textarea
+                                                className="min-h-[420px] font-mono text-sm"
+                                                value={filmResult}
+                                                onChange={(e) => setFilmResult(e.target.value)}
+                                                placeholder="Your screenplay draft will appear here..."
+                                            />
                                         </CardContent>
                                     </Card>
                                 )}

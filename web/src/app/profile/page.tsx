@@ -85,6 +85,7 @@ function ProfilePage() {
         categories?: string[];
     }>>([]);
     const [selectedFiabCategory, setSelectedFiabCategory] = useState<FiabCategory>("script_creative_writing");
+    const [fiabCostSort, setFiabCostSort] = useState<"desc" | "asc">("desc");
     const [savingModels, setSavingModels] = useState(false);
 
     const [formData, setFormData] = useState({
@@ -210,11 +211,13 @@ function ProfilePage() {
         });
         const sorted = [...filtered];
         sorted.sort((a, b) =>
-            (Number(b.cost_rank || 0) - Number(a.cost_rank || 0))
+            ((fiabCostSort === "desc"
+                ? Number(b.cost_rank || 0) - Number(a.cost_rank || 0)
+                : Number(a.cost_rank || 0) - Number(b.cost_rank || 0)))
             || String(a.name || a.id).localeCompare(String(b.name || b.id))
         );
         return sorted;
-    }, [fiabTextModels, gatewayModels, selectedFiabCategory]);
+    }, [fiabCostSort, fiabTextModels, gatewayModels, selectedFiabCategory]);
 
     function handleBuyCreditsPlaceholder() {
         const amount = Number.parseInt(purchaseAmount, 10);
@@ -495,6 +498,15 @@ function ProfilePage() {
 
                         <div className="space-y-2">
                             <Label>Model for a Film in a Box (Text)</Label>
+                            <Select value={fiabCostSort} onValueChange={(value) => setFiabCostSort(value as "desc" | "asc")}>
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="desc">Cost: High to Low</SelectItem>
+                                    <SelectItem value="asc">Cost: Low to High</SelectItem>
+                                </SelectContent>
+                            </Select>
                             <Select
                                 value={formData.model_fiab_text || "__none__"}
                                 onValueChange={(value) => handleModelChange("model_fiab_text", value)}
@@ -513,7 +525,7 @@ function ProfilePage() {
                                 </SelectContent>
                             </Select>
                             <p className="text-xs text-muted-foreground">
-                                Ordered by cost high to low.
+                                {fiabCostSort === "desc" ? "Ordered by cost high to low." : "Ordered by cost low to high."}
                             </p>
                             {orderedFiabModels.length === 0 && (
                                 <p className="text-xs text-muted-foreground">

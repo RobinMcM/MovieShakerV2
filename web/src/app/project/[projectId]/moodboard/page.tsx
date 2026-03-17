@@ -15,6 +15,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   User,
@@ -39,6 +46,13 @@ const DrawingCanvas = dynamic(
   () => import("@/components/DrawingCanvas").then((m) => ({ default: m.DrawingCanvas })),
   { ssr: false }
 );
+
+const CANVAS_ASPECT_RATIO_OPTIONS = [
+  { value: "16:9", label: "Landscape (16:9) - most common" },
+  { value: "9:16", label: "Vertical (9:16) - mobile / social media" },
+  { value: "1:1", label: "Square (1:1) - simple / training datasets" },
+  { value: "2.39:1", label: "Cinematic (2.39:1) - film style" },
+];
 
 function getSceneNumber(tramLine: TramLineWithScene): string | number {
   return tramLine.scenes?.scene_number ?? "?";
@@ -70,6 +84,7 @@ function MoodBoardContent() {
   const [currentCanvasIndex, setCurrentCanvasIndex] = useState(0);
   const [isNewCanvas, setIsNewCanvas] = useState(false);
   const [canvasNote, setCanvasNote] = useState("");
+  const [canvasAspectRatio, setCanvasAspectRatio] = useState("16:9");
   const [isScriptCollapsed, setIsScriptCollapsed] = useState(false);
   const canvasRef = useRef<DrawingCanvasRef>(null);
 
@@ -107,6 +122,10 @@ function MoodBoardContent() {
     if (compositions.length === 0 && !isNewCanvas) setIsNewCanvas(true);
   }, [compositions.length, isNewCanvas]);
 
+  useEffect(() => {
+    setCanvasAspectRatio(project?.aspect_ratio ?? "16:9");
+  }, [project?.aspect_ratio]);
+
   const selectedTramLine = tramLines.find((t) => t.id === selectedTramLineId);
 
   const handleCanvasSave = useCallback(
@@ -119,7 +138,7 @@ function MoodBoardContent() {
         await uploadImage({
           tramLineId: selectedTramLineId,
           file,
-          aspectRatio: project.aspect_ratio ?? "16:9",
+          aspectRatio: canvasAspectRatio,
         });
         const dataToSave = { ...compositionData, note: canvasNote };
         await saveComposition({
@@ -140,6 +159,7 @@ function MoodBoardContent() {
       projectId,
       project,
       canvasNote,
+      canvasAspectRatio,
       isNewCanvas,
       currentComposition?.id,
       uploadImage,
@@ -334,6 +354,21 @@ function MoodBoardContent() {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-muted-foreground">Canvas Aspect Ratio</label>
+                      <Select value={canvasAspectRatio} onValueChange={setCanvasAspectRatio}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CANVAS_ASPECT_RATIO_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                     {compositionsLoading ? (
                       <div className="flex items-center justify-center py-12">
                         <Loader2 className="h-6 w-6 animate-spin" />
@@ -345,7 +380,7 @@ function MoodBoardContent() {
                         tramLineId={selectedTramLine?.id ?? ""}
                         initialData={currentComposition?.composition_data as DrawingCanvasProps["initialData"]}
                         onSave={handleCanvasSave}
-                        aspectRatio={project?.aspect_ratio ?? "16:9"}
+                        aspectRatio={canvasAspectRatio}
                       />
                     )}
                     <div className="space-y-2">

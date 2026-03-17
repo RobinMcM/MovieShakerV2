@@ -48,7 +48,12 @@ const filmTypeOptions = [
     "Feature Film", "Short", "Series", "Documentary", "Commercial", "Music Video"
 ];
 
-const aspectRatioOptions = ["16:9", "9:16", "2.35:1", "4:3", "1:1"];
+const aspectRatioOptions = [
+    { value: "16:9", label: "Landscape (16:9) - most common" },
+    { value: "9:16", label: "Vertical (9:16) - mobile / social media" },
+    { value: "1:1", label: "Square (1:1) - simple / training datasets" },
+    { value: "2.39:1", label: "Cinematic (2.39:1) - film style" },
+];
 
 interface ProfileStats {
     role?: string;
@@ -288,8 +293,10 @@ function ProjectsPage() {
                                             onChange={handleInputChange}
                                             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                                         >
-                                            {aspectRatioOptions.map(opt => (
-                                                <option key={opt} value={opt}>{opt}</option>
+                                            {aspectRatioOptions.map((opt) => (
+                                                <option key={opt.value} value={opt.value}>
+                                                    {opt.label}
+                                                </option>
                                             ))}
                                         </select>
                                     </div>

@@ -66,6 +66,12 @@ const ASPECT_RATIOS = [
   { value: "4:3", label: "4:3" },
   { value: "3:4", label: "3:4" },
 ];
+const PROJECT_ASPECT_RATIO_OPTIONS = [
+  { value: "16:9", label: "Landscape (16:9) - most common" },
+  { value: "9:16", label: "Vertical (9:16) - mobile / social media" },
+  { value: "1:1", label: "Square (1:1) - simple / training datasets" },
+  { value: "2.39:1", label: "Cinematic (2.39:1) - film style" },
+];
 
 function getAspectRatioClass(aspectRatio: string | null | undefined): string {
   if (!aspectRatio) return "aspect-square";
@@ -80,6 +86,8 @@ function getAspectRatioClass(aspectRatio: string | null | undefined): string {
       return "aspect-[4/3]";
     case "3:4":
       return "aspect-[3/4]";
+    case "2.39:1":
+      return "aspect-[2.39/1]";
     default:
       return "aspect-square";
   }
@@ -240,7 +248,7 @@ function ObjectsContent() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
-  const [newAspectRatio, setNewAspectRatio] = useState("1:1");
+  const [newAspectRatio, setNewAspectRatio] = useState("16:9");
   const [newType, setNewType] = useState<"character" | "object" | "scene">("object");
   const [isCreating, setIsCreating] = useState(false);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
@@ -281,7 +289,7 @@ function ObjectsContent() {
       setIsCreateDialogOpen(false);
       setNewName("");
       setNewDescription("");
-      setNewAspectRatio("1:1");
+      setNewAspectRatio("16:9");
       setNewType("object");
       setToastMessage({ title: "Item created" });
     } catch (e) {
@@ -373,7 +381,7 @@ function ObjectsContent() {
               if (!open) {
                 setNewName("");
                 setNewDescription("");
-                setNewAspectRatio("1:1");
+                setNewAspectRatio("16:9");
                 setNewType("object");
               }
             }}
@@ -432,7 +440,7 @@ function ObjectsContent() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {ASPECT_RATIOS.map((r) => (
+                      {PROJECT_ASPECT_RATIO_OPTIONS.map((r) => (
                         <SelectItem key={r.value} value={r.value}>
                           {r.label}
                         </SelectItem>

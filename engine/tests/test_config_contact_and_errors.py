@@ -28,6 +28,7 @@ def _request(origin: str = "http://localhost:3000", ip: str = "127.0.0.1"):
 
 
 def test_load_settings_builds_cors_from_defaults_and_env(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.setenv("API_BASE_URL", "https://api.example.com")
     monkeypatch.setenv("WEBSITE_DOMAIN", "https://app.example.com")
     monkeypatch.setenv("CORS_ORIGINS", "https://extra.example.com, https://movieshaker.com")
@@ -37,8 +38,32 @@ def test_load_settings_builds_cors_from_defaults_and_env(monkeypatch):
     assert settings.website_domain == "https://app.example.com"
     assert "https://app.example.com" in settings.cors_origins
     assert "https://extra.example.com" in settings.cors_origins
+    assert "http://localhost:3000" in settings.cors_origins
     # Safe defaults stay present even when CORS_ORIGINS is provided.
     assert "https://movieshaker.com" in settings.cors_origins
+
+
+def test_load_settings_production_excludes_dev_origins_by_default(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("API_BASE_URL", "https://api.example.com")
+    monkeypatch.setenv("WEBSITE_DOMAIN", "https://app.example.com")
+    monkeypatch.delenv("CORS_ORIGINS", raising=False)
+
+    settings = load_settings()
+    assert "http://localhost:3000" not in settings.cors_origins
+    assert "http://localhost:3001" not in settings.cors_origins
+    assert "http://localhost:5174" not in settings.cors_origins
+    assert "https://app.example.com" in settings.cors_origins
+
+
+def test_load_settings_sql_echo_defaults_off_and_can_enable(monkeypatch):
+    monkeypatch.delenv("SQL_ECHO", raising=False)
+    settings = load_settings()
+    assert settings.sql_echo is False
+
+    monkeypatch.setenv("SQL_ECHO", "true")
+    settings = load_settings()
+    assert settings.sql_echo is True
 
 
 def test_contact_submit_success_persists_submission():

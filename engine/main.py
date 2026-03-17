@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from supertokens_python import init, InputAppInfo, SupertokensConfig, get_all_cors_headers
-from supertokens_python.recipe import emailpassword, session, dashboard
+from supertokens_python.recipe import emailpassword, session
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
 from supertokens_python.framework.fastapi import get_middleware
@@ -51,7 +51,6 @@ init(
     recipe_list=[
         emailpassword.init(),
         session.init(),
-        dashboard.init()
     ]
 )
 

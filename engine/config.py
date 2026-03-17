@@ -42,6 +42,7 @@ class Settings:
     gateway_internal_api_key: str
     gateway_timeout_seconds: float
     gateway_verify_tls: bool
+    sql_echo: bool
 
     @property
     def is_production(self) -> bool:
@@ -51,6 +52,7 @@ class Settings:
 def load_settings() -> Settings:
     _load_env_files()
 
+    app_env = os.getenv("APP_ENV", os.getenv("ENVIRONMENT", "development")).strip().lower()
     api_port = int(os.getenv("API_PORT", "8000"))
     web_port = int(os.getenv("WEB_PORT", "5173"))
     api_base_url = os.getenv("API_BASE_URL", f"http://localhost:{api_port}").rstrip("/")
@@ -74,11 +76,15 @@ def load_settings() -> Settings:
         "http://localhost:3001",
     ]
     env_origins = _split_csv_env("CORS_ORIGINS")
-    cors_origins = _dedupe(dev_origins + default_production_origins + env_origins + [website_domain])
+    if app_env in {"prod", "production"}:
+        cors_origins = _dedupe(default_production_origins + env_origins + [website_domain])
+    else:
+        cors_origins = _dedupe(dev_origins + default_production_origins + env_origins + [website_domain])
     gateway_verify_tls = os.getenv("GATEWAY_VERIFY_TLS", "false").strip().lower() in {"1", "true", "yes"}
+    sql_echo = os.getenv("SQL_ECHO", "false").strip().lower() in {"1", "true", "yes"}
 
     return Settings(
-        app_env=os.getenv("APP_ENV", os.getenv("ENVIRONMENT", "development")).strip().lower(),
+        app_env=app_env,
         api_port=api_port,
         web_port=web_port,
         api_base_url=api_base_url,
@@ -89,4 +95,5 @@ def load_settings() -> Settings:
         gateway_internal_api_key=os.getenv("GATEWAY_INTERNAL_API_KEY", "").strip(),
         gateway_timeout_seconds=float(os.getenv("GATEWAY_TIMEOUT_SECONDS", "45")),
         gateway_verify_tls=gateway_verify_tls,
+        sql_echo=sql_echo,
     )

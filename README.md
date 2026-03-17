@@ -91,6 +91,7 @@ Copy `.env.example` to `.env` at repo root, then set values for your environment
 - `API_BASE_URL` - external API origin (example: `https://api.movieshaker.com`)
 - `WEBSITE_DOMAIN` - external web origin (example: `https://movieshaker.com`)
 - `CORS_ORIGINS` - optional extra allowed origins (comma-separated)
+- `SQL_ECHO` - optional SQL logging toggle (`false` by default; set `true` only for local debugging)
 - `SUPERTOKENS_CONNECTION_URI` - SuperTokens core URI
 - `DATABASE_URL` - engine DB URL
 
@@ -128,7 +129,8 @@ pytest engine/tests -q
 ## Production notes
 
 - Keep `API_BASE_URL` and `WEBSITE_DOMAIN` set explicitly in production.
-- CORS defaults include key production domains, and `CORS_ORIGINS` can append additional origins.
+- CORS defaults include key production domains; localhost dev origins are only included outside production unless explicitly added via `CORS_ORIGINS`.
+- SuperTokens dashboard recipe is disabled in the backend service.
 - For auth refresh issues, validate preflight:
 
 ```bash

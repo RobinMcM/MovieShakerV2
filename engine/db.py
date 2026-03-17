@@ -2,13 +2,15 @@ from sqlmodel import SQLModel, create_engine, Session
 from sqlalchemy import text
 import os
 import logging
+from config import load_settings
 
 logger = logging.getLogger(__name__)
 
 # Database URL from environment or default to local docker service
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@db:5432/movieshaker")
+settings = load_settings()
 
-engine = create_engine(DATABASE_URL, echo=True)
+engine = create_engine(DATABASE_URL, echo=settings.sql_echo)
 
 
 def _migrate_user_profile_roles():

@@ -92,6 +92,8 @@ function FilmInABoxPage() {
     const [selectedModel, setSelectedModel] = useState("");
     const [modelSearch, setModelSearch] = useState("");
     const [profileDefaults, setProfileDefaults] = useState<ProfileDefaults | null>(null);
+    const [lastCallCost, setLastCallCost] = useState<number | null>(null);
+    const [lastCallBalance, setLastCallBalance] = useState<number | null>(null);
 
     const [projectDetails, setProjectDetails] = useState<ProjectData | null>(null);
     const [configStatus, setConfigStatus] = useState<ConfigStatusResponse["config"] | null>(null);
@@ -251,13 +253,22 @@ function FilmInABoxPage() {
 
         setLoading(true);
         try {
-            const res = await api.post<{ result: string | DocResult }>("/api/film-in-a-box/generate", {
+            const res = await api.post<{ result: string | DocResult; credits?: { cost?: number; balance?: number } }>(
+                "/api/film-in-a-box/generate",
+                {
                 title: title.trim(),
                 prompt: prompt.trim(),
                 type,
                 previousContent: isContinuing ? (type === "FILM" ? filmResult : docResult) : undefined,
                 model: selectedModel || modelOverride || undefined,
-            });
+                }
+            );
+            if (typeof res.credits?.cost === "number") {
+                setLastCallCost(res.credits.cost);
+            }
+            if (typeof res.credits?.balance === "number") {
+                setLastCallBalance(res.credits.balance);
+            }
 
             if (type === "FILM") {
                 const next = String(res.result || "");
@@ -358,7 +369,16 @@ function FilmInABoxPage() {
                 <Card>
                     <CardContent className="pt-6">
                         <div className="flex items-center justify-between gap-3">
-                            <div className="text-sm text-muted-foreground">{gatewaySummary}</div>
+                            <div className="space-y-1">
+                                <div className="text-sm text-muted-foreground">{gatewaySummary}</div>
+                                {(lastCallCost !== null || lastCallBalance !== null) && (
+                                    <div className="text-xs text-muted-foreground">
+                                        {lastCallCost !== null ? `Last call cost: ${lastCallCost} credit${lastCallCost === 1 ? "" : "s"}` : ""}
+                                        {lastCallCost !== null && lastCallBalance !== null ? " · " : ""}
+                                        {lastCallBalance !== null ? `Balance: ${lastCallBalance}` : ""}
+                                    </div>
+                                )}
+                            </div>
                             <div
                                 className={`text-xs px-2 py-1 rounded-full ${
                                     configStatus?.gatewayConnected && configStatus?.hasGatewayKey

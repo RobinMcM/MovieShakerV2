@@ -83,6 +83,8 @@ function VisualizeContent() {
   const [videoToDelete, setVideoToDelete] = useState<{ id: string; path: string } | null>(null);
   const [compiledToDelete, setCompiledToDelete] = useState<{ id: string; path: string } | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [lastCallCost, setLastCallCost] = useState<number | null>(null);
+  const [lastCallBalance, setLastCallBalance] = useState<number | null>(null);
 
   useEffect(() => {
     if (moodboardImageParam) setGeneratedImageUrl(moodboardImageParam);
@@ -173,6 +175,7 @@ function VisualizeContent() {
         success: boolean;
         video: VideoHistoryItem;
         gateway: { job_id?: string | null; job_status?: string };
+        credits?: { cost?: number; balance?: number };
       }>("api/video-history/generate", {
         tram_line_id: selectedTramLine,
         prompt: prompt.trim() || currentLine?.action_text || "Cinematic shot",
@@ -183,6 +186,12 @@ function VisualizeContent() {
         source_image_path: currentLine?.scene_visual || null,
         source_image_data_url: generatedImageUrl || null,
       });
+      if (typeof res.credits?.cost === "number") {
+        setLastCallCost(res.credits.cost);
+      }
+      if (typeof res.credits?.balance === "number") {
+        setLastCallBalance(res.credits.balance);
+      }
       await loadVideoHistory(selectedTramLine);
       const createdVideoId = res.video?.id;
       if (res.gateway?.job_status === "completed") {
@@ -281,6 +290,13 @@ function VisualizeContent() {
                 Source of truth: Gateway
                 {!hasGatewayKey ? " (missing internal key)" : gatewayConnected ? " (connected)" : " (not reachable)"}
               </p>
+              {(lastCallCost !== null || lastCallBalance !== null) && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {lastCallCost !== null ? `Last call cost: ${lastCallCost} credit${lastCallCost === 1 ? "" : "s"}` : ""}
+                  {lastCallCost !== null && lastCallBalance !== null ? " · " : ""}
+                  {lastCallBalance !== null ? `Balance: ${lastCallBalance}` : ""}
+                </p>
+              )}
             </div>
             {tramLines.length > 0 ? (
               <div>

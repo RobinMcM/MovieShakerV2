@@ -17,6 +17,35 @@ from gateway_client import GatewayClient
 router = APIRouter(tags=["visualize-config"])
 settings = load_settings()
 
+FIAB_COST_RANK_OVERRIDES: dict[str, float] = {
+    # Higher value = more expensive (for stable high->low sorting)
+    "openai/gpt-4.1": 1000,
+    "openai/gpt-4.1-mini": 650,
+    "openai/gpt-4o": 900,
+    "openai/gpt-4o-mini": 600,
+    "openai/o1": 1200,
+    "openai/o1-mini": 750,
+    "openai/o3-mini": 700,
+    "anthropic/claude-3.7-sonnet": 950,
+    "anthropic/claude-3.5-sonnet": 880,
+    "anthropic/claude-3-haiku": 500,
+    "google/gemini-2.0-pro": 860,
+    "google/gemini-2.0-flash": 560,
+    "google/gemma-3-27b-it": 520,
+    "google/gemma-3-12b-it": 430,
+    "meta-llama/llama-3.3-70b-instruct": 720,
+    "meta-llama/llama-3.1-70b-instruct": 680,
+    "meta-llama/llama-3.1-8b-instruct": 330,
+    "mistralai/mistral-large": 760,
+    "mistralai/mixtral-8x22b-instruct": 700,
+    "mistralai/mixtral-8x7b-instruct": 450,
+    "deepseek/deepseek-r1": 740,
+    "deepseek/deepseek-chat": 420,
+    "qwen/qwen-2.5-72b-instruct": 620,
+    "qwen/qwen-2.5-32b-instruct": 500,
+    "qwen/qwen-2.5-14b-instruct": 420,
+}
+
 
 def _to_float(value) -> float | None:
     if isinstance(value, (int, float)):
@@ -30,6 +59,10 @@ def _to_float(value) -> float | None:
 
 
 def _extract_cost_rank(model: dict) -> float:
+    model_id = (model.get("id") or "").strip()
+    if model_id in FIAB_COST_RANK_OVERRIDES:
+        return FIAB_COST_RANK_OVERRIDES[model_id]
+
     # Try explicit cost/pricing fields first if provided by gateway/OpenRouter model payload.
     explicit_keys = (
         "cost",
@@ -52,14 +85,20 @@ def _extract_cost_rank(model: dict) -> float:
         if prompt_cost or completion_cost:
             return prompt_cost + completion_cost
 
-    # Fallback heuristic by model size in ID (e.g. 70b > 7b).
-    model_id = (model.get("id") or "").lower()
-    match = re.search(r"(\d+(?:\.\d+)?)b", model_id)
-    if match:
-        try:
-            return float(match.group(1))
-        except Exception:
-            return 0.0
+    # Stable provider-family fallback (predictable ordering when pricing is missing).
+    lowered_id = model_id.lower()
+    lowered_name = (model.get("name") or "").lower()
+    text = f"{lowered_id} {lowered_name}"
+    if "o1" in text or "gpt-4.1" in text:
+        return 900.0
+    if "gpt-4" in text or "claude" in text or "mistral-large" in text:
+        return 800.0
+    if "70b" in text or "72b" in text or "mixtral-8x22b" in text:
+        return 650.0
+    if "flash" in text or "haiku" in text or "mini" in text:
+        return 500.0
+    if "8b" in text or "7b" in text:
+        return 300.0
     return 0.0
 
 

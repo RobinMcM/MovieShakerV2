@@ -194,7 +194,6 @@ function FilmInABoxPage() {
 
     const profileModel = (profileDefaults?.model_fiab_text || "").trim();
     const resolvedModelId = profileModel || modelOverride;
-    const resolvedModelSource = profileModel ? "profile" : modelOverride ? "environment default" : "backend default";
     const resolvedModelData = useMemo(
         () => allModels.find((model) => model.id === resolvedModelId),
         [allModels, resolvedModelId]
@@ -457,9 +456,6 @@ function FilmInABoxPage() {
                                     {resolvedModelLabel}
                                     {resolvedModelMeta}
                                 </div>
-                                <p className="text-xs text-muted-foreground">
-                                    Source: {resolvedModelSource}. If no profile model is saved, the `.env` default is used.
-                                </p>
                             </div>
                         </CardContent>
                         <div className="p-6 pt-0">

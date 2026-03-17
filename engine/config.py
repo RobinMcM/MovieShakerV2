@@ -42,6 +42,7 @@ class Settings:
     gateway_internal_api_key: str
     gateway_timeout_seconds: float
     gateway_verify_tls: bool
+    film_in_a_box_model: str
     sql_echo: bool
 
     @property
@@ -95,5 +96,6 @@ def load_settings() -> Settings:
         gateway_internal_api_key=os.getenv("GATEWAY_INTERNAL_API_KEY", "").strip(),
         gateway_timeout_seconds=float(os.getenv("GATEWAY_TIMEOUT_SECONDS", "45")),
         gateway_verify_tls=gateway_verify_tls,
+        film_in_a_box_model=os.getenv("FILM_IN_A_BOX_MODEL", "google/gemma-3-12b-it:free").strip(),
         sql_echo=sql_echo,
     )

@@ -32,7 +32,6 @@ from storage import relative_file_path, save_script_file
 router = APIRouter(prefix="/api/film-in-a-box", tags=["film-in-a-box"])
 settings = load_settings()
 PRODUCER_TIER_LIMITS = {"standard": 5, "indie": 25, "production_company": 999}
-FILM_IN_A_BOX_MODEL = "google/gemma-3-12b-it:free"
 
 
 class GenerateBody(BaseModel):
@@ -427,7 +426,7 @@ def generate(
         raise HTTPException(status_code=503, detail="Gateway API key is not configured")
 
     try:
-        selected_model = (body.model or profile.model_fiab_text or FILM_IN_A_BOX_MODEL).strip()
+        selected_model = (body.model or profile.model_fiab_text or settings.film_in_a_box_model).strip()
         if not selected_model:
             raise HTTPException(status_code=400, detail="Model is required")
 

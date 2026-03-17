@@ -89,8 +89,6 @@ function FilmInABoxPage() {
     const [docResult, setDocResult] = useState<DocResult | null>(null);
     const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
     const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
-    const [selectedModel, setSelectedModel] = useState("");
-    const [modelSearch, setModelSearch] = useState("");
     const [profileDefaults, setProfileDefaults] = useState<ProfileDefaults | null>(null);
     const [lastCallCost, setLastCallCost] = useState<number | null>(null);
     const [lastCallBalance, setLastCallBalance] = useState<number | null>(null);
@@ -194,41 +192,15 @@ function FilmInABoxPage() {
         return Array.isArray(configStatus?.models) ? configStatus.models : [];
     }, [configStatus?.models]);
 
-    const filteredModels = useMemo<GatewayModel[]>(() => {
-        const query = modelSearch.trim().toLowerCase();
-        if (!query) return allModels;
-        return allModels.filter((model) => {
-            const id = model.id.toLowerCase();
-            const name = (model.name || "").toLowerCase();
-            const provider = (model.provider || "").toLowerCase();
-            return id.includes(query) || name.includes(query) || provider.includes(query);
-        });
-    }, [allModels, modelSearch]);
-
-    useEffect(() => {
-        if (allModels.length === 0) {
-            setSelectedModel("");
-            return;
-        }
-        if (selectedModel && allModels.some((model) => model.id === selectedModel)) {
-            return;
-        }
-        const profileModel = (profileDefaults?.model_fiab_text || "").trim();
-        const profileMatch = profileModel
-            ? allModels.find((model) => model.id === profileModel)
-            : undefined;
-        const overrideModel = modelOverride
-            ? allModels.find((model) => model.id === modelOverride)
-            : undefined;
-        setSelectedModel(profileMatch?.id || overrideModel?.id || allModels[0].id);
-    }, [allModels, modelOverride, profileDefaults?.model_fiab_text, selectedModel]);
-
-    const modelsForSelect = useMemo<GatewayModel[]>(() => {
-        if (!selectedModel) return filteredModels;
-        if (filteredModels.some((model) => model.id === selectedModel)) return filteredModels;
-        const selectedModelData = allModels.find((model) => model.id === selectedModel);
-        return selectedModelData ? [selectedModelData, ...filteredModels] : filteredModels;
-    }, [allModels, filteredModels, selectedModel]);
+    const profileModel = (profileDefaults?.model_fiab_text || "").trim();
+    const resolvedModelId = profileModel || modelOverride;
+    const resolvedModelSource = profileModel ? "profile" : modelOverride ? "environment default" : "backend default";
+    const resolvedModelData = useMemo(
+        () => allModels.find((model) => model.id === resolvedModelId),
+        [allModels, resolvedModelId]
+    );
+    const resolvedModelLabel = resolvedModelData?.name || resolvedModelId || "Not configured";
+    const resolvedModelMeta = resolvedModelData?.provider ? ` (${resolvedModelData.provider})` : "";
 
     const handleGenerate = async () => {
         clearMessage();
@@ -260,7 +232,6 @@ function FilmInABoxPage() {
                 prompt: prompt.trim(),
                 type,
                 previousContent: isContinuing ? (type === "FILM" ? filmResult : docResult) : undefined,
-                model: selectedModel || modelOverride || undefined,
                 }
             );
             if (typeof res.credits?.cost === "number") {
@@ -481,46 +452,14 @@ function FilmInABoxPage() {
                             </div>
 
                             <div className="space-y-2">
-                                <Label htmlFor="model-search">Model</Label>
-                                <Input
-                                    id="model-search"
-                                    value={modelSearch}
-                                    onChange={(e) => setModelSearch(e.target.value)}
-                                    placeholder="Search models by id, name, or provider..."
-                                    disabled={!configStatus?.gatewayConnected || !configStatus?.hasGatewayKey || allModels.length === 0}
-                                />
-                                <Select
-                                    value={selectedModel}
-                                    onValueChange={setSelectedModel}
-                                    disabled={
-                                        !configStatus?.gatewayConnected ||
-                                        !configStatus?.hasGatewayKey ||
-                                        allModels.length === 0
-                                    }
-                                >
-                                    <SelectTrigger id="model-select">
-                                        <SelectValue placeholder="Select model" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {modelsForSelect.map((model) => (
-                                            <SelectItem key={model.id} value={model.id}>
-                                                {model.name || model.id}
-                                                {model.provider ? ` (${model.provider})` : ""}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                {!configStatus?.gatewayConnected || !configStatus?.hasGatewayKey ? (
-                                    <p className="text-xs text-muted-foreground">Model selection is available when the AI gateway is ready.</p>
-                                ) : allModels.length === 0 ? (
-                                    <p className="text-xs text-muted-foreground">No models returned by gateway.</p>
-                                ) : filteredModels.length === 0 ? (
-                                    <p className="text-xs text-muted-foreground">No models match your search. Current selection is retained.</p>
-                                ) : (
-                                    <p className="text-xs text-muted-foreground">
-                                        Showing {filteredModels.length} of {allModels.length} model{allModels.length === 1 ? "" : "s"}.
-                                    </p>
-                                )}
+                                <Label>Model</Label>
+                                <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                                    {resolvedModelLabel}
+                                    {resolvedModelMeta}
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    Source: {resolvedModelSource}. If no profile model is saved, the `.env` default is used.
+                                </p>
                             </div>
                         </CardContent>
                         <div className="p-6 pt-0">

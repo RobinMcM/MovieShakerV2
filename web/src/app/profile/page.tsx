@@ -64,6 +64,7 @@ const FIAB_CATEGORY_OPTIONS: Array<{ id: FiabCategory; label: string }> = [
     { id: "funding_pitch_development", label: "💼 Funding & Pitch Development" },
     { id: "marketing_promotion", label: "🎨 Marketing & Promotion" },
 ];
+const ALL_FIAB_CATEGORIES: FiabCategory[] = FIAB_CATEGORY_OPTIONS.map((option) => option.id);
 
 function ProfilePage() {
     const searchParams = useSearchParams();
@@ -197,9 +198,16 @@ function ProfilePage() {
                 ...model,
                 cost_rank: 0,
                 creativity_rank: 0,
-                categories: ["script_creative_writing", "budget_financial_planning", "funding_pitch_development", "marketing_promotion"],
+                categories: ALL_FIAB_CATEGORIES,
             }));
-        const filtered = source.filter((model) => (model.categories || []).includes(selectedFiabCategory));
+        const filtered = source.filter((model) => {
+            const categories = model.categories;
+            if (!Array.isArray(categories) || categories.length === 0) {
+                // Backward-compatible fallback when backend category metadata is unavailable.
+                return true;
+            }
+            return categories.includes(selectedFiabCategory);
+        });
         const sorted = [...filtered];
         sorted.sort((a, b) =>
             (Number(b.cost_rank || 0) - Number(a.cost_rank || 0))

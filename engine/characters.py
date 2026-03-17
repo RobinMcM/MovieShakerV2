@@ -8,6 +8,7 @@ import time
 import uuid
 from typing import Optional
 from urllib.parse import urlparse
+import base64
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 import httpx
@@ -69,26 +70,81 @@ def _gateway_client() -> GatewayClient:
 
 
 def _extract_generated_image_url(response: dict) -> Optional[str]:
+    def walk(node) -> Optional[str]:
+        if isinstance(node, dict):
+            for key in ("image_url", "url", "output_url", "download_url", "file_url"):
+                value = node.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+            files = node.get("files")
+            if isinstance(files, list):
+                for item in files:
+                    found = walk(item)
+                    if found:
+                        return found
+            for value in node.values():
+                found = walk(value)
+                if found:
+                    return found
+        if isinstance(node, list):
+            for value in node:
+                found = walk(value)
+                if found:
+                    return found
+        return None
+
     if not isinstance(response, dict):
         return None
-    result = response.get("result")
-    if isinstance(result, dict):
-        files = result.get("files")
-        if isinstance(files, list):
-            for item in files:
-                if isinstance(item, dict):
-                    value = item.get("url") or item.get("download_url") or item.get("file_url")
-                    if isinstance(value, str) and value.strip():
-                        return value.strip()
-        for key in ("image_url", "url", "output_url"):
-            value = result.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-    for key in ("image_url", "url", "output_url"):
-        value = response.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
+    found = walk(response)
+    if isinstance(found, str) and found.strip():
+        return found.strip()
     return None
+
+
+def _extract_generated_image_bytes(response: dict) -> tuple[Optional[bytes], Optional[str]]:
+    def decode_data_url(value: str) -> tuple[Optional[bytes], Optional[str]]:
+        if not value.startswith("data:image/") or ";base64," not in value:
+            return None, None
+        header, b64 = value.split(";base64,", 1)
+        ext = header.replace("data:image/", "").strip().lower()
+        if ext == "jpeg":
+            ext = "jpg"
+        if ext not in {"png", "jpg", "gif", "webp"}:
+            ext = "png"
+        try:
+            return base64.b64decode(b64), ext
+        except Exception:
+            return None, None
+
+    def walk(node) -> tuple[Optional[bytes], Optional[str]]:
+        if isinstance(node, dict):
+            for key in ("b64_json", "image_base64", "base64", "b64"):
+                value = node.get(key)
+                if isinstance(value, str) and value.strip():
+                    try:
+                        return base64.b64decode(value), None
+                    except Exception:
+                        pass
+            for key in ("image", "data"):
+                value = node.get(key)
+                if isinstance(value, str) and value.strip():
+                    decoded, ext = decode_data_url(value.strip())
+                    if decoded:
+                        return decoded, ext
+            for value in node.values():
+                content, ext = walk(value)
+                if content:
+                    return content, ext
+        elif isinstance(node, list):
+            for value in node:
+                content, ext = walk(value)
+                if content:
+                    return content, ext
+        return None, None
+
+    if not isinstance(response, dict):
+        return None, None
+    return walk(response)
 
 
 def _detect_ext(image_url: str, content_type: Optional[str]) -> str:
@@ -250,20 +306,40 @@ def generate_character_image(
             raise HTTPException(status_code=502, detail=str(exc))
 
     image_url, final_gateway_response = _resolve_image_url_from_gateway(gateway, response)
-    if not image_url:
-        error_message = final_gateway_response.get("error") if isinstance(final_gateway_response, dict) else None
-        if isinstance(error_message, str) and error_message.strip():
-            raise HTTPException(status_code=502, detail=f"Image generation failed: {error_message.strip()}")
-        raise HTTPException(status_code=502, detail="Gateway did not return an image URL")
+    content = None
+    ext = None
 
-    try:
-        downloaded = httpx.get(image_url, timeout=settings.gateway_timeout_seconds)
-        downloaded.raise_for_status()
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Failed to download generated image: {exc}")
+    if image_url:
+        if image_url.startswith("data:image/"):
+            decoded, decoded_ext = _extract_generated_image_bytes({"image": image_url})
+            content = decoded
+            ext = decoded_ext
+        else:
+            try:
+                downloaded = httpx.get(
+                    image_url,
+                    timeout=settings.gateway_timeout_seconds,
+                    follow_redirects=True,
+                    headers={"User-Agent": "MovieShakerEngine/1.0"},
+                )
+                downloaded.raise_for_status()
+                content = downloaded.content
+                ext = _detect_ext(image_url, downloaded.headers.get("content-type"))
+            except Exception as exc:
+                raise HTTPException(status_code=502, detail=f"Failed to download generated image: {exc}")
+    else:
+        decoded, decoded_ext = _extract_generated_image_bytes(
+            final_gateway_response if isinstance(final_gateway_response, dict) else {}
+        )
+        content = decoded
+        ext = decoded_ext
+        if not content:
+            error_message = final_gateway_response.get("error") if isinstance(final_gateway_response, dict) else None
+            if isinstance(error_message, str) and error_message.strip():
+                raise HTTPException(status_code=502, detail=f"Image generation failed: {error_message.strip()}")
+            raise HTTPException(status_code=502, detail="Gateway did not return image output")
 
-    content = downloaded.content
-    ext = _detect_ext(image_url, downloaded.headers.get("content-type"))
+    ext = ext or "png"
     filename = _stable_filename(character, ext)
     is_scene = getattr(character, "type", None) == "scene"
     try:

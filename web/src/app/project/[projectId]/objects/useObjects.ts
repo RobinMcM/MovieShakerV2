@@ -168,6 +168,24 @@ export function useObjects(projectId: string | null) {
     return url;
   }, []);
 
+  const generateImage = useCallback(
+    async (characterId: string, prompt: string, aspectRatio?: string) => {
+      const res = await api.post<{ success: boolean; data: CharacterMood }>(
+        `api/characters/${characterId}/generate-image`,
+        {
+          prompt: prompt.trim(),
+          aspect_ratio: aspectRatio || null,
+        }
+      );
+      const data = (res as { data?: CharacterMood }).data;
+      if (data) {
+        setCharacters((prev) => prev.map((c) => (c.id === characterId ? { ...c, ...data } : c)));
+      }
+      return data;
+    },
+    []
+  );
+
   return {
     loading,
     project,
@@ -178,5 +196,6 @@ export function useObjects(projectId: string | null) {
     updateObject,
     deleteObject,
     uploadImage,
+    generateImage,
   };
 }

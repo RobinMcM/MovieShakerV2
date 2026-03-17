@@ -54,6 +54,7 @@ import {
   EyeOff,
   Search,
   ChevronLeft,
+  Sparkles,
 } from "lucide-react";
 import { useObjects } from "./useObjects";
 import type { CharacterMood } from "../moodboard/types";
@@ -98,6 +99,7 @@ function ObjectCard({
   onUpdate,
   onDelete,
   onUpload,
+  onGenerate,
   fileInputRef,
   onTriggerFileInput,
   uploadingId,
@@ -108,6 +110,7 @@ function ObjectCard({
   onUpdate: (id: string, u: { casting_notes?: string; aspect_ratio?: string; hide_from_view?: boolean }) => Promise<void>;
   onDelete: (obj: CharacterMood) => void;
   onUpload: (id: string, file: File) => Promise<string | undefined>;
+  onGenerate: (id: string, prompt: string, aspectRatio?: string | null) => Promise<void>;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   onTriggerFileInput: (id: string) => void;
   uploadingId: string | null;
@@ -115,6 +118,8 @@ function ObjectCard({
   setToastMessage: (m: { title: string; description?: string; variant?: "default" | "destructive" } | null) => void;
 }) {
   const [localDescription, setLocalDescription] = useState(object.casting_notes ?? "");
+  const [generationPrompt, setGenerationPrompt] = useState(object.casting_notes ?? object.name);
+  const [isGenerating, setIsGenerating] = useState(false);
   const imageUrl = storageImageUrl(object.character_image_url) ?? object.character_image_url ?? null;
 
   const handleBlur = () => {
@@ -123,6 +128,27 @@ function ObjectCard({
       onUpdate(object.id, { casting_notes: v }).catch(() =>
         setToastMessage({ title: "Failed to save description", variant: "destructive" })
       );
+    }
+  };
+
+  const handleGenerate = async () => {
+    const prompt = generationPrompt.trim();
+    if (!prompt) {
+      setToastMessage({ title: "Prompt is required", variant: "destructive" });
+      return;
+    }
+    try {
+      setIsGenerating(true);
+      await onGenerate(object.id, prompt, object.aspect_ratio ?? null);
+      setToastMessage({ title: "Image generated" });
+    } catch (e) {
+      setToastMessage({
+        title: "Failed to generate image",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -199,22 +225,40 @@ function ObjectCard({
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <Label>Description</Label>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => onTriggerFileInput(object.id)}
-              disabled={uploadingId === object.id}
-            >
-              {uploadingId === object.id ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <>
-                  <Upload className="h-4 w-4 mr-1" />
-                  Upload
-                </>
-              )}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onTriggerFileInput(object.id)}
+                disabled={uploadingId === object.id}
+              >
+                {uploadingId === object.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4 mr-1" />
+                    Upload
+                  </>
+                )}
+              </Button>
+              <Button size="sm" onClick={handleGenerate} disabled={isGenerating}>
+                {isGenerating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4 mr-1" />
+                    Generate
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
+          <Textarea
+            placeholder="Prompt for AI image generation..."
+            value={generationPrompt}
+            onChange={(e) => setGenerationPrompt(e.target.value)}
+            className="min-h-[60px] resize-none"
+          />
           <Textarea
             placeholder="Describe appearance for reference..."
             value={localDescription}
@@ -241,6 +285,7 @@ function ObjectsContent() {
     updateObject,
     deleteObject,
     uploadImage,
+    generateImage,
   } = useObjects(projectId);
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -327,6 +372,10 @@ function ObjectsContent() {
     } finally {
       setUploadingId(null);
     }
+  };
+
+  const handleGenerate = async (characterId: string, prompt: string, aspectRatio?: string | null) => {
+    await generateImage(characterId, prompt, aspectRatio ?? undefined);
   };
 
   const triggerFileInput = (objectId: string) => {
@@ -521,6 +570,7 @@ function ObjectsContent() {
                         onUpdate={updateObject}
                         onDelete={handleDeleteClick}
                         onUpload={handleUpload}
+                        onGenerate={handleGenerate}
                         fileInputRef={fileInputRef}
                         onTriggerFileInput={triggerFileInput}
                         uploadingId={uploadingId}
@@ -544,6 +594,7 @@ function ObjectsContent() {
                         onUpdate={updateObject}
                         onDelete={handleDeleteClick}
                         onUpload={handleUpload}
+                        onGenerate={handleGenerate}
                         fileInputRef={fileInputRef}
                         onTriggerFileInput={triggerFileInput}
                         uploadingId={uploadingId}
@@ -567,6 +618,7 @@ function ObjectsContent() {
                         onUpdate={updateObject}
                         onDelete={handleDeleteClick}
                         onUpload={handleUpload}
+                        onGenerate={handleGenerate}
                         fileInputRef={fileInputRef}
                         onTriggerFileInput={triggerFileInput}
                         uploadingId={uploadingId}

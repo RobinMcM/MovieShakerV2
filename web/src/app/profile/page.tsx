@@ -41,9 +41,29 @@ interface ConfigStatusResponse {
     success: boolean;
     config: {
         models: Array<{ id: string; name?: string; provider?: string }>;
-        fiabTextModels?: Array<{ id: string; name?: string; provider?: string; cost_rank?: number; creativity_rank?: number }>;
+        fiabTextModels?: Array<{
+            id: string;
+            name?: string;
+            provider?: string;
+            cost_rank?: number;
+            creativity_rank?: number;
+            categories?: string[];
+        }>;
     };
 }
+
+type FiabCategory =
+    | "script_creative_writing"
+    | "budget_financial_planning"
+    | "funding_pitch_development"
+    | "marketing_promotion";
+
+const FIAB_CATEGORY_OPTIONS: Array<{ id: FiabCategory; label: string }> = [
+    { id: "script_creative_writing", label: "📝 Script & Creative Writing" },
+    { id: "budget_financial_planning", label: "💰 Budget & Financial Planning" },
+    { id: "funding_pitch_development", label: "💼 Funding & Pitch Development" },
+    { id: "marketing_promotion", label: "🎨 Marketing & Promotion" },
+];
 
 function ProfilePage() {
     const searchParams = useSearchParams();
@@ -55,8 +75,15 @@ function ProfilePage() {
     const [verifiedBanner, setVerifiedBanner] = useState<"success" | "error" | null>(null);
     const [purchaseAmount, setPurchaseAmount] = useState("11");
     const [gatewayModels, setGatewayModels] = useState<Array<{ id: string; name?: string; provider?: string }>>([]);
-    const [fiabTextModels, setFiabTextModels] = useState<Array<{ id: string; name?: string; provider?: string; cost_rank?: number; creativity_rank?: number }>>([]);
-    const [fiabOptionChoice, setFiabOptionChoice] = useState<"A" | "B">("A");
+    const [fiabTextModels, setFiabTextModels] = useState<Array<{
+        id: string;
+        name?: string;
+        provider?: string;
+        cost_rank?: number;
+        creativity_rank?: number;
+        categories?: string[];
+    }>>([]);
+    const [selectedFiabCategory, setSelectedFiabCategory] = useState<FiabCategory>("script_creative_writing");
     const [savingModels, setSavingModels] = useState(false);
 
     const [formData, setFormData] = useState({
@@ -166,19 +193,20 @@ function ProfilePage() {
     const orderedFiabModels = useMemo(() => {
         const source = fiabTextModels.length > 0
             ? fiabTextModels
-            : gatewayModels.map((model) => ({ ...model, cost_rank: 0, creativity_rank: 0 }));
-        const sorted = [...source];
-        sorted.sort((a, b) => {
-            if (fiabOptionChoice === "B") {
-                return (Number(b.cost_rank || 0) - Number(a.cost_rank || 0))
-                    || String(a.name || a.id).localeCompare(String(b.name || b.id));
-            }
-            return (Number(b.creativity_rank || 0) - Number(a.creativity_rank || 0))
-                || (Number(b.cost_rank || 0) - Number(a.cost_rank || 0))
-                || String(a.name || a.id).localeCompare(String(b.name || b.id));
-        });
+            : gatewayModels.map((model) => ({
+                ...model,
+                cost_rank: 0,
+                creativity_rank: 0,
+                categories: ["script_creative_writing", "budget_financial_planning", "funding_pitch_development", "marketing_promotion"],
+            }));
+        const filtered = source.filter((model) => (model.categories || []).includes(selectedFiabCategory));
+        const sorted = [...filtered];
+        sorted.sort((a, b) =>
+            (Number(b.cost_rank || 0) - Number(a.cost_rank || 0))
+            || String(a.name || a.id).localeCompare(String(b.name || b.id))
+        );
         return sorted;
-    }, [fiabOptionChoice, fiabTextModels, gatewayModels]);
+    }, [fiabTextModels, gatewayModels, selectedFiabCategory]);
 
     function handleBuyCreditsPlaceholder() {
         const amount = Number.parseInt(purchaseAmount, 10);
@@ -443,13 +471,16 @@ function ProfilePage() {
                     <CardContent className="space-y-4">
                         <div className="space-y-2">
                             <Label>Option choice</Label>
-                            <Select value={fiabOptionChoice} onValueChange={(value) => setFiabOptionChoice(value as "A" | "B")}>
+                            <Select value={selectedFiabCategory} onValueChange={(value) => setSelectedFiabCategory(value as FiabCategory)}>
                                 <SelectTrigger>
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="A">A - Creativity priority</SelectItem>
-                                    <SelectItem value="B">B - Cost high to low</SelectItem>
+                                    {FIAB_CATEGORY_OPTIONS.map((option) => (
+                                        <SelectItem key={option.id} value={option.id}>
+                                            {option.label}
+                                        </SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -474,8 +505,13 @@ function ProfilePage() {
                                 </SelectContent>
                             </Select>
                             <p className="text-xs text-muted-foreground">
-                                Option B is ordered by cost high to low.
+                                Ordered by cost high to low.
                             </p>
+                            {orderedFiabModels.length === 0 && (
+                                <p className="text-xs text-muted-foreground">
+                                    No models found for this category.
+                                </p>
+                            )}
                         </div>
 
                         <Button type="button" onClick={handleSaveModelSettings} disabled={savingModels}>

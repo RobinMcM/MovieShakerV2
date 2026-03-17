@@ -88,6 +88,44 @@ def _extract_creativity_rank(model: dict) -> float:
     return score
 
 
+def _infer_fiab_categories(model: dict) -> list[str]:
+    model_id = (model.get("id") or "").lower()
+    model_name = (model.get("name") or "").lower()
+    text = f"{model_id} {model_name}"
+    categories = {"script_creative_writing"}
+
+    reasoning_tokens = (
+        "reason", "r1", "o1", "thinking", "analysis", "math", "deepseek", "qwen", "mixtral"
+    )
+    finance_tokens = (
+        "finance", "financial", "budget", "account", "analyst", "excel", "spreadsheet"
+    )
+    funding_tokens = (
+        "fund", "funding", "invest", "investor", "pitch", "venture", "startup", "capital", "grant"
+    )
+    marketing_tokens = (
+        "market", "marketing", "brand", "ads", "advert", "copy", "promotion", "campaign", "social"
+    )
+    creative_tokens = (
+        "creative", "story", "writer", "writing", "script", "screenplay", "opus", "sonnet", "gpt-4"
+    )
+
+    if any(token in text for token in reasoning_tokens):
+        categories.add("budget_financial_planning")
+        categories.add("funding_pitch_development")
+    if any(token in text for token in finance_tokens):
+        categories.add("budget_financial_planning")
+    if any(token in text for token in funding_tokens):
+        categories.add("funding_pitch_development")
+    if any(token in text for token in marketing_tokens):
+        categories.add("marketing_promotion")
+    if any(token in text for token in creative_tokens):
+        categories.add("marketing_promotion")
+        categories.add("funding_pitch_development")
+
+    return sorted(categories)
+
+
 @router.get("/api/config/status")
 def get_config_status(
     session: SessionContainer = Depends(verify_session()),
@@ -122,6 +160,7 @@ def get_config_status(
             "provider": provider,
             "cost_rank": _extract_cost_rank(model),
             "creativity_rank": _extract_creativity_rank(model),
+            "categories": _infer_fiab_categories(model),
         })
 
     fiab_text_models.sort(

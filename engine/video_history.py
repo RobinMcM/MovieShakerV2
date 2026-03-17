@@ -12,6 +12,7 @@ from sqlmodel import Session, select
 
 from db import get_session
 from config import load_settings
+from credits import apply_credit_cost, ensure_user_can_generate, extract_credit_cost
 from gateway_client import GatewayClient, GatewayClientError
 from models import (
     GatewayUsageEvent,
@@ -193,6 +194,7 @@ def generate_video(
     db: Session = Depends(get_session),
 ):
     user_id = session.get_user_id()
+    profile = ensure_user_can_generate(db, user_id)
     line = _ensure_tramline_access(db, body.tram_line_id, user_id)
     project_id = _project_id_for_tramline(db, line)
 
@@ -222,10 +224,11 @@ def generate_video(
         payload["camera_direction"] = line.camera_direction
 
     try:
+        selected_model = (body.model or profile.model_visualize_video or "").strip() or None
         response = _gateway_client().execute_fal(
             media_type=body.media_type,
             payload=payload,
-            model=body.model,
+            model=selected_model,
             dry_run=body.dry_run,
         )
     except GatewayClientError as exc:
@@ -235,7 +238,7 @@ def generate_video(
     job_status = response.get("job_status") or ("completed" if body.dry_run else "processing")
     estimate = response.get("estimate")
     routing = response.get("routing") if isinstance(response.get("routing"), dict) else {}
-    model_used = body.model or routing.get("model")
+    model_used = selected_model or routing.get("model")
 
     row = MoodBoardVideoHistory(
         tram_line_id=uuid.UUID(body.tram_line_id),
@@ -269,6 +272,9 @@ def generate_video(
         raw_response=response if isinstance(response, dict) else None,
     )
 
+    credits_cost = extract_credit_cost(response)
+    balance = apply_credit_cost(db, user_id, credits_cost)
+
     db.commit()
     db.refresh(row)
     return {
@@ -278,6 +284,10 @@ def generate_video(
             "job_id": gateway_job_id,
             "job_status": job_status,
             "estimate": estimate,
+        },
+        "credits": {
+            "cost": credits_cost,
+            "balance": balance,
         },
     }
 
@@ -314,6 +324,30 @@ def get_generation_status(
         db.add(row)
 
     if job_status in {"completed", "failed"}:
+        completed_event_exists = db.exec(
+            select(GatewayUsageEvent).where(
+                GatewayUsageEvent.gateway_job_id == row.task_id,
+                GatewayUsageEvent.video_history_id == row.id,
+                GatewayUsageEvent.status == job_status,
+            )
+        ).first()
+
+        if not completed_event_exists:
+            submitted_event = db.exec(
+                select(GatewayUsageEvent).where(
+                    GatewayUsageEvent.gateway_job_id == row.task_id,
+                    GatewayUsageEvent.video_history_id == row.id,
+                    GatewayUsageEvent.status == "processing",
+                )
+            ).first()
+            estimated_cost = 0
+            if submitted_event and submitted_event.estimate_json:
+                estimated_cost = extract_credit_cost(submitted_event.estimate_json)
+            actual_cost = extract_credit_cost(usage if usage is not None else gateway_status)
+            delta_cost = actual_cost - estimated_cost
+            if delta_cost != 0:
+                apply_credit_cost(db, user_id, delta_cost)
+
         line = _ensure_tramline_access(db, str(row.tram_line_id), user_id)
         project_id = _project_id_for_tramline(db, line)
         _create_usage_event(

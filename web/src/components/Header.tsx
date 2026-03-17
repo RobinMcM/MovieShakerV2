@@ -41,6 +41,7 @@ export function AppHeader() {
 
 interface ProfileRole {
     role?: string;
+    ai_credits?: number;
 }
 
 export function Header() {
@@ -84,6 +85,9 @@ export function Header() {
                             <Link href="/projects">
                                 <Button variant="ghost">Projects</Button>
                             </Link>
+                            <span className="text-xs font-semibold px-2 py-1 rounded bg-muted text-muted-foreground">
+                                Credits: {typeof profile?.ai_credits === "number" ? profile.ai_credits : 0}
+                            </span>
                             {isAdmin && (
                                 <>
                                     <Link href="/admin/users">

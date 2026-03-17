@@ -18,6 +18,11 @@ class UserProfile(SQLModel, table=True):
     role: str = Field(default="producer")  # "admin" | "producer"
     producer_tier: str = Field(default="standard")  # "standard" | "indie" | "production_company"
     blocked: bool = Field(default=False)
+    ai_credits: int = Field(default=50)
+    model_fiab_text: Optional[str] = None
+    model_visualize_video: Optional[str] = None
+    model_object_image: Optional[str] = None
+    model_sound_music: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

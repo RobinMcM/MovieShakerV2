@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, User, CheckCircle2, Mail } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -25,10 +26,22 @@ interface Profile {
     role?: string;
     producer_tier?: string;
     blocked?: boolean;
+    ai_credits?: number;
+    model_fiab_text?: string | null;
+    model_visualize_video?: string | null;
+    model_object_image?: string | null;
+    model_sound_music?: string | null;
     project_limit?: number;
     owned_project_count?: number;
     created_at?: string | null;
     updated_at?: string | null;
+}
+
+interface ConfigStatusResponse {
+    success: boolean;
+    config: {
+        models: Array<{ id: string; name?: string; provider?: string }>;
+    };
 }
 
 function ProfilePage() {
@@ -39,6 +52,8 @@ function ProfilePage() {
     const [resending, setResending] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [verifiedBanner, setVerifiedBanner] = useState<"success" | "error" | null>(null);
+    const [purchaseAmount, setPurchaseAmount] = useState("11");
+    const [gatewayModels, setGatewayModels] = useState<Array<{ id: string; name?: string; provider?: string }>>([]);
 
     const [formData, setFormData] = useState({
         name: "",
@@ -47,10 +62,15 @@ function ProfilePage() {
         username: "",
         phone: "",
         address: "",
+        model_fiab_text: "",
+        model_visualize_video: "",
+        model_object_image: "",
+        model_sound_music: "",
     });
 
     useEffect(() => {
         fetchProfile();
+        loadConfigModels();
     }, []);
 
     useEffect(() => {
@@ -71,6 +91,10 @@ function ProfilePage() {
                 username: data.username ?? "",
                 phone: data.phone ?? "",
                 address: data.address ?? "",
+                model_fiab_text: data.model_fiab_text ?? "",
+                model_visualize_video: data.model_visualize_video ?? "",
+                model_object_image: data.model_object_image ?? "",
+                model_sound_music: data.model_sound_music ?? "",
             });
             setError(null);
         } catch (err) {
@@ -81,9 +105,23 @@ function ProfilePage() {
         }
     }
 
+    async function loadConfigModels() {
+        try {
+            const data = await api.get<ConfigStatusResponse>("/api/config/status");
+            const models = Array.isArray(data?.config?.models) ? data.config.models : [];
+            setGatewayModels(models);
+        } catch {
+            setGatewayModels([]);
+        }
+    }
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         setFormData((prev) => ({ ...prev, [name]: value }));
+    };
+
+    const handleModelChange = (field: "model_fiab_text" | "model_visualize_video" | "model_object_image" | "model_sound_music", value: string) => {
+        setFormData((prev) => ({ ...prev, [field]: value === "__none__" ? "" : value }));
     };
 
     async function handleSubmit(e: React.FormEvent) {
@@ -117,6 +155,16 @@ function ProfilePage() {
     }
 
     const communicationEmailVerified = !!profile?.email_verified_at;
+    const isDeficit = (profile?.ai_credits ?? 0) < 0;
+
+    function handleBuyCreditsPlaceholder() {
+        const amount = Number.parseInt(purchaseAmount, 10);
+        if (!Number.isFinite(amount) || amount <= 10) {
+            setError("Minimum credit purchase is greater than 10 credits.");
+            return;
+        }
+        setError("Buy credits is coming soon.");
+    }
 
     if (loading) {
         return (
@@ -298,6 +346,128 @@ function ProfilePage() {
                                 )}
                             </Button>
                         </form>
+                    </CardContent>
+                </Card>
+
+                <Card className="mt-6">
+                    <CardHeader>
+                        <CardTitle className="text-lg">Billing & AI Settings</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <span className="text-sm text-muted-foreground">Current credits</span>
+                            <span className={`text-sm font-semibold ${isDeficit ? "text-destructive" : "text-foreground"}`}>
+                                {profile?.ai_credits ?? 0}
+                            </span>
+                        </div>
+
+                        {isDeficit && (
+                            <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md border border-destructive/20">
+                                Your account is in deficit. Please purchase credits to clear the balance before generating again.
+                            </div>
+                        )}
+
+                        <div className="space-y-2">
+                            <Label>Model for a Film in a Box (Text)</Label>
+                            <Select
+                                value={formData.model_fiab_text || "__none__"}
+                                onValueChange={(value) => handleModelChange("model_fiab_text", value)}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select text model" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="__none__">No default</SelectItem>
+                                    {gatewayModels.map((model) => (
+                                        <SelectItem key={`fiab-${model.id}`} value={model.id}>
+                                            {model.name || model.id}
+                                            {model.provider ? ` (${model.provider})` : ""}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Model for Visualize (Video)</Label>
+                            <Select
+                                value={formData.model_visualize_video || "__none__"}
+                                onValueChange={(value) => handleModelChange("model_visualize_video", value)}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select video model" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="__none__">No default</SelectItem>
+                                    {gatewayModels.map((model) => (
+                                        <SelectItem key={`video-${model.id}`} value={model.id}>
+                                            {model.name || model.id}
+                                            {model.provider ? ` (${model.provider})` : ""}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Model for Object (Image)</Label>
+                            <Select
+                                value={formData.model_object_image || "__none__"}
+                                onValueChange={(value) => handleModelChange("model_object_image", value)}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select image model" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="__none__">No default</SelectItem>
+                                    {gatewayModels.map((model) => (
+                                        <SelectItem key={`image-${model.id}`} value={model.id}>
+                                            {model.name || model.id}
+                                            {model.provider ? ` (${model.provider})` : ""}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>Model for Sound (Music)</Label>
+                            <Select
+                                value={formData.model_sound_music || "__none__"}
+                                onValueChange={(value) => handleModelChange("model_sound_music", value)}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select music model" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="__none__">No default</SelectItem>
+                                    {gatewayModels.map((model) => (
+                                        <SelectItem key={`music-${model.id}`} value={model.id}>
+                                            {model.name || model.id}
+                                            {model.provider ? ` (${model.provider})` : ""}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="pt-2 border-t space-y-2">
+                            <Label htmlFor="purchaseAmount">Buy credits (placeholder)</Label>
+                            <div className="flex gap-2">
+                                <Input
+                                    id="purchaseAmount"
+                                    type="number"
+                                    min={11}
+                                    value={purchaseAmount}
+                                    onChange={(e) => setPurchaseAmount(e.target.value)}
+                                    placeholder="Enter credits to buy"
+                                />
+                                <Button type="button" variant="outline" onClick={handleBuyCreditsPlaceholder}>
+                                    Buy credits
+                                </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground">Minimum purchase is greater than 10 credits.</p>
+                        </div>
                     </CardContent>
                 </Card>
             </main>

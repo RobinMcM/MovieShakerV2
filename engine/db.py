@@ -19,6 +19,11 @@ def _migrate_user_profile_roles():
                 ("role", "VARCHAR NOT NULL DEFAULT 'producer'"),
                 ("producer_tier", "VARCHAR NOT NULL DEFAULT 'standard'"),
                 ("blocked", "BOOLEAN NOT NULL DEFAULT FALSE"),
+                ("ai_credits", "INTEGER NOT NULL DEFAULT 50"),
+                ("model_fiab_text", "VARCHAR"),
+                ("model_visualize_video", "VARCHAR"),
+                ("model_object_image", "VARCHAR"),
+                ("model_sound_music", "VARCHAR"),
             ]:
                 try:
                     conn.execute(

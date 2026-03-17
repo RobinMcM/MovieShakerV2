@@ -69,6 +69,10 @@ interface GatewayModel {
     provider?: string;
 }
 
+interface ProfileDefaults {
+    model_fiab_text?: string | null;
+}
+
 function FilmInABoxPage() {
     const modelOverride = (process.env.NEXT_PUBLIC_FILM_IN_A_BOX_MODEL || "").trim();
     const router = useRouter();
@@ -87,6 +91,7 @@ function FilmInABoxPage() {
     const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
     const [selectedModel, setSelectedModel] = useState("");
     const [modelSearch, setModelSearch] = useState("");
+    const [profileDefaults, setProfileDefaults] = useState<ProfileDefaults | null>(null);
 
     const [projectDetails, setProjectDetails] = useState<ProjectData | null>(null);
     const [configStatus, setConfigStatus] = useState<ConfigStatusResponse["config"] | null>(null);
@@ -122,6 +127,15 @@ function FilmInABoxPage() {
             setProjectDetails(null);
         }
     }, [projectId]);
+
+    const loadProfileDefaults = useCallback(async () => {
+        try {
+            const data = await api.get<ProfileDefaults>("/profile/");
+            setProfileDefaults(data);
+        } catch {
+            setProfileDefaults(null);
+        }
+    }, []);
 
     const handleLoadItem = useCallback(
         async (itemId: string) => {
@@ -167,7 +181,8 @@ function FilmInABoxPage() {
     useEffect(() => {
         loadConfigStatus();
         loadProjectDetails();
-    }, [loadConfigStatus, loadProjectDetails]);
+        loadProfileDefaults();
+    }, [loadConfigStatus, loadProjectDetails, loadProfileDefaults]);
 
     useEffect(() => {
         loadSavedItems();
@@ -196,11 +211,15 @@ function FilmInABoxPage() {
         if (selectedModel && allModels.some((model) => model.id === selectedModel)) {
             return;
         }
+        const profileModel = (profileDefaults?.model_fiab_text || "").trim();
+        const profileMatch = profileModel
+            ? allModels.find((model) => model.id === profileModel)
+            : undefined;
         const overrideModel = modelOverride
             ? allModels.find((model) => model.id === modelOverride)
             : undefined;
-        setSelectedModel(overrideModel?.id || allModels[0].id);
-    }, [allModels, modelOverride, selectedModel]);
+        setSelectedModel(profileMatch?.id || overrideModel?.id || allModels[0].id);
+    }, [allModels, modelOverride, profileDefaults?.model_fiab_text, selectedModel]);
 
     const modelsForSelect = useMemo<GatewayModel[]>(() => {
         if (!selectedModel) return filteredModels;

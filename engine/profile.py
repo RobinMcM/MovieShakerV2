@@ -40,6 +40,11 @@ class ProfileResponse(BaseModel):
     role: str = "producer"
     producer_tier: str = "standard"
     blocked: bool = False
+    ai_credits: int = 50
+    model_fiab_text: Optional[str] = None
+    model_visualize_video: Optional[str] = None
+    model_object_image: Optional[str] = None
+    model_sound_music: Optional[str] = None
     project_limit: int = 5
     owned_project_count: int = 0
     created_at: Optional[datetime] = None
@@ -53,6 +58,10 @@ class ProfileUpdate(BaseModel):
     username: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
+    model_fiab_text: Optional[str] = None
+    model_visualize_video: Optional[str] = None
+    model_object_image: Optional[str] = None
+    model_sound_music: Optional[str] = None
 
 
 def _mask_email(email: str) -> str:
@@ -118,6 +127,11 @@ async def get_profile(
         role=profile.role,
         producer_tier=profile.producer_tier,
         blocked=profile.blocked,
+        ai_credits=profile.ai_credits,
+        model_fiab_text=profile.model_fiab_text,
+        model_visualize_video=profile.model_visualize_video,
+        model_object_image=profile.model_object_image,
+        model_sound_music=profile.model_sound_music,
         project_limit=project_limit,
         owned_project_count=owned_count,
         created_at=profile.created_at,
@@ -176,6 +190,11 @@ async def send_verification_email(
         role=profile.role,
         producer_tier=profile.producer_tier,
         blocked=profile.blocked,
+        ai_credits=profile.ai_credits,
+        model_fiab_text=profile.model_fiab_text,
+        model_visualize_video=profile.model_visualize_video,
+        model_object_image=profile.model_object_image,
+        model_sound_music=profile.model_sound_music,
         project_limit=project_limit,
         owned_project_count=owned_count,
         created_at=profile.created_at,
@@ -220,7 +239,7 @@ async def update_profile(
 
     data = body.model_dump() if hasattr(body, "model_dump") else body.dict(exclude_unset=True)
     # Only allow updating non-admin fields via self; role/blocked/producer_tier set via User Management
-    for k in ("role", "blocked", "producer_tier"):
+    for k in ("role", "blocked", "producer_tier", "ai_credits"):
         data.pop(k, None)
     new_communication_email = data.get("communication_email")
     if new_communication_email is not None:
@@ -255,6 +274,11 @@ async def update_profile(
         role=profile.role,
         producer_tier=profile.producer_tier,
         blocked=profile.blocked,
+        ai_credits=profile.ai_credits,
+        model_fiab_text=profile.model_fiab_text,
+        model_visualize_video=profile.model_visualize_video,
+        model_object_image=profile.model_object_image,
+        model_sound_music=profile.model_sound_music,
         project_limit=project_limit,
         owned_project_count=owned_count,
         created_at=profile.created_at,

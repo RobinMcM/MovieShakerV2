@@ -12,6 +12,7 @@ from supertokens_python.recipe.session import SessionContainer
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 
 from cache import cache_delete, scripts_list_key, scripts_stats_key
+from credits import apply_credit_cost, ensure_user_can_generate, extract_credit_cost
 from db import get_session
 from gateway_client import GatewayClient, GatewayClientError
 from config import load_settings
@@ -411,8 +412,10 @@ def _build_gateway_messages(prompt: str, want_json: bool) -> list[dict[str, str]
 def generate(
     body: GenerateBody,
     session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
 ):
-    _ = session.get_user_id()
+    user_id = session.get_user_id()
+    profile = ensure_user_can_generate(db, user_id)
     content_type = (body.type or "").strip().upper()
     if content_type not in {"FILM", "DOC"}:
         raise HTTPException(status_code=400, detail="type must be FILM or DOC")
@@ -424,7 +427,7 @@ def generate(
         raise HTTPException(status_code=503, detail="Gateway API key is not configured")
 
     try:
-        selected_model = (body.model or FILM_IN_A_BOX_MODEL).strip()
+        selected_model = (body.model or profile.model_fiab_text or FILM_IN_A_BOX_MODEL).strip()
         if not selected_model:
             raise HTTPException(status_code=400, detail="Model is required")
 
@@ -437,7 +440,10 @@ def generate(
             text = _extract_text_from_gateway(gateway_response)
             if not text:
                 raise HTTPException(status_code=502, detail="Gateway returned empty film content")
-            return {"result": text}
+            credits_cost = extract_credit_cost(gateway_response)
+            balance = apply_credit_cost(db, user_id, credits_cost)
+            db.commit()
+            return {"result": text, "credits": {"cost": credits_cost, "balance": balance}}
 
         prompt = _doc_prompt(body.title.strip(), body.prompt.strip(), body.previousContent)
         gateway_response = _gateway_client().execute_text(
@@ -451,7 +457,10 @@ def generate(
             if json_candidate is None:
                 json_candidate = gateway_response.get("data") if isinstance(gateway_response.get("data"), dict) else None
         normalized = _normalize_doc_result(json_candidate if json_candidate is not None else raw_text)
-        return {"result": normalized}
+        credits_cost = extract_credit_cost(gateway_response)
+        balance = apply_credit_cost(db, user_id, credits_cost)
+        db.commit()
+        return {"result": normalized, "credits": {"cost": credits_cost, "balance": balance}}
     except GatewayClientError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 

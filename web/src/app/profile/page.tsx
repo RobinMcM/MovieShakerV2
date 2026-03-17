@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
 import { AppHeader } from "@/components/Header";
@@ -41,6 +41,7 @@ interface ConfigStatusResponse {
     success: boolean;
     config: {
         models: Array<{ id: string; name?: string; provider?: string }>;
+        fiabTextModels?: Array<{ id: string; name?: string; provider?: string; cost_rank?: number; creativity_rank?: number }>;
     };
 }
 
@@ -54,6 +55,9 @@ function ProfilePage() {
     const [verifiedBanner, setVerifiedBanner] = useState<"success" | "error" | null>(null);
     const [purchaseAmount, setPurchaseAmount] = useState("11");
     const [gatewayModels, setGatewayModels] = useState<Array<{ id: string; name?: string; provider?: string }>>([]);
+    const [fiabTextModels, setFiabTextModels] = useState<Array<{ id: string; name?: string; provider?: string; cost_rank?: number; creativity_rank?: number }>>([]);
+    const [fiabOptionChoice, setFiabOptionChoice] = useState<"A" | "B">("A");
+    const [savingModels, setSavingModels] = useState(false);
 
     const [formData, setFormData] = useState({
         name: "",
@@ -109,9 +113,12 @@ function ProfilePage() {
         try {
             const data = await api.get<ConfigStatusResponse>("/api/config/status");
             const models = Array.isArray(data?.config?.models) ? data.config.models : [];
+            const fiabModels = Array.isArray(data?.config?.fiabTextModels) ? data.config.fiabTextModels : [];
             setGatewayModels(models);
+            setFiabTextModels(fiabModels);
         } catch {
             setGatewayModels([]);
+            setFiabTextModels([]);
         }
     }
 
@@ -156,6 +163,22 @@ function ProfilePage() {
 
     const communicationEmailVerified = !!profile?.email_verified_at;
     const isDeficit = (profile?.ai_credits ?? 0) < 0;
+    const orderedFiabModels = useMemo(() => {
+        const source = fiabTextModels.length > 0
+            ? fiabTextModels
+            : gatewayModels.map((model) => ({ ...model, cost_rank: 0, creativity_rank: 0 }));
+        const sorted = [...source];
+        sorted.sort((a, b) => {
+            if (fiabOptionChoice === "B") {
+                return (Number(b.cost_rank || 0) - Number(a.cost_rank || 0))
+                    || String(a.name || a.id).localeCompare(String(b.name || b.id));
+            }
+            return (Number(b.creativity_rank || 0) - Number(a.creativity_rank || 0))
+                || (Number(b.cost_rank || 0) - Number(a.cost_rank || 0))
+                || String(a.name || a.id).localeCompare(String(b.name || b.id));
+        });
+        return sorted;
+    }, [fiabOptionChoice, fiabTextModels, gatewayModels]);
 
     function handleBuyCreditsPlaceholder() {
         const amount = Number.parseInt(purchaseAmount, 10);
@@ -164,6 +187,32 @@ function ProfilePage() {
             return;
         }
         setError("Buy credits is coming soon.");
+    }
+
+    async function handleSaveModelSettings() {
+        try {
+            setSavingModels(true);
+            const data = await api.put<Profile>("/profile/", {
+                model_fiab_text: formData.model_fiab_text || null,
+                model_visualize_video: formData.model_visualize_video || null,
+                model_object_image: formData.model_object_image || null,
+                model_sound_music: formData.model_sound_music || null,
+            });
+            setProfile(data);
+            setFormData((prev) => ({
+                ...prev,
+                model_fiab_text: data.model_fiab_text ?? "",
+                model_visualize_video: data.model_visualize_video ?? "",
+                model_object_image: data.model_object_image ?? "",
+                model_sound_music: data.model_sound_music ?? "",
+            }));
+            setError(null);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : "Failed to save model settings.";
+            setError(message);
+        } finally {
+            setSavingModels(false);
+        }
     }
 
     if (loading) {
@@ -351,7 +400,7 @@ function ProfilePage() {
 
                 <Card className="mt-6">
                     <CardHeader>
-                        <CardTitle className="text-lg">Billing & AI Settings</CardTitle>
+                        <CardTitle className="text-lg">Billing</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="flex items-center justify-between">
@@ -367,6 +416,44 @@ function ProfilePage() {
                             </div>
                         )}
 
+                        <div className="pt-2 border-t space-y-2">
+                            <Label htmlFor="purchaseAmount">Buy credits (placeholder)</Label>
+                            <div className="flex gap-2">
+                                <Input
+                                    id="purchaseAmount"
+                                    type="number"
+                                    min={11}
+                                    value={purchaseAmount}
+                                    onChange={(e) => setPurchaseAmount(e.target.value)}
+                                    placeholder="Enter credits to buy"
+                                />
+                                <Button type="button" variant="outline" onClick={handleBuyCreditsPlaceholder}>
+                                    Buy credits
+                                </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground">Minimum purchase is greater than 10 credits.</p>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card className="mt-6">
+                    <CardHeader>
+                        <CardTitle className="text-lg">a Film in a Box Model Choice</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                            <Label>Option choice</Label>
+                            <Select value={fiabOptionChoice} onValueChange={(value) => setFiabOptionChoice(value as "A" | "B")}>
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="A">A - Creativity priority</SelectItem>
+                                    <SelectItem value="B">B - Cost high to low</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
                         <div className="space-y-2">
                             <Label>Model for a Film in a Box (Text)</Label>
                             <Select
@@ -378,7 +465,7 @@ function ProfilePage() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="__none__">No default</SelectItem>
-                                    {gatewayModels.map((model) => (
+                                    {orderedFiabModels.map((model) => (
                                         <SelectItem key={`fiab-${model.id}`} value={model.id}>
                                             {model.name || model.id}
                                             {model.provider ? ` (${model.provider})` : ""}
@@ -386,7 +473,29 @@ function ProfilePage() {
                                     ))}
                                 </SelectContent>
                             </Select>
+                            <p className="text-xs text-muted-foreground">
+                                Option B is ordered by cost high to low.
+                            </p>
                         </div>
+
+                        <Button type="button" onClick={handleSaveModelSettings} disabled={savingModels}>
+                            {savingModels ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Saving…
+                                </>
+                            ) : (
+                                "Save a Film in a Box model"
+                            )}
+                        </Button>
+                    </CardContent>
+                </Card>
+
+                <Card className="mt-6">
+                    <CardHeader>
+                        <CardTitle className="text-lg">Other Model Choices</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
 
                         <div className="space-y-2">
                             <Label>Model for Visualize (Video)</Label>
@@ -451,23 +560,16 @@ function ProfilePage() {
                             </Select>
                         </div>
 
-                        <div className="pt-2 border-t space-y-2">
-                            <Label htmlFor="purchaseAmount">Buy credits (placeholder)</Label>
-                            <div className="flex gap-2">
-                                <Input
-                                    id="purchaseAmount"
-                                    type="number"
-                                    min={11}
-                                    value={purchaseAmount}
-                                    onChange={(e) => setPurchaseAmount(e.target.value)}
-                                    placeholder="Enter credits to buy"
-                                />
-                                <Button type="button" variant="outline" onClick={handleBuyCreditsPlaceholder}>
-                                    Buy credits
-                                </Button>
-                            </div>
-                            <p className="text-xs text-muted-foreground">Minimum purchase is greater than 10 credits.</p>
-                        </div>
+                        <Button type="button" onClick={handleSaveModelSettings} disabled={savingModels}>
+                            {savingModels ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Saving…
+                                </>
+                            ) : (
+                                "Save other model choices"
+                            )}
+                        </Button>
                     </CardContent>
                 </Card>
             </main>

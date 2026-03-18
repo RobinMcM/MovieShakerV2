@@ -12,7 +12,7 @@ from sqlmodel import Session, select
 
 from db import get_session
 from models import MoodBoardComposition, MoodBoardImageHistory, ProjectMember, Scene, Script, TramLine
-from storage import delete_storage_file, save_moodboard_image
+from storage import save_moodboard_image
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
 
@@ -204,32 +204,54 @@ async def save_canvas_atomic(
     if size < 8 or content[:8] != b"\x89PNG\r\n\x1a\n":
         raise HTTPException(status_code=400, detail="Invalid PNG image payload")
 
-    ext = "png"
-    filename = f"{tram_line_id}-{uuid.uuid4().hex}.png"
     path_key: Optional[str] = None
-    old_scene_visual = (line.scene_visual or "").strip() or None
     try:
         from io import BytesIO
 
         project_id, scene_id = _tramline_project_scene_context(db, tram_line_id)
-        path_key = save_moodboard_image(
-            user_id=user_id,
-            project_id=project_id,
-            scene_id=scene_id,
-            tram_line_id=tram_line_id,
-            filename=filename,
-            content=BytesIO(content),
-            size=size,
-        )
-
         tram_line_uuid = uuid.UUID(tram_line_id)
         row: MoodBoardComposition
+        note = str(payload.get("note") or "").strip()
+        dimensions = payload.get("dimensions") if isinstance(payload.get("dimensions"), dict) else {}
+        width = float(dimensions.get("width") or 1280)
+        height = float(dimensions.get("height") or 720)
+        if width <= 0:
+            width = 1280
+        if height <= 0:
+            height = 720
+
         if composition_id:
             row = db.get(MoodBoardComposition, uuid.UUID(composition_id))
             if not row or row.user_id != user_id or str(row.tram_line_id) != tram_line_id:
                 raise HTTPException(status_code=404, detail="Composition not found")
-            payload["snapshot_path"] = path_key
-            row.composition_data = json.dumps(payload)
+            stable_path = save_moodboard_image(
+                user_id=user_id,
+                project_id=project_id,
+                scene_id=scene_id,
+                tram_line_id=tram_line_id,
+                filename=f"{composition_id}.png",
+                content=BytesIO(content),
+                size=size,
+            )
+            path_key = stable_path
+            snapshot_payload = {
+                "images": [
+                    {
+                        "id": f"snapshot-{composition_id}",
+                        "src": stable_path,
+                        "x": 0,
+                        "y": 0,
+                        "width": width,
+                        "height": height,
+                    }
+                ],
+                "lines": [],
+                "dimensions": {"width": width, "height": height},
+                "note": note,
+                "snapshot_path": stable_path,
+                "mode": "snapshot",
+            }
+            row.composition_data = json.dumps(snapshot_payload)
             row.updated_at = __import__("datetime").datetime.utcnow()
             db.add(row)
         else:
@@ -242,11 +264,39 @@ async def save_canvas_atomic(
                 ).all()
             )
             next_num = max((c.canvas_number for c in existing), default=0) + 1
-            payload["snapshot_path"] = path_key
+            new_comp_id = uuid.uuid4()
+            stable_path = save_moodboard_image(
+                user_id=user_id,
+                project_id=project_id,
+                scene_id=scene_id,
+                tram_line_id=tram_line_id,
+                filename=f"{new_comp_id}.png",
+                content=BytesIO(content),
+                size=size,
+            )
+            path_key = stable_path
+            snapshot_payload = {
+                "images": [
+                    {
+                        "id": f"snapshot-{new_comp_id}",
+                        "src": stable_path,
+                        "x": 0,
+                        "y": 0,
+                        "width": width,
+                        "height": height,
+                    }
+                ],
+                "lines": [],
+                "dimensions": {"width": width, "height": height},
+                "note": note,
+                "snapshot_path": stable_path,
+                "mode": "snapshot",
+            }
             row = MoodBoardComposition(
+                id=new_comp_id,
                 tram_line_id=tram_line_uuid,
                 user_id=user_id,
-                composition_data=json.dumps(payload),
+                composition_data=json.dumps(snapshot_payload),
                 canvas_number=next_num,
             )
             db.add(row)
@@ -264,9 +314,6 @@ async def save_canvas_atomic(
         db.commit()
         db.refresh(row)
 
-        if old_scene_visual and old_scene_visual != path_key:
-            delete_storage_file(old_scene_visual)
-
         return {
             "success": True,
             "path": path_key,
@@ -279,18 +326,12 @@ async def save_canvas_atomic(
         }
     except HTTPException:
         db.rollback()
-        if path_key:
-            delete_storage_file(path_key)
         raise
     except ValueError as e:
         db.rollback()
-        if path_key:
-            delete_storage_file(path_key)
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:
         db.rollback()
-        if path_key:
-            delete_storage_file(path_key)
         raise
 
 

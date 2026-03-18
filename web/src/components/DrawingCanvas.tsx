@@ -208,15 +208,16 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
 
     useEffect(() => {
       setSelectedId(null);
-      if (initialData?.images && initialData?.lines) {
-        setLines(initialData.lines as CanvasLine[]);
+      if (initialData) {
+        setLines(Array.isArray(initialData.lines) ? (initialData.lines as CanvasLine[]) : []);
         const loaded: CanvasImage[] = [];
-        const pending = { count: initialData.images?.length ?? 0 };
+        const incomingImages = Array.isArray(initialData.images) ? initialData.images : [];
+        const pending = { count: incomingImages.length };
         const finalizeIfDone = () => {
           pending.count -= 1;
           if (pending.count <= 0) setImages(loaded);
         };
-        (initialData.images || []).forEach((imgData) => {
+        incomingImages.forEach((imgData) => {
           const originalSrc = (imgData.src || "").trim();
           const resolvedSrc = resolveCanvasImageSrc(originalSrc);
           if (!resolvedSrc) {
@@ -228,7 +229,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
             finalizeIfDone();
           }, finalizeIfDone);
         });
-        if ((initialData.images?.length ?? 0) === 0) setImages([]);
+        if (incomingImages.length === 0) setImages([]);
       } else {
         setImages([]);
         setLines([]);

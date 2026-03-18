@@ -151,6 +151,30 @@ def get_storage_file(relative_path: str) -> Optional[Tuple[bytes, str]]:
         return None
 
 
+def delete_storage_file(relative_path: str) -> bool:
+    """
+    Delete a storage object by relative key/path.
+    Returns True if a delete call/remove was attempted successfully.
+    """
+    if not relative_path or ".." in relative_path:
+        return False
+    if uses_spaces():
+        try:
+            client = _spaces_client()
+            client.delete_object(Bucket=DO_SPACES_BUCKET, Key=relative_path)
+            return True
+        except Exception:
+            return False
+    path = STORAGE_ROOT / relative_path
+    if not path.exists() or not path.is_file():
+        return False
+    try:
+        path.unlink()
+        return True
+    except Exception:
+        return False
+
+
 def delete_script_dir(user_id: str, project_id: str, script_id: str) -> None:
     if uses_spaces():
         prefix = f"{user_id}/{project_id}/{script_id}/"

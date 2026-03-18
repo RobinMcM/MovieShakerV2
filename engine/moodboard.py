@@ -12,7 +12,7 @@ from sqlmodel import Session, select
 
 from db import get_session
 from models import MoodBoardComposition, MoodBoardImageHistory, ProjectMember, Scene, Script, TramLine
-from storage import save_moodboard_image
+from storage import delete_storage_file, save_moodboard_image
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
 
@@ -101,6 +101,24 @@ class CompositionBody(BaseModel):
     composition_data: Any = None
 
 
+def _serialize_composition(row: MoodBoardComposition) -> dict:
+    data = None
+    if row.composition_data:
+        try:
+            data = json.loads(row.composition_data)
+        except Exception:
+            pass
+    return {
+        "id": str(row.id),
+        "tram_line_id": str(row.tram_line_id),
+        "user_id": row.user_id,
+        "composition_data": data,
+        "canvas_number": row.canvas_number,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
 @router.post("/composition")
 def save_composition(
     body: CompositionBody,
@@ -143,24 +161,137 @@ def save_composition(
         db.refresh(comp)
         row = comp
 
-    data = None
-    if row.composition_data:
-        try:
-            data = json.loads(row.composition_data)
-        except Exception:
-            pass
     return {
         "success": True,
-        "composition": {
-            "id": str(row.id),
-            "tram_line_id": str(row.tram_line_id),
-            "user_id": row.user_id,
-            "composition_data": data,
-            "canvas_number": row.canvas_number,
-            "created_at": row.created_at.isoformat() if row.created_at else None,
-            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
-        },
+        "composition": _serialize_composition(row),
     }
+
+
+@router.post("/save-canvas")
+async def save_canvas_atomic(
+    tram_line_id: str = Form(...),
+    composition_data: str = Form("{}"),
+    composition_id: Optional[str] = Form(None),
+    aspect_ratio: Optional[str] = Form(None),
+    file: UploadFile = File(...),
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    """
+    Atomically save moodboard canvas:
+    - save rendered PNG snapshot
+    - update tram line scene_visual
+    - create/update composition JSON
+    """
+    user_id = session.get_user_id()
+    line = _ensure_tramline_access(db, tram_line_id, user_id)
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Missing filename")
+
+    payload: Any
+    try:
+        payload = json.loads(composition_data) if composition_data else {}
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid composition_data JSON")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="composition_data must be a JSON object")
+
+    content = await file.read()
+    size = len(content)
+    if size <= 0:
+        raise HTTPException(status_code=400, detail="Canvas image is empty")
+    # PNG signature: 89 50 4E 47 0D 0A 1A 0A
+    if size < 8 or content[:8] != b"\x89PNG\r\n\x1a\n":
+        raise HTTPException(status_code=400, detail="Invalid PNG image payload")
+
+    ext = "png"
+    filename = f"{tram_line_id}-{uuid.uuid4().hex}.png"
+    path_key: Optional[str] = None
+    old_scene_visual = (line.scene_visual or "").strip() or None
+    try:
+        from io import BytesIO
+
+        project_id, scene_id = _tramline_project_scene_context(db, tram_line_id)
+        path_key = save_moodboard_image(
+            user_id=user_id,
+            project_id=project_id,
+            scene_id=scene_id,
+            tram_line_id=tram_line_id,
+            filename=filename,
+            content=BytesIO(content),
+            size=size,
+        )
+
+        tram_line_uuid = uuid.UUID(tram_line_id)
+        row: MoodBoardComposition
+        if composition_id:
+            row = db.get(MoodBoardComposition, uuid.UUID(composition_id))
+            if not row or row.user_id != user_id or str(row.tram_line_id) != tram_line_id:
+                raise HTTPException(status_code=404, detail="Composition not found")
+            payload["snapshot_path"] = path_key
+            row.composition_data = json.dumps(payload)
+            row.updated_at = __import__("datetime").datetime.utcnow()
+            db.add(row)
+        else:
+            existing = list(
+                db.exec(
+                    select(MoodBoardComposition).where(
+                        MoodBoardComposition.tram_line_id == tram_line_uuid,
+                        MoodBoardComposition.user_id == user_id,
+                    )
+                ).all()
+            )
+            next_num = max((c.canvas_number for c in existing), default=0) + 1
+            payload["snapshot_path"] = path_key
+            row = MoodBoardComposition(
+                tram_line_id=tram_line_uuid,
+                user_id=user_id,
+                composition_data=json.dumps(payload),
+                canvas_number=next_num,
+            )
+            db.add(row)
+
+        history_row = MoodBoardImageHistory(
+            tram_line_id=tram_line_uuid,
+            user_id=user_id,
+            image_path=path_key,
+            generation_method="canvas_save",
+            aspect_ratio=aspect_ratio,
+        )
+        db.add(history_row)
+        line.scene_visual = path_key
+        db.add(line)
+        db.commit()
+        db.refresh(row)
+
+        if old_scene_visual and old_scene_visual != path_key:
+            delete_storage_file(old_scene_visual)
+
+        return {
+            "success": True,
+            "path": path_key,
+            "composition": _serialize_composition(row),
+            "history": {
+                "id": str(history_row.id),
+                "image_path": history_row.image_path,
+                "created_at": history_row.created_at.isoformat() if history_row.created_at else None,
+            },
+        }
+    except HTTPException:
+        db.rollback()
+        if path_key:
+            delete_storage_file(path_key)
+        raise
+    except ValueError as e:
+        db.rollback()
+        if path_key:
+            delete_storage_file(path_key)
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        db.rollback()
+        if path_key:
+            delete_storage_file(path_key)
+        raise
 
 
 class HistoryBody(BaseModel):

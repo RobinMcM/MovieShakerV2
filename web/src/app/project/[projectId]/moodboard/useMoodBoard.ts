@@ -154,6 +154,36 @@ export function useMoodBoard(projectId: string | null) {
     []
   );
 
+  const saveCanvas = useCallback(
+    async (params: {
+      tramLineId: string;
+      file: File;
+      compositionData: Record<string, unknown>;
+      compositionId?: string;
+      aspectRatio?: string;
+    }) => {
+      const form = new FormData();
+      form.append("tram_line_id", params.tramLineId);
+      form.append("composition_data", JSON.stringify(params.compositionData || {}));
+      if (params.compositionId) form.append("composition_id", params.compositionId);
+      if (params.aspectRatio) form.append("aspect_ratio", params.aspectRatio);
+      form.append("file", params.file);
+      const res = await api.postForm<{
+        success: boolean;
+        path: string;
+        composition: CanvasComposition;
+      }>("api/moodboard/save-canvas", form);
+      const comp = (res as { composition?: CanvasComposition }).composition;
+      if (comp && params.compositionId) {
+        setCompositions((prev) => prev.map((c) => (c.id === comp.id ? comp : c)));
+      } else if (comp) {
+        setCompositions((prev) => [...prev, comp]);
+      }
+      return res;
+    },
+    []
+  );
+
   return {
     loading,
     project,
@@ -165,6 +195,7 @@ export function useMoodBoard(projectId: string | null) {
     setCompositions,
     uploadImage,
     saveComposition,
+    saveCanvas,
     refetchTramLines: () => projectId && loadTramLines(projectId),
     refetchCharacters: () => projectId && loadCharacters(projectId),
   };

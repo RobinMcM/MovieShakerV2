@@ -73,9 +73,7 @@ function MoodBoardContent() {
     compositions,
     compositionsLoading,
     loadCompositions,
-    setCompositions,
-    uploadImage,
-    saveComposition,
+    saveCanvas,
     refetchCharacters,
   } = useMoodBoard(projectId);
 
@@ -136,16 +134,13 @@ function MoodBoardContent() {
         const file = new File([blob], `drawing-${Date.now()}.png`, {
           type: "image/png",
         });
-        await uploadImage({
+        const dataToSave = { ...compositionData, note: canvasNote };
+        await saveCanvas({
           tramLineId: selectedTramLineId,
           file,
-          aspectRatio: canvasAspectRatio,
-        });
-        const dataToSave = { ...compositionData, note: canvasNote };
-        await saveComposition({
-          tramLineId: selectedTramLineId,
           compositionData: dataToSave,
           compositionId: isNewCanvas ? undefined : currentComposition?.id,
+          aspectRatio: canvasAspectRatio,
         });
         if (isNewCanvas) {
           loadCompositions(selectedTramLineId);
@@ -163,8 +158,7 @@ function MoodBoardContent() {
       canvasAspectRatio,
       isNewCanvas,
       currentComposition?.id,
-      uploadImage,
-      saveComposition,
+      saveCanvas,
       loadCompositions,
     ]
   );

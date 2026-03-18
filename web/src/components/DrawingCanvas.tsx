@@ -71,6 +71,46 @@ function normalizeStoredImageSrc(src: string): string {
   return value;
 }
 
+function isPngSignature(bytes: Uint8Array): boolean {
+  if (bytes.length < 8) return false;
+  return (
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a
+  );
+}
+
+function dataUrlToValidatedPngBlob(dataURL: string): Blob {
+  const value = (dataURL || "").trim();
+  const prefix = "data:image/png;base64,";
+  if (!value.startsWith(prefix)) {
+    throw new Error("Canvas export failed: expected PNG data URL");
+  }
+  const b64 = value.slice(prefix.length);
+  if (!b64) {
+    throw new Error("Canvas export failed: empty PNG payload");
+  }
+  let raw = "";
+  try {
+    raw = atob(b64);
+  } catch {
+    throw new Error("Canvas export failed: invalid base64 data");
+  }
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i += 1) {
+    bytes[i] = raw.charCodeAt(i);
+  }
+  if (!isPngSignature(bytes)) {
+    throw new Error("Canvas export failed: invalid PNG signature");
+  }
+  return new Blob([bytes], { type: "image/png" });
+}
+
 export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
   function DrawingCanvas({ tramLineId, initialData, onSave, aspectRatio }, ref) {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -198,9 +238,13 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
         const prev = selectedId;
         setSelectedId(null);
         await new Promise((r) => setTimeout(r, 0));
+        stageRef.current.batchDraw();
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         const dataURL = stageRef.current.toDataURL({ pixelRatio: 2 });
-        const res = await fetch(dataURL);
-        const blob = await res.blob();
+        const blob = dataUrlToValidatedPngBlob(dataURL);
+        if (blob.type !== "image/png" || blob.size <= 0) {
+          throw new Error("Canvas export failed: invalid PNG blob");
+        }
         const serializableImages = images.map(({ image, ...rest }) => ({
           ...rest,
           src: normalizeStoredImageSrc(rest.src),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
@@ -60,13 +60,6 @@ import { useObjects } from "./useObjects";
 import type { CharacterMood } from "../moodboard/types";
 import { storageImageUrl } from "@/lib/api";
 
-const ASPECT_RATIOS = [
-  { value: "1:1", label: "1:1 (Square)" },
-  { value: "16:9", label: "16:9 (Wide)" },
-  { value: "9:16", label: "9:16 (Portrait)" },
-  { value: "4:3", label: "4:3" },
-  { value: "3:4", label: "3:4" },
-];
 const PROJECT_ASPECT_RATIO_OPTIONS = [
   { value: "16:9", label: "Landscape (16:9) - most common" },
   { value: "9:16", label: "Vertical (9:16) - mobile / social media" },
@@ -98,32 +91,29 @@ function ObjectCard({
   object,
   onUpdate,
   onDelete,
-  onUpload,
   onGenerate,
-  fileInputRef,
   onTriggerFileInput,
   uploadingId,
-  toastMessage,
   setToastMessage,
 }: {
   object: CharacterMood;
   onUpdate: (id: string, u: { casting_notes?: string; aspect_ratio?: string; hide_from_view?: boolean }) => Promise<void>;
   onDelete: (obj: CharacterMood) => void;
-  onUpload: (id: string, file: File) => Promise<string | undefined>;
   onGenerate: (id: string, prompt: string, aspectRatio?: string | null) => Promise<void>;
-  fileInputRef: React.RefObject<HTMLInputElement | null>;
   onTriggerFileInput: (id: string) => void;
   uploadingId: string | null;
-  toastMessage: { title: string; description?: string; variant?: "default" | "destructive" } | null;
   setToastMessage: (m: { title: string; description?: string; variant?: "default" | "destructive" } | null) => void;
 }) {
-  const [localDescription, setLocalDescription] = useState(object.casting_notes ?? "");
-  const [generationPrompt, setGenerationPrompt] = useState(object.casting_notes ?? object.name);
+  const [description, setDescription] = useState(object.casting_notes ?? object.name);
   const [isGenerating, setIsGenerating] = useState(false);
   const imageUrl = storageImageUrl(object.character_image_url) ?? object.character_image_url ?? null;
 
+  useEffect(() => {
+    setDescription(object.casting_notes ?? object.name);
+  }, [object.casting_notes, object.name]);
+
   const handleBlur = () => {
-    const v = localDescription.trim();
+    const v = description.trim();
     if (v !== (object.casting_notes ?? "")) {
       onUpdate(object.id, { casting_notes: v }).catch(() =>
         setToastMessage({ title: "Failed to save description", variant: "destructive" })
@@ -132,7 +122,7 @@ function ObjectCard({
   };
 
   const handleGenerate = async () => {
-    const prompt = generationPrompt.trim();
+    const prompt = description.trim();
     if (!prompt) {
       setToastMessage({ title: "Prompt is required", variant: "destructive" });
       return;
@@ -155,7 +145,7 @@ function ObjectCard({
   return (
     <Card className="flex flex-col">
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-2">
             <CardTitle className="text-xl">{object.name}</CardTitle>
             <Badge variant={object.type === "character" ? "default" : object.type === "scene" ? "secondary" : "outline"}>
@@ -187,27 +177,11 @@ function ObjectCard({
             </Button>
           </div>
         </div>
+        <div className="mt-2 text-sm text-muted-foreground">
+          Aspect Ratio: <span className="font-medium text-foreground">{object.aspect_ratio ?? "16:9"}</span>
+        </div>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col gap-4">
-        <div className="flex flex-col gap-2">
-          <Label>Aspect Ratio</Label>
-          <Select
-            value={object.aspect_ratio ?? "1:1"}
-            onValueChange={(value) => onUpdate(object.id, { aspect_ratio: value })}
-            disabled={object.type === "character" || object.type === "scene"}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {ASPECT_RATIOS.map((r) => (
-                <SelectItem key={r.value} value={r.value}>
-                  {r.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
         <div className={`${getAspectRatioClass(object.aspect_ratio)} bg-muted rounded-lg overflow-hidden relative`}>
           {imageUrl ? (
             <img
@@ -222,47 +196,39 @@ function ObjectCard({
             </div>
           )}
         </div>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onTriggerFileInput(object.id)}
+            disabled={uploadingId === object.id}
+          >
+            {uploadingId === object.id ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <>
+                <Upload className="h-4 w-4 mr-1" />
+                Upload
+              </>
+            )}
+          </Button>
+          <Button size="sm" onClick={handleGenerate} disabled={isGenerating}>
+            {isGenerating ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <>
+                <Sparkles className="h-4 w-4 mr-1" />
+                Generate
+              </>
+            )}
+          </Button>
+        </div>
         <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <Label>Description</Label>
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => onTriggerFileInput(object.id)}
-                disabled={uploadingId === object.id}
-              >
-                {uploadingId === object.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <>
-                    <Upload className="h-4 w-4 mr-1" />
-                    Upload
-                  </>
-                )}
-              </Button>
-              <Button size="sm" onClick={handleGenerate} disabled={isGenerating}>
-                {isGenerating ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4 mr-1" />
-                    Generate
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
+          <Label>Description (AI prompt)</Label>
           <Textarea
-            placeholder="Prompt for AI image generation..."
-            value={generationPrompt}
-            onChange={(e) => setGenerationPrompt(e.target.value)}
-            className="min-h-[60px] resize-none"
-          />
-          <Textarea
-            placeholder="Describe appearance for reference..."
-            value={localDescription}
-            onChange={(e) => setLocalDescription(e.target.value)}
+            placeholder="Describe the object for AI image generation..."
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
             onBlur={handleBlur}
             className="min-h-[60px] resize-none"
           />
@@ -569,12 +535,9 @@ function ObjectsContent() {
                         object={obj}
                         onUpdate={updateObject}
                         onDelete={handleDeleteClick}
-                        onUpload={handleUpload}
                         onGenerate={handleGenerate}
-                        fileInputRef={fileInputRef}
                         onTriggerFileInput={triggerFileInput}
                         uploadingId={uploadingId}
-                        toastMessage={toastMessage}
                         setToastMessage={setToastMessage}
                       />
                     ))}
@@ -593,12 +556,9 @@ function ObjectsContent() {
                         object={obj}
                         onUpdate={updateObject}
                         onDelete={handleDeleteClick}
-                        onUpload={handleUpload}
                         onGenerate={handleGenerate}
-                        fileInputRef={fileInputRef}
                         onTriggerFileInput={triggerFileInput}
                         uploadingId={uploadingId}
-                        toastMessage={toastMessage}
                         setToastMessage={setToastMessage}
                       />
                     ))}
@@ -617,12 +577,9 @@ function ObjectsContent() {
                         object={obj}
                         onUpdate={updateObject}
                         onDelete={handleDeleteClick}
-                        onUpload={handleUpload}
                         onGenerate={handleGenerate}
-                        fileInputRef={fileInputRef}
                         onTriggerFileInput={triggerFileInput}
                         uploadingId={uploadingId}
-                        toastMessage={toastMessage}
                         setToastMessage={setToastMessage}
                       />
                     ))}

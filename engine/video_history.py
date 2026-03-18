@@ -116,6 +116,25 @@ def _extract_video_path(result: dict) -> Optional[str]:
     return None
 
 
+def _normalize_video_aspect_ratio(aspect_ratio: Optional[str]) -> str:
+    """
+    Normalize UI/project aspect ratios to Fal-supported values:
+    16:9, 9:16, 4:3, 3:4, 21:9, 9:21
+    """
+    value = (aspect_ratio or "").strip()
+    if not value:
+        return "16:9"
+    mapping = {
+        "2.39:1": "21:9",
+        "2.35:1": "21:9",
+        "1:2.39": "9:21",
+        "1:2.35": "9:21",
+    }
+    value = mapping.get(value, value)
+    allowed = {"16:9", "9:16", "4:3", "3:4", "21:9", "9:21"}
+    return value if value in allowed else "16:9"
+
+
 def _create_usage_event(
     db: Session,
     *,
@@ -208,9 +227,10 @@ def generate_video(
         prompt = "Cinematic shot"
 
     source_image_path = (body.source_image_path or line.scene_visual or "").strip() or None
+    normalized_aspect_ratio = _normalize_video_aspect_ratio(body.aspect_ratio)
     payload: dict = {
         "prompt": prompt,
-        "aspect_ratio": body.aspect_ratio or "16:9",
+        "aspect_ratio": normalized_aspect_ratio,
     }
     if body.duration:
         payload["duration"] = body.duration
@@ -247,7 +267,7 @@ def generate_video(
         task_id=gateway_job_id,
         generation_method=f"gateway_{body.media_type}",
         prompt=prompt,
-        aspect_ratio=body.aspect_ratio,
+        aspect_ratio=normalized_aspect_ratio,
         duration=body.duration,
         take_number=body.take_number,
         channel=body.channel,

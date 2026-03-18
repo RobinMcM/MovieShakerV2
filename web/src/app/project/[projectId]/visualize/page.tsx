@@ -58,6 +58,20 @@ function resolveSourceImageUrl(pathOrUrl: string | null | undefined): string | n
   return storageImageUrl(pathOrUrl);
 }
 
+function normalizeVideoAspectRatio(aspectRatio: string | null | undefined): string {
+  const value = (aspectRatio || "").trim();
+  if (!value) return "16:9";
+  const mapping: Record<string, string> = {
+    "2.39:1": "21:9",
+    "2.35:1": "21:9",
+    "1:2.39": "9:21",
+    "1:2.35": "9:21",
+  };
+  const normalized = mapping[value] || value;
+  const allowed = new Set(["16:9", "9:16", "4:3", "3:4", "21:9", "9:21"]);
+  return allowed.has(normalized) ? normalized : "16:9";
+}
+
 function normalizeSourceImagePath(pathOrUrl: string | null | undefined): string | null {
   if (!pathOrUrl) return null;
   const value = pathOrUrl.trim();
@@ -211,7 +225,7 @@ function VisualizeContent() {
       }>("api/video-history/generate", {
         tram_line_id: selectedTramLine,
         prompt: prompt.trim() || currentLine?.action_text || "Cinematic shot",
-        aspect_ratio: project?.aspect_ratio || "16:9",
+        aspect_ratio: normalizeVideoAspectRatio(project?.aspect_ratio),
         channel: nextChannel,
         take_number: nextTake,
         media_type: "video-generation",

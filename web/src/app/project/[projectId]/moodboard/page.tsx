@@ -118,8 +118,19 @@ function MoodBoardContent() {
   }, [selectedTramLineId]);
 
   useEffect(() => {
-    if (compositions.length === 0 && !isNewCanvas) setIsNewCanvas(true);
-  }, [compositions.length, isNewCanvas]);
+    if (compositionsLoading) return;
+
+    // Only auto-open a new canvas when there are truly no saved moodboards.
+    if (compositions.length === 0) {
+      if (!isNewCanvas) setIsNewCanvas(true);
+      return;
+    }
+
+    // When saved moodboards exist, default to the first one on load/navigation.
+    if (isNewCanvas && currentCanvasIndex === 0) {
+      setIsNewCanvas(false);
+    }
+  }, [compositionsLoading, compositions.length, isNewCanvas, currentCanvasIndex]);
 
   useEffect(() => {
     setCanvasAspectRatio(project?.aspect_ratio ?? "16:9");

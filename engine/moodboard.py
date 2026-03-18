@@ -40,6 +40,23 @@ def _ensure_tramline_access(db: Session, tramline_id: str, user_id: str) -> Tram
     return line
 
 
+def _tramline_project_scene_context(db: Session, tramline_id: str) -> tuple[str, str]:
+    """
+    Return (project_id, scene_id) for a tram line.
+    Access control is enforced separately via _ensure_tramline_access.
+    """
+    line = db.get(TramLine, uuid.UUID(tramline_id))
+    if not line:
+        raise HTTPException(status_code=404, detail="Tram line not found")
+    scene = db.get(Scene, line.scene_id)
+    if not scene:
+        raise HTTPException(status_code=404, detail="Scene not found")
+    script = db.get(Script, scene.script_id)
+    if not script:
+        raise HTTPException(status_code=404, detail="Script not found")
+    return str(script.project_id), str(scene.id)
+
+
 @router.get("/{tram_line_id}/compositions")
 def list_compositions(
     tram_line_id: str,
@@ -255,7 +272,16 @@ async def upload_moodboard_image(
     size = len(content)
     try:
         from io import BytesIO
-        path_key = save_moodboard_image(user_id, tram_line_id, filename, BytesIO(content), size)
+        project_id, scene_id = _tramline_project_scene_context(db, tram_line_id)
+        path_key = save_moodboard_image(
+            user_id=user_id,
+            project_id=project_id,
+            scene_id=scene_id,
+            tram_line_id=tram_line_id,
+            filename=filename,
+            content=BytesIO(content),
+            size=size,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

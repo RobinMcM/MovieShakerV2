@@ -14,11 +14,21 @@ def serve_storage(
     path: str,
     session: SessionContainer = Depends(verify_session()),
 ):
-    """Serve a stored file. Path must be moodboard/{user_id}/... or objects/{user_id}/... for current user."""
+    """
+    Serve a stored image for current user.
+    Supported paths:
+    - Legacy: moodboard/{user_id}/..., objects/{user_id}/...
+    - Project-scoped: {user_id}/{project_id}/.../moodboard/... or .../objects/...
+    """
     user_id = session.get_user_id()
     if not path or ".." in path:
         raise HTTPException(status_code=400, detail="Invalid path")
-    if not path.startswith(f"moodboard/{user_id}/") and not path.startswith(f"objects/{user_id}/"):
+
+    legacy_allowed = path.startswith(f"moodboard/{user_id}/") or path.startswith(f"objects/{user_id}/")
+    project_scoped_allowed = path.startswith(f"{user_id}/") and (
+        "/moodboard/" in path or "/objects/" in path
+    )
+    if not legacy_allowed and not project_scoped_allowed:
         raise HTTPException(status_code=403, detail="Access denied")
     result = get_storage_file(path)
     if not result:

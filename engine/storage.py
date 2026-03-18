@@ -122,12 +122,18 @@ def get_script_file_stream(relative_path: str) -> Optional[Tuple[bytes, str]]:
 
 def get_storage_file(relative_path: str) -> Optional[Tuple[bytes, str]]:
     """
-    Return (body, content_type) for moodboard/ or objects/ keys.
+    Return (body, content_type) for moodboard/object image keys.
     For local: read from STORAGE_ROOT. For Spaces: use S3 get_object.
     """
     if not relative_path or ".." in relative_path:
         return None
-    if not relative_path.startswith(("moodboard/", "objects/")):
+
+    # Allowed storage-key patterns:
+    # - Legacy: moodboard/{user_id}/..., objects/{user_id}/...
+    # - Current: {user_id}/{project_id}/.../moodboard/... or .../objects/...
+    is_legacy = relative_path.startswith(("moodboard/", "objects/"))
+    is_project_scoped = ("/moodboard/" in relative_path) or ("/objects/" in relative_path)
+    if not (is_legacy or is_project_scoped):
         return None
     if uses_spaces():
         return get_script_file_stream(relative_path)
@@ -163,18 +169,31 @@ def delete_script_dir(user_id: str, project_id: str, script_id: str) -> None:
         shutil.rmtree(d)
 
 
-# Moodboard image storage: moodboard/{user_id}/{tram_line_id}/{filename}
-def moodboard_relative_path(user_id: str, tram_line_id: str, filename: str) -> str:
-    return f"moodboard/{user_id}/{tram_line_id}/{filename}"
+# Moodboard image storage (project-scoped):
+# {user_id}/{project_id}/scene/{scene_id}/moodboard/{tram_line_id}/{filename}
+def moodboard_relative_path(
+    user_id: str,
+    project_id: str,
+    scene_id: str,
+    tram_line_id: str,
+    filename: str,
+) -> str:
+    return f"{user_id}/{project_id}/scene/{scene_id}/moodboard/{tram_line_id}/{filename}"
 
 
 def save_moodboard_image(
-    user_id: str, tram_line_id: str, filename: str, content: BinaryIO, size: int
+    user_id: str,
+    project_id: str,
+    scene_id: str,
+    tram_line_id: str,
+    filename: str,
+    content: BinaryIO,
+    size: int,
 ) -> str:
     """Save moodboard image to storage. Returns relative path (key) for DB."""
     if size > MAX_UPLOAD_BYTES:
         raise ValueError(f"File size exceeds {MAX_UPLOAD_BYTES} bytes")
-    key = moodboard_relative_path(user_id, tram_line_id, filename)
+    key = moodboard_relative_path(user_id, project_id, scene_id, tram_line_id, filename)
     if uses_spaces():
         body = content.read() if hasattr(content, "read") else content
         content_type = "image/png" if filename.lower().endswith(".png") else "image/jpeg"
@@ -188,7 +207,7 @@ def save_moodboard_image(
             ContentType=content_type,
         )
         return key
-    d = STORAGE_ROOT / "moodboard" / user_id / tram_line_id
+    d = STORAGE_ROOT / user_id / str(project_id) / "scene" / str(scene_id) / "moodboard" / tram_line_id
     d.mkdir(parents=True, exist_ok=True)
     path = d / filename
     with open(path, "wb") as f:
@@ -196,19 +215,30 @@ def save_moodboard_image(
     return key
 
 
-# Character/object image storage: objects/{user_id}/{objects|scenes}/{character_id}.{ext}
-def character_image_relative_path(user_id: str, character_id: str, filename: str, is_scene: bool = False) -> str:
-    subdir = "scenes" if is_scene else "objects"
-    return f"objects/{user_id}/{subdir}/{filename}"
+# Character/object image storage (project-scoped):
+# {user_id}/{project_id}/objects/{character_id}.{ext}
+# Scene-type assets use: {user_id}/{project_id}/objects/scenes/{character_id}.{ext}
+def character_image_relative_path(
+    user_id: str, project_id: str, character_id: str, filename: str, is_scene: bool = False
+) -> str:
+    if is_scene:
+        return f"{user_id}/{project_id}/objects/scenes/{filename}"
+    return f"{user_id}/{project_id}/objects/{filename}"
 
 
 def save_character_image(
-    user_id: str, character_id: str, filename: str, content: BinaryIO, size: int, is_scene: bool = False
+    user_id: str,
+    project_id: str,
+    character_id: str,
+    filename: str,
+    content: BinaryIO,
+    size: int,
+    is_scene: bool = False,
 ) -> str:
     """Save character/object image. Returns relative path (key) for DB character_image_url."""
     if size > MAX_UPLOAD_BYTES:
         raise ValueError(f"File size exceeds {MAX_UPLOAD_BYTES} bytes")
-    key = character_image_relative_path(user_id, character_id, filename, is_scene)
+    key = character_image_relative_path(user_id, project_id, character_id, filename, is_scene)
     if uses_spaces():
         body = content.read() if hasattr(content, "read") else content
         content_type = "image/png" if filename.lower().endswith(".png") else "image/jpeg"
@@ -222,8 +252,11 @@ def save_character_image(
             ContentType=content_type,
         )
         return key
-    subdir = "scenes" if is_scene else "objects"
-    d = STORAGE_ROOT / "objects" / user_id / subdir
+    d = (
+        STORAGE_ROOT / user_id / str(project_id) / "objects" / "scenes"
+        if is_scene
+        else STORAGE_ROOT / user_id / str(project_id) / "objects"
+    )
     d.mkdir(parents=True, exist_ok=True)
     path = d / filename
     with open(path, "wb") as f:

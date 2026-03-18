@@ -309,6 +309,9 @@ def generate_character_image(
     user_id = session.get_user_id()
     profile = ensure_user_can_generate(db, user_id)
     character = _get_character_and_ensure_access(db, character_id, user_id)
+    script = db.get(Script, character.script_id)
+    if not script:
+        raise HTTPException(status_code=404, detail="Script not found")
 
     prompt = (body.prompt or "").strip()
     if not prompt:
@@ -393,7 +396,13 @@ def generate_character_image(
         from io import BytesIO
 
         path_key = save_character_image(
-            user_id, character_id, filename, BytesIO(content), len(content), is_scene=is_scene
+            user_id=user_id,
+            project_id=str(script.project_id),
+            character_id=character_id,
+            filename=filename,
+            content=BytesIO(content),
+            size=len(content),
+            is_scene=is_scene,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -443,9 +452,20 @@ async def upload_character_image(
     content = await file.read()
     size = len(content)
     is_scene = getattr(character, "type", None) == "scene"
+    script = db.get(Script, character.script_id)
+    if not script:
+        raise HTTPException(status_code=404, detail="Script not found")
     try:
         from io import BytesIO
-        path_key = save_character_image(user_id, character_id, filename, BytesIO(content), size, is_scene=is_scene)
+        path_key = save_character_image(
+            user_id=user_id,
+            project_id=str(script.project_id),
+            character_id=character_id,
+            filename=filename,
+            content=BytesIO(content),
+            size=size,
+            is_scene=is_scene,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     character.character_image_url = path_key

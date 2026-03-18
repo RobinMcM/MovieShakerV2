@@ -46,6 +46,59 @@ class GatewayClient:
         except Exception:
             return []
 
+    def get_object_image_models(self) -> list[dict]:
+        """
+        Return usageflows image model choices for profile defaults.
+        Preferred: dedicated gateway endpoint with allowlisted FAL image models.
+        Fallback: filter generic /api/models response for known FAL-style ids.
+        """
+        try:
+            with httpx.Client(timeout=self.timeout_seconds, verify=self.verify_tls) as client:
+                response = client.get(
+                    f"{self.base_url}/api/media/models",
+                    headers=self._headers(),
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    models = data.get("models")
+                    if isinstance(models, list):
+                        compact = []
+                        for model in models:
+                            model_id = model.get("id")
+                            if not isinstance(model_id, str) or not model_id.strip():
+                                continue
+                            compact.append(
+                                {
+                                    "id": model_id.strip(),
+                                    "name": model.get("name") or model_id.strip(),
+                                    "provider": model.get("provider") or "fal",
+                                    "media_type_support": model.get("media_type_support") or [],
+                                    "default_for_media_type": model.get("default_for_media_type"),
+                                }
+                            )
+                        return compact
+        except Exception:
+            pass
+
+        # Fallback for older gateway versions without /api/media/models.
+        fallback = []
+        for model in self.get_models():
+            model_id = (model.get("id") or "").strip()
+            if not model_id:
+                continue
+            lowered = model_id.lower()
+            if lowered.startswith("fal-ai/") or "flux" in lowered or "kling" in lowered or "luma" in lowered:
+                fallback.append(
+                    {
+                        "id": model_id,
+                        "name": model.get("name") or model_id,
+                        "provider": model.get("provider") or "fal",
+                        "media_type_support": ["image-generation"],
+                        "default_for_media_type": None,
+                    }
+                )
+        return fallback
+
     def execute_fal(
         self,
         media_type: str,

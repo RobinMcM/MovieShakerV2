@@ -180,6 +180,7 @@ def get_config_status(
     )
     connected = client.health() if settings.gateway_base_url else False
     models = client.get_models() if connected and settings.gateway_internal_api_key else []
+    object_image_models = client.get_object_image_models() if connected and settings.gateway_internal_api_key else []
     compact_models = []
     fiab_text_models = []
     for model in models:
@@ -213,6 +214,7 @@ def get_config_status(
             "gatewayConnected": connected,
             "hasGatewayKey": bool(settings.gateway_internal_api_key),
             "models": compact_models,
+            "objectImageModels": object_image_models,
             "fiabTextModels": fiab_text_models,
         },
     }

@@ -41,6 +41,13 @@ interface ConfigStatusResponse {
     success: boolean;
     config: {
         models: Array<{ id: string; name?: string; provider?: string }>;
+        objectImageModels?: Array<{
+            id: string;
+            name?: string;
+            provider?: string;
+            media_type_support?: string[];
+            default_for_media_type?: string | null;
+        }>;
         fiabTextModels?: Array<{
             id: string;
             name?: string;
@@ -76,6 +83,7 @@ function ProfilePage() {
     const [verifiedBanner, setVerifiedBanner] = useState<"success" | "error" | null>(null);
     const [purchaseAmount, setPurchaseAmount] = useState("11");
     const [gatewayModels, setGatewayModels] = useState<Array<{ id: string; name?: string; provider?: string }>>([]);
+    const [objectImageModels, setObjectImageModels] = useState<Array<{ id: string; name?: string; provider?: string }>>([]);
     const [fiabTextModels, setFiabTextModels] = useState<Array<{
         id: string;
         name?: string;
@@ -142,11 +150,14 @@ function ProfilePage() {
         try {
             const data = await api.get<ConfigStatusResponse>("/api/config/status");
             const models = Array.isArray(data?.config?.models) ? data.config.models : [];
+            const imageModels = Array.isArray(data?.config?.objectImageModels) ? data.config.objectImageModels : [];
             const fiabModels = Array.isArray(data?.config?.fiabTextModels) ? data.config.fiabTextModels : [];
             setGatewayModels(models);
+            setObjectImageModels(imageModels.map((m) => ({ id: m.id, name: m.name, provider: m.provider })));
             setFiabTextModels(fiabModels);
         } catch {
             setGatewayModels([]);
+            setObjectImageModels([]);
             setFiabTextModels([]);
         }
     }
@@ -218,6 +229,19 @@ function ProfilePage() {
         );
         return sorted;
     }, [fiabCostSort, fiabTextModels, gatewayModels, selectedFiabCategory]);
+    const objectImageModelsForSelect = useMemo(() => {
+        const current = (formData.model_object_image || "").trim();
+        if (!current) return objectImageModels;
+        if (objectImageModels.some((model) => model.id === current)) return objectImageModels;
+        return [
+            {
+                id: current,
+                name: `${current} (legacy/unavailable)`,
+                provider: "unknown",
+            },
+            ...objectImageModels,
+        ];
+    }, [formData.model_object_image, objectImageModels]);
 
     function handleBuyCreditsPlaceholder() {
         const amount = Number.parseInt(purchaseAmount, 10);
@@ -585,7 +609,7 @@ function ProfilePage() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="__none__">No default</SelectItem>
-                                    {gatewayModels.map((model) => (
+                                    {objectImageModelsForSelect.map((model) => (
                                         <SelectItem key={`image-${model.id}`} value={model.id}>
                                             {model.name || model.id}
                                             {model.provider ? ` (${model.provider})` : ""}

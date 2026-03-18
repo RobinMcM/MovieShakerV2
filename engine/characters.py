@@ -237,6 +237,19 @@ def _gateway_debug_hint(payload: dict) -> str:
     )
 
 
+def _should_fallback_to_default_model(error_text: str) -> bool:
+    text = (error_text or "").lower()
+    fallback_markers = (
+        "not in allowlist",
+        "model not allowed",
+        "unknown media_type",
+        "unknown model",
+        "invalid model",
+        "unsupported model",
+    )
+    return any(marker in text for marker in fallback_markers)
+
+
 @router.put("/characters/{character_id}")
 def update_character(
     character_id: str,
@@ -319,9 +332,12 @@ def generate_character_image(
             dry_run=body.dry_run,
         )
     except GatewayClientError as exc:
+        error_text = str(exc)
         if not selected_model:
-            raise HTTPException(status_code=502, detail=str(exc))
-        # If profile-selected model is invalid for this media type, try gateway default route.
+            raise HTTPException(status_code=502, detail=error_text)
+        if not _should_fallback_to_default_model(error_text):
+            raise HTTPException(status_code=502, detail=error_text)
+        # If profile-selected model is invalid/unavailable, try gateway default route.
         try:
             response = gateway.execute_fal(
                 media_type="image-generation",
@@ -330,7 +346,10 @@ def generate_character_image(
                 dry_run=body.dry_run,
             )
         except GatewayClientError:
-            raise HTTPException(status_code=502, detail=str(exc))
+            raise HTTPException(
+                status_code=502,
+                detail=f"Selected image model '{selected_model}' is unavailable and default fallback failed: {error_text}",
+            )
 
     image_url, final_gateway_response = _resolve_image_url_from_gateway(gateway, response)
     content = None

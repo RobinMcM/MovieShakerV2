@@ -290,8 +290,11 @@ function MoodBoardContent() {
                         const trimmed = name.trim();
                         if (!trimmed) return null;
                         const character = characters.find(
-                          (c) => c.name.toLowerCase() === trimmed.toLowerCase()
+                          (c) =>
+                            c.name.toLowerCase() === trimmed.toLowerCase() &&
+                            !(c as { hide_from_view?: boolean }).hide_from_view
                         );
+                        if (!character) return null;
                         return (
                           <div
                             key={idx}
@@ -404,9 +407,9 @@ function MoodBoardContent() {
                     </Button>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {characters.filter((c) => (c as { type?: string }).type !== "character").length > 0 ? (
+                    {characters.filter((c) => (c as { type?: string }).type !== "character" && !(c as { hide_from_view?: boolean }).hide_from_view).length > 0 ? (
                       characters
-                        .filter((c) => (c as { type?: string }).type !== "character")
+                        .filter((c) => (c as { type?: string }).type !== "character" && !(c as { hide_from_view?: boolean }).hide_from_view)
                         .map((object) => {
                           const objImgUrl = (object as { character_image_url?: string }).character_image_url;
                           const objImgSrc = storageImageUrl(objImgUrl) ?? objImgUrl ?? null;

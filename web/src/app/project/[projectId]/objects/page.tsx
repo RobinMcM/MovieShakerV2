@@ -48,10 +48,10 @@ import {
   Plus,
   Upload,
   Trash2,
+  CheckCircle2,
+  Circle,
   Palette,
   ImageIcon,
-  Eye,
-  EyeOff,
   Search,
   ChevronLeft,
   Sparkles,
@@ -145,40 +145,33 @@ function ObjectCard({
   return (
     <Card className="flex flex-col">
       <CardHeader>
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <CardTitle className="text-xl">{object.name}</CardTitle>
-            <Badge variant={object.type === "character" ? "default" : object.type === "scene" ? "secondary" : "outline"}>
-              {object.type ? object.type.charAt(0).toUpperCase() + object.type.slice(1) : "Object"}
-            </Badge>
-          </div>
-          <div className="flex items-center gap-2">
-            {object.hide_from_view ? (
-              <EyeOff className="h-4 w-4 text-muted-foreground" />
-            ) : (
-              <Eye className="h-4 w-4 text-muted-foreground" />
-            )}
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={!object.hide_from_view}
-                onChange={(e) => onUpdate(object.id, { hide_from_view: !e.target.checked })}
-                className="rounded border-border"
-              />
-              <span>Visible</span>
-            </label>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => onDelete(object)}
-              className="h-8 w-8 text-destructive hover:text-destructive"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
+        <div className="flex items-center gap-2">
+          <CardTitle className="text-xl">{object.name}</CardTitle>
+          <Badge variant={object.type === "character" ? "default" : object.type === "scene" ? "secondary" : "outline"}>
+            {object.type ? object.type.charAt(0).toUpperCase() + object.type.slice(1) : "Object"}
+          </Badge>
         </div>
-        <div className="mt-2 text-sm text-muted-foreground">
-          Aspect Ratio: <span className="font-medium text-foreground">{object.aspect_ratio ?? "16:9"}</span>
+        <div className="flex items-center justify-between gap-2 pt-2">
+          <Button
+            size="icon"
+            variant={!object.hide_from_view ? "default" : "outline"}
+            onClick={() => onUpdate(object.id, { hide_from_view: !object.hide_from_view })}
+            className="h-8 w-8"
+            title={!object.hide_from_view ? "Published" : "Publish"}
+            aria-label={!object.hide_from_view ? "Published" : "Publish"}
+          >
+            {!object.hide_from_view ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => onDelete(object)}
+            className="h-8 w-8 text-destructive hover:text-destructive"
+            title="Delete"
+            aria-label="Delete"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
         </div>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col gap-4">
@@ -494,7 +487,7 @@ function ObjectsContent() {
                 onChange={(e) => setShowVisibleOnly(e.target.checked)}
                 className="rounded border-border"
               />
-              <span className="text-sm">Show visible only</span>
+              <span className="text-sm">Published Objects</span>
             </label>
           </div>
         )}

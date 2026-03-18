@@ -97,7 +97,34 @@ class GatewayClient:
                         "default_for_media_type": None,
                     }
                 )
-        return fallback
+        if fallback:
+            return fallback
+
+        # Final fallback: curated text-to-image models for profile dropdown.
+        # Keep this list conservative and aligned to currently preferred models.
+        return [
+            {
+                "id": "fal-ai/flux/schnell",
+                "name": "FLUX Schnell",
+                "provider": "fal",
+                "media_type_support": ["image-generation"],
+                "default_for_media_type": "image-generation",
+            },
+            {
+                "id": "fal-ai/flux/dev",
+                "name": "FLUX Dev",
+                "provider": "fal",
+                "media_type_support": ["image-generation"],
+                "default_for_media_type": None,
+            },
+            {
+                "id": "fal-ai/flux-realism",
+                "name": "FLUX Realism",
+                "provider": "fal",
+                "media_type_support": ["image-generation"],
+                "default_for_media_type": None,
+            },
+        ]
 
     def execute_fal(
         self,

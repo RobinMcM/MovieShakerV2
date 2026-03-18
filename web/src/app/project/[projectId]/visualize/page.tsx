@@ -58,6 +58,21 @@ function resolveSourceImageUrl(pathOrUrl: string | null | undefined): string | n
   return storageImageUrl(pathOrUrl);
 }
 
+function normalizeSourceImagePath(pathOrUrl: string | null | undefined): string | null {
+  if (!pathOrUrl) return null;
+  const value = pathOrUrl.trim();
+  if (!value || value.startsWith("data:")) return null;
+  const marker = "/api/storage/";
+  const idx = value.indexOf(marker);
+  if (idx >= 0) {
+    return value.slice(idx + marker.length).split("?")[0];
+  }
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    return null;
+  }
+  return value;
+}
+
 function VisualizeContent() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -92,16 +107,19 @@ function VisualizeContent() {
   const [lastCallCost, setLastCallCost] = useState<number | null>(null);
   const [lastCallBalance, setLastCallBalance] = useState<number | null>(null);
   const [generatedImageDataUrl, setGeneratedImageDataUrl] = useState<string | null>(null);
+  const [generatedImagePath, setGeneratedImagePath] = useState<string | null>(null);
 
   useEffect(() => {
     if (!moodboardImageParam) {
       setGeneratedImageUrl(null);
       setGeneratedImageDataUrl(null);
+      setGeneratedImagePath(null);
       return;
     }
     const normalized = resolveSourceImageUrl(moodboardImageParam);
     setGeneratedImageUrl(normalized);
     setGeneratedImageDataUrl(moodboardImageParam.startsWith("data:") ? moodboardImageParam : null);
+    setGeneratedImagePath(normalizeSourceImagePath(moodboardImageParam));
   }, [moodboardImageParam]);
 
   useEffect(() => {
@@ -197,7 +215,7 @@ function VisualizeContent() {
         channel: nextChannel,
         take_number: nextTake,
         media_type: "video-generation",
-        source_image_path: currentLine?.scene_visual || null,
+        source_image_path: generatedImagePath || currentLine?.scene_visual || null,
         source_image_data_url: generatedImageDataUrl || null,
       });
       if (typeof res.credits?.cost === "number") {

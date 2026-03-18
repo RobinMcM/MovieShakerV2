@@ -195,8 +195,20 @@ function MoodBoardContent() {
   };
 
   const handleVisualize = async () => {
-    if (!selectedTramLineId || !projectId || !canvasRef.current) return;
+    if (!selectedTramLineId || !projectId) return;
     try {
+      const compositionData = (currentComposition?.composition_data ?? {}) as {
+        snapshot_path?: string;
+        images?: Array<{ src?: string }>;
+      };
+      const snapshotPath = (compositionData.snapshot_path || "").trim();
+      const firstImagePath = (compositionData.images?.[0]?.src || "").trim();
+      const resolvedSource = snapshotPath || firstImagePath;
+      if (resolvedSource) {
+        window.location.href = `/project/${projectId}/visualize?scene=${selectedTramLine?.scene_id ?? ""}&tramLine=${selectedTramLineId}&moodboardImage=${encodeURIComponent(resolvedSource)}`;
+        return;
+      }
+      if (!canvasRef.current) return;
       const dataURL = await canvasRef.current.getCanvasDataURL();
       window.location.href = `/project/${projectId}/visualize?scene=${selectedTramLine?.scene_id ?? ""}&tramLine=${selectedTramLineId}&moodboardImage=${encodeURIComponent(dataURL)}`;
     } catch (e) {

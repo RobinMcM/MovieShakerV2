@@ -126,6 +126,146 @@ class GatewayClient:
             },
         ]
 
+    def get_visualize_video_models(self) -> list[dict]:
+        """
+        Return usageflows video model choices for profile defaults.
+        Preferred: dedicated gateway endpoint with allowlisted FAL video models.
+        Fallback: filter generic /api/models response for known video-capable ids.
+        """
+        try:
+            with httpx.Client(timeout=self.timeout_seconds, verify=self.verify_tls) as client:
+                response = client.get(
+                    f"{self.base_url}/api/media/models?media_type=video-generation",
+                    headers=self._headers(),
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    models = data.get("models")
+                    if isinstance(models, list):
+                        compact = []
+                        for model in models:
+                            model_id = model.get("id")
+                            if not isinstance(model_id, str) or not model_id.strip():
+                                continue
+                            compact.append(
+                                {
+                                    "id": model_id.strip(),
+                                    "name": model.get("name") or model_id.strip(),
+                                    "provider": model.get("provider") or "fal",
+                                    "media_type_support": model.get("media_type_support") or [],
+                                    "default_for_media_type": model.get("default_for_media_type"),
+                                }
+                            )
+                        return compact
+        except Exception:
+            pass
+
+        fallback = []
+        for model in self.get_models():
+            model_id = (model.get("id") or "").strip()
+            if not model_id:
+                continue
+            lowered = model_id.lower()
+            if "kling-video" in lowered or "runway" in lowered or "luma-dream-machine" in lowered:
+                fallback.append(
+                    {
+                        "id": model_id,
+                        "name": model.get("name") or model_id,
+                        "provider": model.get("provider") or "fal",
+                        "media_type_support": ["video-generation", "image-to-video"],
+                        "default_for_media_type": None,
+                    }
+                )
+        if fallback:
+            return fallback
+
+        return [
+            {
+                "id": "fal-ai/luma-dream-machine/ray-2-flash",
+                "name": "Luma Ray 2 Flash",
+                "provider": "fal",
+                "media_type_support": ["video-generation", "image-to-video"],
+                "default_for_media_type": "video-generation",
+            },
+            {
+                "id": "fal-ai/kling-video/v1/standard/image-to-video",
+                "name": "Kling Image to Video",
+                "provider": "fal",
+                "media_type_support": ["image-to-video"],
+                "default_for_media_type": "image-to-video",
+            },
+            {
+                "id": "fal-ai/runway-gen3/turbo/image-to-video",
+                "name": "Runway Gen-3 Turbo",
+                "provider": "fal",
+                "media_type_support": ["image-to-video"],
+                "default_for_media_type": None,
+            },
+        ]
+
+    def get_sound_music_models(self) -> list[dict]:
+        """
+        Return usageflows sound/music model choices for profile defaults.
+        Preferred: dedicated gateway endpoint with allowlisted FAL audio models.
+        Fallback: filter generic /api/models response for known audio ids.
+        """
+        try:
+            with httpx.Client(timeout=self.timeout_seconds, verify=self.verify_tls) as client:
+                response = client.get(
+                    f"{self.base_url}/api/media/models?media_type=audio-generation",
+                    headers=self._headers(),
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    models = data.get("models")
+                    if isinstance(models, list):
+                        compact = []
+                        for model in models:
+                            model_id = model.get("id")
+                            if not isinstance(model_id, str) or not model_id.strip():
+                                continue
+                            compact.append(
+                                {
+                                    "id": model_id.strip(),
+                                    "name": model.get("name") or model_id.strip(),
+                                    "provider": model.get("provider") or "fal",
+                                    "media_type_support": model.get("media_type_support") or [],
+                                    "default_for_media_type": model.get("default_for_media_type"),
+                                }
+                            )
+                        return compact
+        except Exception:
+            pass
+
+        fallback = []
+        for model in self.get_models():
+            model_id = (model.get("id") or "").strip()
+            if not model_id:
+                continue
+            lowered = model_id.lower()
+            if "stable-audio" in lowered or "audio" in lowered or "music" in lowered:
+                fallback.append(
+                    {
+                        "id": model_id,
+                        "name": model.get("name") or model_id,
+                        "provider": model.get("provider") or "fal",
+                        "media_type_support": ["audio-generation"],
+                        "default_for_media_type": None,
+                    }
+                )
+        if fallback:
+            return fallback
+
+        return [
+            {
+                "id": "fal-ai/stable-audio",
+                "name": "Stable Audio",
+                "provider": "fal",
+                "media_type_support": ["audio-generation"],
+                "default_for_media_type": "audio-generation",
+            },
+        ]
+
     def execute_fal(
         self,
         media_type: str,

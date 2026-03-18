@@ -181,6 +181,8 @@ def get_config_status(
     connected = client.health() if settings.gateway_base_url else False
     models = client.get_models() if connected and settings.gateway_internal_api_key else []
     object_image_models = client.get_object_image_models() if connected and settings.gateway_internal_api_key else []
+    visualize_video_models = client.get_visualize_video_models() if connected and settings.gateway_internal_api_key else []
+    sound_music_models = client.get_sound_music_models() if connected and settings.gateway_internal_api_key else []
     compact_models = []
     fiab_text_models = []
     for model in models:
@@ -215,6 +217,8 @@ def get_config_status(
             "hasGatewayKey": bool(settings.gateway_internal_api_key),
             "models": compact_models,
             "objectImageModels": object_image_models,
+            "visualizeVideoModels": visualize_video_models,
+            "soundMusicModels": sound_music_models,
             "fiabTextModels": fiab_text_models,
         },
     }

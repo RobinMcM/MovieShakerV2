@@ -48,6 +48,20 @@ interface ConfigStatusResponse {
             media_type_support?: string[];
             default_for_media_type?: string | null;
         }>;
+        visualizeVideoModels?: Array<{
+            id: string;
+            name?: string;
+            provider?: string;
+            media_type_support?: string[];
+            default_for_media_type?: string | null;
+        }>;
+        soundMusicModels?: Array<{
+            id: string;
+            name?: string;
+            provider?: string;
+            media_type_support?: string[];
+            default_for_media_type?: string | null;
+        }>;
         fiabTextModels?: Array<{
             id: string;
             name?: string;
@@ -84,6 +98,8 @@ function ProfilePage() {
     const [purchaseAmount, setPurchaseAmount] = useState("11");
     const [gatewayModels, setGatewayModels] = useState<Array<{ id: string; name?: string; provider?: string }>>([]);
     const [objectImageModels, setObjectImageModels] = useState<Array<{ id: string; name?: string; provider?: string }>>([]);
+    const [visualizeVideoModels, setVisualizeVideoModels] = useState<Array<{ id: string; name?: string; provider?: string }>>([]);
+    const [soundMusicModels, setSoundMusicModels] = useState<Array<{ id: string; name?: string; provider?: string }>>([]);
     const [fiabTextModels, setFiabTextModels] = useState<Array<{
         id: string;
         name?: string;
@@ -151,13 +167,19 @@ function ProfilePage() {
             const data = await api.get<ConfigStatusResponse>("/api/config/status");
             const models = Array.isArray(data?.config?.models) ? data.config.models : [];
             const imageModels = Array.isArray(data?.config?.objectImageModels) ? data.config.objectImageModels : [];
+            const videoModels = Array.isArray(data?.config?.visualizeVideoModels) ? data.config.visualizeVideoModels : [];
+            const musicModels = Array.isArray(data?.config?.soundMusicModels) ? data.config.soundMusicModels : [];
             const fiabModels = Array.isArray(data?.config?.fiabTextModels) ? data.config.fiabTextModels : [];
             setGatewayModels(models);
             setObjectImageModels(imageModels.map((m) => ({ id: m.id, name: m.name, provider: m.provider })));
+            setVisualizeVideoModels(videoModels.map((m) => ({ id: m.id, name: m.name, provider: m.provider })));
+            setSoundMusicModels(musicModels.map((m) => ({ id: m.id, name: m.name, provider: m.provider })));
             setFiabTextModels(fiabModels);
         } catch {
             setGatewayModels([]);
             setObjectImageModels([]);
+            setVisualizeVideoModels([]);
+            setSoundMusicModels([]);
             setFiabTextModels([]);
         }
     }
@@ -242,6 +264,32 @@ function ProfilePage() {
             ...objectImageModels,
         ];
     }, [formData.model_object_image, objectImageModels]);
+    const visualizeVideoModelsForSelect = useMemo(() => {
+        const current = (formData.model_visualize_video || "").trim();
+        if (!current) return visualizeVideoModels;
+        if (visualizeVideoModels.some((model) => model.id === current)) return visualizeVideoModels;
+        return [
+            {
+                id: current,
+                name: `${current} (legacy/unavailable)`,
+                provider: "unknown",
+            },
+            ...visualizeVideoModels,
+        ];
+    }, [formData.model_visualize_video, visualizeVideoModels]);
+    const soundMusicModelsForSelect = useMemo(() => {
+        const current = (formData.model_sound_music || "").trim();
+        if (!current) return soundMusicModels;
+        if (soundMusicModels.some((model) => model.id === current)) return soundMusicModels;
+        return [
+            {
+                id: current,
+                name: `${current} (legacy/unavailable)`,
+                provider: "unknown",
+            },
+            ...soundMusicModels,
+        ];
+    }, [formData.model_sound_music, soundMusicModels]);
 
     function handleBuyCreditsPlaceholder() {
         const amount = Number.parseInt(purchaseAmount, 10);
@@ -588,7 +636,7 @@ function ProfilePage() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="__none__">No default</SelectItem>
-                                    {gatewayModels.map((model) => (
+                                    {visualizeVideoModelsForSelect.map((model) => (
                                         <SelectItem key={`video-${model.id}`} value={model.id}>
                                             {model.name || model.id}
                                             {model.provider ? ` (${model.provider})` : ""}
@@ -630,7 +678,7 @@ function ProfilePage() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="__none__">No default</SelectItem>
-                                    {gatewayModels.map((model) => (
+                                    {soundMusicModelsForSelect.map((model) => (
                                         <SelectItem key={`music-${model.id}`} value={model.id}>
                                             {model.name || model.id}
                                             {model.provider ? ` (${model.provider})` : ""}

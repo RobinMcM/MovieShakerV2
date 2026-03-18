@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Stage, Layer, Line, Image as KonvaImage, Transformer } from "react-konva";
 import { MousePointer2, Pencil, Eraser, Trash2, Save, Loader2 } from "lucide-react";
 import type Konva from "konva";
+import { API_URL, storageImageUrl } from "@/lib/api";
 
 export interface DrawingCanvasProps {
   tramLineId: string;
@@ -44,6 +45,30 @@ interface CanvasLine {
   color: string;
   width: number;
   tool: "pen" | "eraser";
+}
+
+function resolveCanvasImageSrc(src: string): string {
+  const value = (src || "").trim();
+  if (!value) return value;
+  if (value.startsWith("data:")) return value;
+  if (value.startsWith("http://") || value.startsWith("https://")) return value;
+  return storageImageUrl(value) ?? value;
+}
+
+function normalizeStoredImageSrc(src: string): string {
+  const value = (src || "").trim();
+  if (!value) return value;
+  if (value.startsWith("data:")) return value;
+  const marker = "/api/storage/";
+  const idx = value.indexOf(marker);
+  if (idx >= 0) {
+    return value.slice(idx + marker.length).split("?")[0];
+  }
+  const apiStoragePrefix = `${API_URL}/api/storage/`;
+  if (value.startsWith(apiStoragePrefix)) {
+    return value.slice(apiStoragePrefix.length).split("?")[0];
+  }
+  return value;
 }
 
 export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
@@ -148,8 +173,14 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
           if (pending.count <= 0) setImages(loaded);
         };
         (initialData.images || []).forEach((imgData) => {
-          createCanvasImage(imgData.src, (img) => {
-            loaded.push({ ...imgData, image: img } as CanvasImage);
+          const originalSrc = (imgData.src || "").trim();
+          const resolvedSrc = resolveCanvasImageSrc(originalSrc);
+          if (!resolvedSrc) {
+            finalizeIfDone();
+            return;
+          }
+          createCanvasImage(resolvedSrc, (img) => {
+            loaded.push({ ...imgData, src: originalSrc || imgData.src, image: img } as CanvasImage);
             finalizeIfDone();
           }, finalizeIfDone);
         });
@@ -170,7 +201,10 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
         const dataURL = stageRef.current.toDataURL({ pixelRatio: 2 });
         const res = await fetch(dataURL);
         const blob = await res.blob();
-        const serializableImages = images.map(({ image, ...rest }) => rest);
+        const serializableImages = images.map(({ image, ...rest }) => ({
+          ...rest,
+          src: normalizeStoredImageSrc(rest.src),
+        }));
         await onSave(blob, {
           images: serializableImages,
           lines,

@@ -429,6 +429,12 @@ function MoodBoardContent() {
                                 }
                               }}
                               className={`relative group flex items-center gap-2 bg-secondary rounded-md p-2 border border-border cursor-grab hover:bg-accent ${!objImgSrc ? "opacity-50 cursor-not-allowed" : ""}`}
+                              onClick={() => {
+                                if (objImgSrc) {
+                                  canvasRef.current?.addImage(objImgSrc, false);
+                                }
+                              }}
+                              title={objImgSrc ? "Click to place on canvas or drag to position" : "No image available"}
                             >
                               {objImgSrc && (
                                 <button

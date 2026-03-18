@@ -62,11 +62,24 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
     const [isDrawing, setIsDrawing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
 
+    const createCanvasImage = (
+      url: string,
+      onLoad: (img: HTMLImageElement) => void,
+      onError?: () => void
+    ) => {
+      const img = new Image();
+      img.onload = () => onLoad(img);
+      img.onerror = () => {
+        console.error("Failed to load image for canvas:", url);
+        onError?.();
+      };
+      // Do not force crossOrigin here; some storage URLs do not send CORS headers.
+      img.src = url;
+    };
+
     useImperativeHandle(ref, () => ({
       addImage(url: string, fill = false) {
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => {
+        createCanvasImage(url, (img) => {
           let x = 100;
           let y = 100;
           let width = 200;
@@ -109,8 +122,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
           setImages((prev) => [...prev, newImage]);
           setTool("select");
           setSelectedId(newImage.id);
-        };
-        img.src = url;
+        });
       },
       async getCanvasDataURL() {
         const prev = selectedId;
@@ -130,19 +142,16 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
       if (initialData?.images && initialData?.lines) {
         setLines(initialData.lines as CanvasLine[]);
         const loaded: CanvasImage[] = [];
+        const pending = { count: initialData.images?.length ?? 0 };
+        const finalizeIfDone = () => {
+          pending.count -= 1;
+          if (pending.count <= 0) setImages(loaded);
+        };
         (initialData.images || []).forEach((imgData) => {
-          const img = new Image();
-          img.crossOrigin = "anonymous";
-          img.onload = () => {
+          createCanvasImage(imgData.src, (img) => {
             loaded.push({ ...imgData, image: img } as CanvasImage);
-            if (loaded.length === (initialData.images?.length ?? 0)) {
-              setImages(loaded);
-            }
-          };
-          img.onerror = () => {
-            if (loaded.length === (initialData.images?.length ?? 0) - 1) setImages(loaded);
-          };
-          img.src = imgData.src;
+            finalizeIfDone();
+          }, finalizeIfDone);
         });
         if ((initialData.images?.length ?? 0) === 0) setImages([]);
       } else {
@@ -221,7 +230,10 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
         const j = e.dataTransfer.getData("application/json");
         if (j) dragData = JSON.parse(j);
       } catch {}
-      const imageUrl = dragData.src || e.dataTransfer.getData("text/plain");
+      const imageUrl =
+        dragData.src ||
+        e.dataTransfer.getData("text/plain") ||
+        e.dataTransfer.getData("text/uri-list");
       const name = dragData.name || "Unknown";
       if (dragData.type === "placeholder" || !imageUrl) {
         const canvas = document.createElement("canvas");
@@ -272,9 +284,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
         };
         img.src = dataUrl;
       } else {
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => {
+        createCanvasImage(imageUrl, (img) => {
           const maxSize = 200;
           const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
           const w = img.width * scale;
@@ -293,8 +303,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
             },
           ]);
           setTool("select");
-        };
-        img.src = imageUrl;
+        });
       }
     };
 

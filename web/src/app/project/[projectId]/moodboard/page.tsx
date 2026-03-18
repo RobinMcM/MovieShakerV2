@@ -415,6 +415,11 @@ function MoodBoardContent() {
                               key={object.id}
                               draggable={!!objImgSrc}
                               onDragStart={(e) => {
+                                const target = e.target as HTMLElement | null;
+                                if (target?.closest("button")) {
+                                  e.preventDefault();
+                                  return;
+                                }
                                 if (objImgSrc) {
                                   e.dataTransfer.setData("application/json", JSON.stringify({ name: object.name, src: objImgSrc }));
                                   e.dataTransfer.setData("text/plain", objImgSrc);
@@ -428,7 +433,12 @@ function MoodBoardContent() {
                               {objImgSrc && (
                                 <button
                                   type="button"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                  }}
                                   onClick={(e) => {
+                                    e.preventDefault();
                                     e.stopPropagation();
                                     canvasRef.current?.addImage(objImgSrc, true);
                                   }}

@@ -72,10 +72,22 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
           let width = 200;
           let height = 200;
           if (fill) {
-            x = 0;
-            y = 0;
-            width = dimensions.width;
-            height = dimensions.height;
+            // Cover canvas while preserving source image aspect ratio.
+            const canvasW = dimensions.width;
+            const canvasH = dimensions.height;
+            const imageAspect = img.width / Math.max(1, img.height);
+            const canvasAspect = canvasW / Math.max(1, canvasH);
+            if (imageAspect > canvasAspect) {
+              height = canvasH;
+              width = height * imageAspect;
+              x = (canvasW - width) / 2;
+              y = 0;
+            } else {
+              width = canvasW;
+              height = width / Math.max(0.0001, imageAspect);
+              x = 0;
+              y = (canvasH - height) / 2;
+            }
           } else {
             const maxSize = 200;
             const scale = Math.min(1, maxSize / Math.max(img.width, img.height));

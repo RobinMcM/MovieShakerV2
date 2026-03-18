@@ -71,6 +71,11 @@ def _gateway_client() -> GatewayClient:
 
 def _extract_generated_image_url(response: dict) -> Optional[str]:
     def walk(node) -> Optional[str]:
+        if isinstance(node, str):
+            value = node.strip()
+            if value.startswith("http://") or value.startswith("https://") or value.startswith("data:image/"):
+                return value
+            return None
         if isinstance(node, dict):
             for key in ("image_url", "url", "output_url", "download_url", "file_url"):
                 value = node.get(key)
@@ -117,6 +122,12 @@ def _extract_generated_image_bytes(response: dict) -> tuple[Optional[bytes], Opt
             return None, None
 
     def walk(node) -> tuple[Optional[bytes], Optional[str]]:
+        if isinstance(node, str):
+            value = node.strip()
+            decoded, ext = decode_data_url(value)
+            if decoded:
+                return decoded, ext
+            return None, None
         if isinstance(node, dict):
             for key in ("b64_json", "image_base64", "base64", "b64"):
                 value = node.get(key)
@@ -208,6 +219,22 @@ def _resolve_image_url_from_gateway(
         time.sleep(1.0)
 
     return None, latest_response
+
+
+def _gateway_debug_hint(payload: dict) -> str:
+    if not isinstance(payload, dict):
+        return "response_not_dict"
+    keys = sorted(list(payload.keys()))
+    job_id = payload.get("job_id")
+    job_status = payload.get("job_status")
+    result = payload.get("result")
+    result_type = type(result).__name__
+    return (
+        f"keys={keys}, "
+        f"job_id={job_id if isinstance(job_id, str) else 'none'}, "
+        f"job_status={job_status if isinstance(job_status, str) else 'none'}, "
+        f"result_type={result_type}"
+    )
 
 
 @router.put("/characters/{character_id}")
@@ -337,7 +364,8 @@ def generate_character_image(
             error_message = final_gateway_response.get("error") if isinstance(final_gateway_response, dict) else None
             if isinstance(error_message, str) and error_message.strip():
                 raise HTTPException(status_code=502, detail=f"Image generation failed: {error_message.strip()}")
-            raise HTTPException(status_code=502, detail="Gateway did not return image output")
+            hint = _gateway_debug_hint(final_gateway_response if isinstance(final_gateway_response, dict) else {})
+            raise HTTPException(status_code=502, detail=f"Gateway did not return image output ({hint})")
 
     ext = ext or "png"
     filename = _stable_filename(character, ext)

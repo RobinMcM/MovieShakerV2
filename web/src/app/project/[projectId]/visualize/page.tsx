@@ -45,11 +45,17 @@ import {
 import { TramLineSelect } from "../moodboard/TramLineSelect";
 import { useVisualize } from "./useVisualize";
 import type { VideoHistoryItem, CompiledVideo, Provider } from "./types";
-import { API_URL, api } from "@/lib/api";
+import { API_URL, api, storageImageUrl } from "@/lib/api";
 
 function getVideoUrl(path: string): string {
   if (path.startsWith("http://") || path.startsWith("https://")) return path;
   return `${API_URL}/api/storage/${path}`;
+}
+
+function resolveSourceImageUrl(pathOrUrl: string | null | undefined): string | null {
+  if (!pathOrUrl) return null;
+  if (pathOrUrl.startsWith("data:")) return pathOrUrl;
+  return storageImageUrl(pathOrUrl);
 }
 
 function VisualizeContent() {
@@ -85,9 +91,17 @@ function VisualizeContent() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [lastCallCost, setLastCallCost] = useState<number | null>(null);
   const [lastCallBalance, setLastCallBalance] = useState<number | null>(null);
+  const [generatedImageDataUrl, setGeneratedImageDataUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (moodboardImageParam) setGeneratedImageUrl(moodboardImageParam);
+    if (!moodboardImageParam) {
+      setGeneratedImageUrl(null);
+      setGeneratedImageDataUrl(null);
+      return;
+    }
+    const normalized = resolveSourceImageUrl(moodboardImageParam);
+    setGeneratedImageUrl(normalized);
+    setGeneratedImageDataUrl(moodboardImageParam.startsWith("data:") ? moodboardImageParam : null);
   }, [moodboardImageParam]);
 
   useEffect(() => {
@@ -106,7 +120,7 @@ function VisualizeContent() {
   const currentLine = tramLines.find((l) => l.id === selectedTramLine);
   const imageUrl =
     generatedImageUrl ||
-    (currentLine?.scene_visual ? `${API_URL}/api/storage/${currentLine.scene_visual}` : null);
+    resolveSourceImageUrl(currentLine?.scene_visual);
 
   const gatewayConnected = apiConfig?.gatewayConnected ?? false;
   const hasGatewayKey = apiConfig?.hasGatewayKey ?? false;
@@ -184,7 +198,7 @@ function VisualizeContent() {
         take_number: nextTake,
         media_type: "video-generation",
         source_image_path: currentLine?.scene_visual || null,
-        source_image_data_url: generatedImageUrl || null,
+        source_image_data_url: generatedImageDataUrl || null,
       });
       if (typeof res.credits?.cost === "number") {
         setLastCallCost(res.credits.cost);

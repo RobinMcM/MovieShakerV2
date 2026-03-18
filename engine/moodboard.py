@@ -12,7 +12,7 @@ from sqlmodel import Session, select
 
 from db import get_session
 from models import MoodBoardComposition, MoodBoardImageHistory, ProjectMember, Scene, Script, TramLine
-from storage import save_moodboard_image
+from storage import build_guid_filename, delete_storage_file, save_moodboard_image
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
 
@@ -267,9 +267,10 @@ async def upload_moodboard_image(
     ext = file.filename.split(".")[-1].lower() if "." in file.filename else "png"
     if ext not in ("png", "jpg", "jpeg", "gif", "webp"):
         ext = "png"
-    filename = f"{tram_line_id}-{uuid.uuid4().hex[:12]}.{ext}"
+    asset_filename = build_guid_filename(ext)
     content = await file.read()
     size = len(content)
+    old_path = (line.scene_visual or "").strip() or None
     try:
         from io import BytesIO
         project_id, scene_id = _tramline_project_scene_context(db, tram_line_id)
@@ -278,7 +279,7 @@ async def upload_moodboard_image(
             project_id=project_id,
             scene_id=scene_id,
             tram_line_id=tram_line_id,
-            filename=filename,
+            asset_filename=asset_filename,
             content=BytesIO(content),
             size=size,
         )
@@ -295,8 +296,25 @@ async def upload_moodboard_image(
     db.add(history_row)
     line.scene_visual = path_key
     db.add(line)
+
+    # Remove stale history rows that reference the replaced source image key.
+    if old_path and old_path != path_key:
+        stale_rows = list(
+            db.exec(
+                select(MoodBoardImageHistory).where(
+                    MoodBoardImageHistory.tram_line_id == uuid.UUID(tram_line_id),
+                    MoodBoardImageHistory.user_id == user_id,
+                    MoodBoardImageHistory.image_path == old_path,
+                )
+            ).all()
+        )
+        for stale in stale_rows:
+            db.delete(stale)
+
     db.commit()
     db.refresh(history_row)
+    if old_path and old_path != path_key:
+        delete_storage_file(old_path)
     return {
         "success": True,
         "path": path_key,

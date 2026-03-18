@@ -621,7 +621,7 @@ function ProfilePage() {
 
                 <Card className="mt-6">
                     <CardHeader>
-                        <CardTitle className="text-lg">Other Model Choices</CardTitle>
+                        <CardTitle className="text-lg">Media Model Selection</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
 

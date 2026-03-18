@@ -8,7 +8,6 @@ import { AppHeader } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -145,23 +144,26 @@ function ObjectCard({
   return (
     <Card className="flex flex-col">
       <CardHeader>
-        <div className="flex items-center gap-2">
-          <CardTitle className="text-xl">{object.name}</CardTitle>
-          <Badge variant={object.type === "character" ? "default" : object.type === "scene" ? "secondary" : "outline"}>
+        <div className="flex flex-col items-start gap-1">
+          <span className="text-xs uppercase tracking-wide text-muted-foreground">
             {object.type ? object.type.charAt(0).toUpperCase() + object.type.slice(1) : "Object"}
-          </Badge>
+          </span>
+          <CardTitle className="text-xl w-full break-words">{object.name}</CardTitle>
         </div>
         <div className="flex items-center justify-between gap-2 pt-2">
-          <Button
-            size="icon"
-            variant={!object.hide_from_view ? "default" : "outline"}
-            onClick={() => onUpdate(object.id, { hide_from_view: !object.hide_from_view })}
-            className="h-8 w-8"
-            title={!object.hide_from_view ? "Published" : "Publish"}
-            aria-label={!object.hide_from_view ? "Published" : "Publish"}
-          >
-            {!object.hide_from_view ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="icon"
+              variant={!object.hide_from_view ? "default" : "outline"}
+              onClick={() => onUpdate(object.id, { hide_from_view: !object.hide_from_view })}
+              className="h-8 w-8"
+              title={!object.hide_from_view ? "Published" : "Publish"}
+              aria-label={!object.hide_from_view ? "Published" : "Publish"}
+            >
+              {!object.hide_from_view ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+            </Button>
+            <span className="text-sm">Publish</span>
+          </div>
           <Button
             size="icon"
             variant="ghost"
@@ -248,7 +250,6 @@ function ObjectsContent() {
   } = useObjects(projectId);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [showVisibleOnly, setShowVisibleOnly] = useState(true);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
@@ -268,10 +269,9 @@ function ObjectsContent() {
   const filteredObjects = useMemo(() => {
     return objects.filter((obj) => {
       const matchesSearch = obj.name.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesVisibility = showVisibleOnly ? !obj.hide_from_view : true;
-      return matchesSearch && matchesVisibility;
+      return matchesSearch;
     });
-  }, [objects, searchTerm, showVisibleOnly]);
+  }, [objects, searchTerm]);
 
   const characterObjects = filteredObjects.filter((o) => o.type === "character");
   const objectItems = filteredObjects.filter((o) => o.type === "object");
@@ -480,15 +480,6 @@ function ObjectsContent() {
                 className="pl-9"
               />
             </div>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={showVisibleOnly}
-                onChange={(e) => setShowVisibleOnly(e.target.checked)}
-                className="rounded border-border"
-              />
-              <span className="text-sm">Published Objects</span>
-            </label>
           </div>
         )}
 
@@ -510,7 +501,7 @@ function ObjectsContent() {
           <Card>
             <CardContent className="py-12 text-center">
               <p className="text-muted-foreground">No objects match your search.</p>
-              <Button variant="outline" className="mt-4" onClick={() => { setSearchTerm(""); setShowVisibleOnly(false); }}>
+              <Button variant="outline" className="mt-4" onClick={() => { setSearchTerm(""); }}>
                 Clear filters
               </Button>
             </CardContent>

@@ -133,6 +133,10 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
       onError?: () => void
     ) => {
       const img = new Image();
+      if (url.startsWith("http://") || url.startsWith("https://")) {
+        // Required for Konva export when images come from api domain with session auth.
+        img.crossOrigin = "use-credentials";
+      }
       img.onload = () => onLoad(img);
       img.onerror = () => {
         console.error("Failed to load image for canvas:", url);

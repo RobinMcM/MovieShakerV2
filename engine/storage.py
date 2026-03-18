@@ -4,7 +4,6 @@ Path convention: {user_id}/{project_id}/{script_id}/script.pdf
 """
 import os
 import shutil
-import uuid
 from pathlib import Path
 from typing import BinaryIO, Optional, Tuple
 
@@ -152,30 +151,6 @@ def get_storage_file(relative_path: str) -> Optional[Tuple[bytes, str]]:
         return None
 
 
-def delete_storage_file(relative_path: str) -> bool:
-    """
-    Delete a stored file key/path. Returns True when deleted, False otherwise.
-    Supports both Spaces and local filesystem.
-    """
-    if not relative_path or ".." in relative_path:
-        return False
-    if uses_spaces():
-        try:
-            client = _spaces_client()
-            client.delete_object(Bucket=DO_SPACES_BUCKET, Key=relative_path)
-            return True
-        except Exception:
-            return False
-    path = STORAGE_ROOT / relative_path
-    if not path.is_file():
-        return False
-    try:
-        path.unlink()
-        return True
-    except Exception:
-        return False
-
-
 def delete_script_dir(user_id: str, project_id: str, script_id: str) -> None:
     if uses_spaces():
         prefix = f"{user_id}/{project_id}/{script_id}/"
@@ -195,24 +170,15 @@ def delete_script_dir(user_id: str, project_id: str, script_id: str) -> None:
 
 
 # Moodboard image storage (project-scoped):
-# {user_id}/{project_id}/scene/{scene_id}/moodboard/{tram_line_id}/{asset_guid}.{ext}
+# {user_id}/{project_id}/scene/{scene_id}/moodboard/{tram_line_id}/{filename}
 def moodboard_relative_path(
     user_id: str,
     project_id: str,
     scene_id: str,
     tram_line_id: str,
-    asset_filename: str,
+    filename: str,
 ) -> str:
-    return f"{user_id}/{project_id}/scene/{scene_id}/moodboard/{tram_line_id}/{asset_filename}"
-
-
-def build_guid_filename(ext: str) -> str:
-    normalized = (ext or "").strip().lower().lstrip(".")
-    if normalized == "jpeg":
-        normalized = "jpg"
-    if normalized not in {"png", "jpg", "gif", "webp"}:
-        normalized = "png"
-    return f"{uuid.uuid4()}.{normalized}"
+    return f"{user_id}/{project_id}/scene/{scene_id}/moodboard/{tram_line_id}/{filename}"
 
 
 def save_moodboard_image(
@@ -220,18 +186,18 @@ def save_moodboard_image(
     project_id: str,
     scene_id: str,
     tram_line_id: str,
-    asset_filename: str,
+    filename: str,
     content: BinaryIO,
     size: int,
 ) -> str:
     """Save moodboard image to storage. Returns relative path (key) for DB."""
     if size > MAX_UPLOAD_BYTES:
         raise ValueError(f"File size exceeds {MAX_UPLOAD_BYTES} bytes")
-    key = moodboard_relative_path(user_id, project_id, scene_id, tram_line_id, asset_filename)
+    key = moodboard_relative_path(user_id, project_id, scene_id, tram_line_id, filename)
     if uses_spaces():
         body = content.read() if hasattr(content, "read") else content
-        content_type = "image/png" if asset_filename.lower().endswith(".png") else "image/jpeg"
-        if not asset_filename.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
+        content_type = "image/png" if filename.lower().endswith(".png") else "image/jpeg"
+        if not filename.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
             content_type = "application/octet-stream"
         client = _spaces_client()
         client.put_object(
@@ -243,25 +209,28 @@ def save_moodboard_image(
         return key
     d = STORAGE_ROOT / user_id / str(project_id) / "scene" / str(scene_id) / "moodboard" / tram_line_id
     d.mkdir(parents=True, exist_ok=True)
-    path = d / asset_filename
+    path = d / filename
     with open(path, "wb") as f:
         shutil.copyfileobj(content, f)
     return key
 
 
 # Character/object image storage (project-scoped):
-# {user_id}/{project_id}/objects/{object_id}/{asset_guid}.{ext}
+# {user_id}/{project_id}/objects/{character_id}.{ext}
+# Scene-type assets use: {user_id}/{project_id}/objects/scenes/{character_id}.{ext}
 def character_image_relative_path(
-    user_id: str, project_id: str, character_id: str, asset_filename: str, is_scene: bool = False
+    user_id: str, project_id: str, character_id: str, filename: str, is_scene: bool = False
 ) -> str:
-    return f"{user_id}/{project_id}/objects/{character_id}/{asset_filename}"
+    if is_scene:
+        return f"{user_id}/{project_id}/objects/scenes/{filename}"
+    return f"{user_id}/{project_id}/objects/{filename}"
 
 
 def save_character_image(
     user_id: str,
     project_id: str,
     character_id: str,
-    asset_filename: str,
+    filename: str,
     content: BinaryIO,
     size: int,
     is_scene: bool = False,
@@ -269,11 +238,11 @@ def save_character_image(
     """Save character/object image. Returns relative path (key) for DB character_image_url."""
     if size > MAX_UPLOAD_BYTES:
         raise ValueError(f"File size exceeds {MAX_UPLOAD_BYTES} bytes")
-    key = character_image_relative_path(user_id, project_id, character_id, asset_filename, is_scene)
+    key = character_image_relative_path(user_id, project_id, character_id, filename, is_scene)
     if uses_spaces():
         body = content.read() if hasattr(content, "read") else content
-        content_type = "image/png" if asset_filename.lower().endswith(".png") else "image/jpeg"
-        if not asset_filename.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
+        content_type = "image/png" if filename.lower().endswith(".png") else "image/jpeg"
+        if not filename.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
             content_type = "application/octet-stream"
         client = _spaces_client()
         client.put_object(
@@ -283,9 +252,13 @@ def save_character_image(
             ContentType=content_type,
         )
         return key
-    d = STORAGE_ROOT / user_id / str(project_id) / "objects" / character_id
+    d = (
+        STORAGE_ROOT / user_id / str(project_id) / "objects" / "scenes"
+        if is_scene
+        else STORAGE_ROOT / user_id / str(project_id) / "objects"
+    )
     d.mkdir(parents=True, exist_ok=True)
-    path = d / asset_filename
+    path = d / filename
     with open(path, "wb") as f:
         shutil.copyfileobj(content, f)
     return key

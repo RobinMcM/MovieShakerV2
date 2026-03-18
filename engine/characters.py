@@ -3,6 +3,7 @@ Character CRUD and image upload for Objects page.
 Routes: PUT /characters/{id}, DELETE /characters/{id}, POST /api/characters/upload,
 POST /api/characters/{id}/generate-image.
 """
+import os
 import time
 import uuid
 from typing import Optional
@@ -19,7 +20,7 @@ from credits import apply_credit_cost, ensure_user_can_generate, extract_credit_
 from db import get_session
 from gateway_client import GatewayClient, GatewayClientError
 from models import Character, ProjectMember, Script
-from storage import build_guid_filename, delete_storage_file, save_character_image
+from storage import save_character_image
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
 
@@ -174,6 +175,17 @@ def _detect_ext(image_url: str, content_type: Optional[str]) -> str:
     if dot and ext in {"png", "jpg", "jpeg", "gif", "webp"}:
         return "jpg" if ext == "jpeg" else ext
     return "png"
+
+
+def _stable_filename(character: Character, fallback_ext: str) -> str:
+    existing = (character.character_image_url or "").strip()
+    existing_name = os.path.basename(existing)
+    if "." in existing_name:
+        base, ext = existing_name.rsplit(".", 1)
+        ext = ext.lower()
+        if base == str(character.id) and ext in {"png", "jpg", "jpeg", "gif", "webp"}:
+            return f"{character.id}.{ext}"
+    return f"{character.id}.{fallback_ext}"
 
 
 def _resolve_image_url_from_gateway(
@@ -378,9 +390,8 @@ def generate_character_image(
             raise HTTPException(status_code=502, detail=f"Gateway did not return image output ({hint})")
 
     ext = ext or "png"
-    asset_filename = build_guid_filename(ext)
+    filename = _stable_filename(character, ext)
     is_scene = getattr(character, "type", None) == "scene"
-    old_path = (character.character_image_url or "").strip() or None
     try:
         from io import BytesIO
 
@@ -388,7 +399,7 @@ def generate_character_image(
             user_id=user_id,
             project_id=str(script.project_id),
             character_id=character_id,
-            asset_filename=asset_filename,
+            filename=filename,
             content=BytesIO(content),
             size=len(content),
             is_scene=is_scene,
@@ -402,8 +413,6 @@ def generate_character_image(
     balance = apply_credit_cost(db, user_id, credits_cost)
     db.commit()
     db.refresh(character)
-    if old_path and old_path != path_key:
-        delete_storage_file(old_path)
     return {
         "success": True,
         "data": {
@@ -439,11 +448,10 @@ async def upload_character_image(
     ext = file.filename.split(".")[-1].lower() if "." in file.filename else "png"
     if ext not in ("png", "jpg", "jpeg", "gif", "webp"):
         ext = "png"
-    asset_filename = build_guid_filename(ext)
+    filename = f"{character_id}.{ext}"
     content = await file.read()
     size = len(content)
     is_scene = getattr(character, "type", None) == "scene"
-    old_path = (character.character_image_url or "").strip() or None
     script = db.get(Script, character.script_id)
     if not script:
         raise HTTPException(status_code=404, detail="Script not found")
@@ -453,7 +461,7 @@ async def upload_character_image(
             user_id=user_id,
             project_id=str(script.project_id),
             character_id=character_id,
-            asset_filename=asset_filename,
+            filename=filename,
             content=BytesIO(content),
             size=size,
             is_scene=is_scene,
@@ -463,6 +471,4 @@ async def upload_character_image(
     character.character_image_url = path_key
     db.add(character)
     db.commit()
-    if old_path and old_path != path_key:
-        delete_storage_file(old_path)
     return {"success": True, "path": path_key, "character_image_url": path_key}

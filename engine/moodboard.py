@@ -12,7 +12,7 @@ from sqlmodel import Session, select
 
 from db import get_session
 from models import MoodBoardComposition, MoodBoardImageHistory, ProjectMember, Scene, Script, TramLine
-from storage import save_moodboard_image
+from storage import delete_storage_file, save_moodboard_image
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
 
@@ -182,6 +182,7 @@ async def save_canvas_atomic(
     - save rendered PNG snapshot
     - update tram line scene_visual
     - create/update composition JSON
+    - rotate snapshot key each save (cache-busting)
     """
     user_id = session.get_user_id()
     line = _ensure_tramline_access(db, tram_line_id, user_id)
@@ -205,6 +206,7 @@ async def save_canvas_atomic(
         raise HTTPException(status_code=400, detail="Invalid PNG image payload")
 
     path_key: Optional[str] = None
+    old_snapshot_to_delete: Optional[str] = None
     try:
         from io import BytesIO
 
@@ -224,21 +226,31 @@ async def save_canvas_atomic(
             row = db.get(MoodBoardComposition, uuid.UUID(composition_id))
             if not row or row.user_id != user_id or str(row.tram_line_id) != tram_line_id:
                 raise HTTPException(status_code=404, detail="Composition not found")
-            stable_path = save_moodboard_image(
+            previous_snapshot_path: Optional[str] = None
+            if row.composition_data:
+                try:
+                    previous_payload = json.loads(row.composition_data)
+                    if isinstance(previous_payload, dict):
+                        previous_snapshot_path = str(previous_payload.get("snapshot_path") or "").strip() or None
+                except Exception:
+                    previous_snapshot_path = None
+
+            rotated_filename = f"{uuid.uuid4().hex}.png"
+            rotated_path = save_moodboard_image(
                 user_id=user_id,
                 project_id=project_id,
                 scene_id=scene_id,
                 tram_line_id=tram_line_id,
-                filename=f"{composition_id}.png",
+                filename=rotated_filename,
                 content=BytesIO(content),
                 size=size,
             )
-            path_key = stable_path
+            path_key = rotated_path
             snapshot_payload = {
                 "images": [
                     {
-                        "id": f"snapshot-{composition_id}",
-                        "src": stable_path,
+                        "id": f"snapshot-{uuid.uuid4().hex}",
+                        "src": rotated_path,
                         "x": 0,
                         "y": 0,
                         "width": width,
@@ -248,12 +260,14 @@ async def save_canvas_atomic(
                 "lines": [],
                 "dimensions": {"width": width, "height": height},
                 "note": note,
-                "snapshot_path": stable_path,
+                "snapshot_path": rotated_path,
                 "mode": "snapshot",
             }
             row.composition_data = json.dumps(snapshot_payload)
             row.updated_at = __import__("datetime").datetime.utcnow()
             db.add(row)
+            if previous_snapshot_path and previous_snapshot_path != rotated_path:
+                old_snapshot_to_delete = previous_snapshot_path
         else:
             existing = list(
                 db.exec(
@@ -265,21 +279,21 @@ async def save_canvas_atomic(
             )
             next_num = max((c.canvas_number for c in existing), default=0) + 1
             new_comp_id = uuid.uuid4()
-            stable_path = save_moodboard_image(
+            rotated_path = save_moodboard_image(
                 user_id=user_id,
                 project_id=project_id,
                 scene_id=scene_id,
                 tram_line_id=tram_line_id,
-                filename=f"{new_comp_id}.png",
+                filename=f"{uuid.uuid4().hex}.png",
                 content=BytesIO(content),
                 size=size,
             )
-            path_key = stable_path
+            path_key = rotated_path
             snapshot_payload = {
                 "images": [
                     {
                         "id": f"snapshot-{new_comp_id}",
-                        "src": stable_path,
+                        "src": rotated_path,
                         "x": 0,
                         "y": 0,
                         "width": width,
@@ -289,7 +303,7 @@ async def save_canvas_atomic(
                 "lines": [],
                 "dimensions": {"width": width, "height": height},
                 "note": note,
-                "snapshot_path": stable_path,
+                "snapshot_path": rotated_path,
                 "mode": "snapshot",
             }
             row = MoodBoardComposition(
@@ -313,6 +327,12 @@ async def save_canvas_atomic(
         db.add(line)
         db.commit()
         db.refresh(row)
+
+        if old_snapshot_to_delete:
+            try:
+                delete_storage_file(old_snapshot_to_delete)
+            except Exception:
+                pass
 
         return {
             "success": True,

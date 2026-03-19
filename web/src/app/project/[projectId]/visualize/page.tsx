@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
@@ -157,16 +157,21 @@ function VisualizeContent() {
     }
   }, [selectedTramLine, loadVideoHistory, loadCompiledVideos, loadSourceCompositions]);
 
-  const sourceSnapshots = (sourceCompositions || [])
-    .sort((a, b) => (a.canvas_number || 0) - (b.canvas_number || 0))
-    .map((composition) => {
-      const payload = (composition.composition_data || {}) as {
-        snapshot_path?: string;
-        images?: Array<{ src?: string }>;
-      };
-      return (payload.snapshot_path || payload.images?.[0]?.src || "").trim();
-    })
-    .filter((src) => !!src);
+  const sourceSnapshots = useMemo(
+    () =>
+      (sourceCompositions || [])
+        .slice()
+        .sort((a, b) => (a.canvas_number || 0) - (b.canvas_number || 0))
+        .map((composition) => {
+          const payload = (composition.composition_data || {}) as {
+            snapshot_path?: string;
+            images?: Array<{ src?: string }>;
+          };
+          return (payload.snapshot_path || payload.images?.[0]?.src || "").trim();
+        })
+        .filter((src) => !!src),
+    [sourceCompositions]
+  );
 
   useEffect(() => {
     if (sourceSnapshots.length === 0) {

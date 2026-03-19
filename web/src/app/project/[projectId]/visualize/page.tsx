@@ -35,12 +35,15 @@ import {
 import {
   Video,
   ChevronLeft,
+  ChevronRight,
   Loader2,
   Trash2,
   Star,
   Film,
   Sparkles,
   Play,
+  ArrowRight,
+  Plus,
 } from "lucide-react";
 import { TramLineSelect } from "../moodboard/TramLineSelect";
 import { useVisualize } from "./useVisualize";
@@ -101,11 +104,14 @@ function VisualizeContent() {
     apiConfig,
     videoHistory,
     compiledVideos,
+    sourceCompositions,
     loadVideoHistory,
     loadCompiledVideos,
+    loadSourceCompositions,
     toggleVideoPrint,
     deleteVideo,
     deleteCompiledVideo,
+    continueVideo,
     toggleMovieShakerTVPrint,
   } = useVisualize(projectId);
 
@@ -122,6 +128,7 @@ function VisualizeContent() {
   const [lastCallBalance, setLastCallBalance] = useState<number | null>(null);
   const [generatedImageDataUrl, setGeneratedImageDataUrl] = useState<string | null>(null);
   const [generatedImagePath, setGeneratedImagePath] = useState<string | null>(null);
+  const [selectedSourceIndex, setSelectedSourceIndex] = useState(0);
 
   useEffect(() => {
     if (!moodboardImageParam) {
@@ -146,12 +153,52 @@ function VisualizeContent() {
     if (selectedTramLine) {
       loadVideoHistory(selectedTramLine);
       loadCompiledVideos(selectedTramLine);
+      loadSourceCompositions(selectedTramLine);
     }
-  }, [selectedTramLine, loadVideoHistory, loadCompiledVideos]);
+  }, [selectedTramLine, loadVideoHistory, loadCompiledVideos, loadSourceCompositions]);
+
+  const sourceSnapshots = (sourceCompositions || [])
+    .sort((a, b) => (a.canvas_number || 0) - (b.canvas_number || 0))
+    .map((composition) => {
+      const payload = (composition.composition_data || {}) as {
+        snapshot_path?: string;
+        images?: Array<{ src?: string }>;
+      };
+      return (payload.snapshot_path || payload.images?.[0]?.src || "").trim();
+    })
+    .filter((src) => !!src);
+
+  useEffect(() => {
+    if (sourceSnapshots.length === 0) {
+      setSelectedSourceIndex(0);
+      return;
+    }
+    if (moodboardImageParam) {
+      const fromParam = normalizeSourceImagePath(moodboardImageParam);
+      if (fromParam) {
+        const idx = sourceSnapshots.findIndex((item) => normalizeSourceImagePath(item) === fromParam);
+        if (idx >= 0) {
+          setSelectedSourceIndex(idx);
+          return;
+        }
+      }
+    }
+    setSelectedSourceIndex((current) => Math.min(current, sourceSnapshots.length - 1));
+  }, [sourceSnapshots, moodboardImageParam]);
+
+  useEffect(() => {
+    const selectedSource = sourceSnapshots[selectedSourceIndex] || null;
+    if (!selectedSource) return;
+    setGeneratedImageDataUrl(null);
+    setGeneratedImagePath(normalizeSourceImagePath(selectedSource));
+    setGeneratedImageUrl(resolveSourceImageUrl(selectedSource));
+  }, [selectedSourceIndex, sourceSnapshots]);
 
   const currentLine = tramLines.find((l) => l.id === selectedTramLine);
+  const selectedSourcePath = sourceSnapshots[selectedSourceIndex] || null;
   const imageUrl =
     generatedImageUrl ||
+    resolveSourceImageUrl(selectedSourcePath) ||
     resolveSourceImageUrl(currentLine?.scene_visual);
 
   const gatewayConnected = apiConfig?.gatewayConnected ?? false;
@@ -214,7 +261,10 @@ function VisualizeContent() {
     }
     setIsGenerating(true);
     try {
-      const nextChannel = 1;
+      const nextChannel =
+        videoHistory.length > 0
+          ? Math.max(...videoHistory.map((v) => v.Channel ?? 0)) + 1
+          : 1;
       const currentChannelVideos = (channelGroups[nextChannel] ?? []).filter((v) => !!v.video_path);
       const nextTake = currentChannelVideos.length + 1;
       const res = await api.post<{
@@ -229,7 +279,7 @@ function VisualizeContent() {
         channel: nextChannel,
         take_number: nextTake,
         media_type: "video-generation",
-        source_image_path: generatedImagePath || currentLine?.scene_visual || null,
+        source_image_path: generatedImagePath || normalizeSourceImagePath(selectedSourcePath) || currentLine?.scene_visual || null,
         source_image_data_url: generatedImageDataUrl || null,
       });
       if (typeof res.credits?.cost === "number") {
@@ -252,6 +302,23 @@ function VisualizeContent() {
       setToastMessage(e instanceof Error ? e.message : "Failed to start video generation.");
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleContinueFromVideo = async (
+    sourceVideoId: string,
+    mode: "same_channel" | "new_channel"
+  ) => {
+    if (!selectedTramLine) return;
+    try {
+      await continueVideo(sourceVideoId, mode, selectedTramLine, {
+        prompt,
+        aspect_ratio: project?.aspect_ratio ?? null,
+      });
+      setToastMessage(mode === "same_channel" ? "Continuation started in same channel." : "Continuation started in a new channel.");
+      await loadVideoHistory(selectedTramLine);
+    } catch (e) {
+      setToastMessage(e instanceof Error ? e.message : "Failed to start continuation.");
     }
   };
 
@@ -372,6 +439,33 @@ function VisualizeContent() {
               </div>
             ) : (
               <div className="space-y-4">
+                {sourceSnapshots.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedSourceIndex((idx) => Math.max(0, idx - 1))}
+                      disabled={selectedSourceIndex <= 0}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="text-sm font-medium min-w-[120px] text-center">
+                      Moodboard {selectedSourceIndex + 1} / {sourceSnapshots.length}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setSelectedSourceIndex((idx) =>
+                          Math.min(sourceSnapshots.length - 1, idx + 1)
+                        )
+                      }
+                      disabled={selectedSourceIndex >= sourceSnapshots.length - 1}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
                 <div className="relative aspect-video max-w-md rounded-md overflow-hidden bg-black">
                   <img
                     src={imageUrl}
@@ -464,16 +558,44 @@ function VisualizeContent() {
                                     />
                                   </button>
                                 </div>
-                                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                <div className="flex items-center justify-between text-xs text-muted-foreground gap-1">
                                   <span>Take {video.take_number ?? "?"} · Ch {video.Channel ?? "?"}</span>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 text-destructive"
-                                    onClick={() => setVideoToDelete({ id: video.id, path: video.video_path })}
-                                  >
-                                    <Trash2 className="h-3 w-3" />
-                                  </Button>
+                                  <div className="flex items-center gap-1">
+                                    {!videoHistory.some(
+                                      (candidate) =>
+                                        candidate.source_video_id === video.id &&
+                                        candidate.Channel === video.Channel
+                                    ) && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 w-7 p-0"
+                                        disabled={!video.video_path}
+                                        title="Continue in same channel"
+                                        onClick={() => handleContinueFromVideo(video.id, "same_channel")}
+                                      >
+                                        <ArrowRight className="h-3.5 w-3.5" />
+                                      </Button>
+                                    )}
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 w-7 p-0"
+                                      disabled={!video.video_path}
+                                      title="Continue in new channel"
+                                      onClick={() => handleContinueFromVideo(video.id, "new_channel")}
+                                    >
+                                      <Plus className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 text-destructive"
+                                      onClick={() => setVideoToDelete({ id: video.id, path: video.video_path })}
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  </div>
                                 </div>
                               </div>
                             ))}

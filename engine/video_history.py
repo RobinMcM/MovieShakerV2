@@ -14,6 +14,7 @@ from db import get_session
 from config import load_settings
 from credits import apply_credit_cost, ensure_user_can_generate, extract_credit_cost
 from gateway_client import GatewayClient, GatewayClientError
+from media_handler_client import MediaHandlerClient, MediaHandlerClientError
 from models import (
     GatewayUsageEvent,
     MoodBoardCompiledVideo,
@@ -102,6 +103,15 @@ def _gateway_client() -> GatewayClient:
     )
 
 
+def _media_handler_client() -> MediaHandlerClient:
+    return MediaHandlerClient(
+        base_url=settings.media_handler_base_url,
+        api_key=settings.media_handler_internal_api_key,
+        timeout_seconds=settings.media_handler_timeout_seconds,
+        verify_tls=settings.media_handler_verify_tls,
+    )
+
+
 def _extract_video_path(result: dict) -> Optional[str]:
     files = result.get("files")
     if isinstance(files, list):
@@ -148,6 +158,25 @@ def _normalize_storage_key(path_or_url: Optional[str]) -> Optional[str]:
     if value.startswith("http://") or value.startswith("https://") or value.startswith("data:"):
         return None
     return value
+
+
+def _to_storage_or_url(value: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """
+    Convert a path/URL to either a relative storage key or keep as external URL.
+    Returns (storage_key, external_url).
+    """
+    trimmed = (value or "").strip()
+    if not trimmed:
+        return (None, None)
+    marker = "/api/storage/"
+    idx = trimmed.find(marker)
+    if idx >= 0:
+        return (trimmed[idx + len(marker):].split("?")[0], None)
+    if trimmed.startswith("http://") or trimmed.startswith("https://"):
+        return (None, trimmed)
+    if trimmed.startswith("data:"):
+        return (None, None)
+    return (trimmed, None)
 
 
 def _create_usage_event(
@@ -218,6 +247,17 @@ class GenerateVideoBody(BaseModel):
     media_type: str = "video-generation"
     source_image_path: Optional[str] = None
     source_image_data_url: Optional[str] = None
+    dry_run: bool = False
+
+
+class ContinueVideoBody(BaseModel):
+    source_video_id: str
+    mode: str = "same_channel"  # same_channel | new_channel
+    prompt: Optional[str] = None
+    aspect_ratio: Optional[str] = None
+    duration: Optional[int] = None
+    model: Optional[str] = None
+    media_type: str = "video-generation"
     dry_run: bool = False
 
 
@@ -298,6 +338,159 @@ def generate_video(
         user_id=user_id,
         project_id=project_id,
         tram_line_id=uuid.UUID(body.tram_line_id),
+        video_history_id=row.id,
+        gateway_job_id=gateway_job_id,
+        model=model_used,
+        media_type=body.media_type,
+        status=job_status,
+        estimate=estimate if isinstance(estimate, dict) else None,
+        raw_response=response if isinstance(response, dict) else None,
+    )
+
+    credits_cost = extract_credit_cost(response)
+    balance = apply_credit_cost(db, user_id, credits_cost)
+
+    db.commit()
+    db.refresh(row)
+    return {
+        "success": True,
+        "video": _video_to_item(row),
+        "gateway": {
+            "job_id": gateway_job_id,
+            "job_status": job_status,
+            "estimate": estimate,
+        },
+        "credits": {
+            "cost": credits_cost,
+            "balance": balance,
+        },
+    }
+
+
+@router.post("/continue")
+def continue_video(
+    body: ContinueVideoBody,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    if body.mode not in {"same_channel", "new_channel"}:
+        raise HTTPException(status_code=400, detail="mode must be same_channel or new_channel")
+
+    source = _ensure_video_access(db, body.source_video_id, user_id)
+    line = _ensure_tramline_access(db, str(source.tram_line_id), user_id)
+    project_id = _project_id_for_tramline(db, line)
+    profile = ensure_user_can_generate(db, user_id)
+
+    if not settings.gateway_base_url:
+        raise HTTPException(status_code=503, detail="Gateway base URL is not configured")
+    if not settings.gateway_internal_api_key:
+        raise HTTPException(status_code=503, detail="Gateway API key is not configured")
+    if not settings.media_handler_base_url:
+        raise HTTPException(status_code=503, detail="Media-handler base URL is not configured")
+    if not settings.media_handler_internal_api_key:
+        raise HTTPException(status_code=503, detail="Media-handler API key is not configured")
+
+    source_video_path = (source.video_path or "").strip()
+    if not source_video_path:
+        raise HTTPException(status_code=400, detail="Source video has no playable path yet")
+
+    if body.mode == "same_channel":
+        existing_same = db.exec(
+            select(MoodBoardVideoHistory).where(
+                MoodBoardVideoHistory.source_video_id == str(source.id),
+                MoodBoardVideoHistory.channel == source.channel,
+            )
+        ).first()
+        if existing_same:
+            raise HTTPException(status_code=409, detail="Same-channel continuation already exists for this source video")
+
+    try:
+        frame = _media_handler_client().extract_last_frame(source_video_path)
+    except MediaHandlerClientError as exc:
+        raise HTTPException(status_code=502, detail=f"Frame extraction failed: {exc}")
+
+    source_image_storage_key, source_image_external_url = _to_storage_or_url(frame.get("image_url"))
+    source_image_data_url = frame.get("image_data_url")
+
+    prompt = (body.prompt or source.prompt or line.action_text or "").strip() or "Cinematic continuation shot"
+    normalized_aspect_ratio = _normalize_video_aspect_ratio(body.aspect_ratio or source.aspect_ratio)
+
+    rows = list(
+        db.exec(
+            select(MoodBoardVideoHistory).where(
+                MoodBoardVideoHistory.tram_line_id == source.tram_line_id
+            )
+        ).all()
+    )
+
+    if body.mode == "same_channel":
+        channel = source.channel if source.channel is not None else 1
+        same_channel_rows = [r for r in rows if r.channel == channel]
+        take_number = max((r.take_number or 0) for r in same_channel_rows) + 1
+    else:
+        max_channel = max((r.channel or 0) for r in rows) if rows else 0
+        channel = max_channel + 1
+        take_number = 1
+
+    payload: dict = {
+        "prompt": prompt,
+        "aspect_ratio": normalized_aspect_ratio,
+    }
+    if body.duration:
+        payload["duration"] = body.duration
+    if source_image_storage_key:
+        payload["source_image_path"] = source_image_storage_key
+    elif source_image_external_url:
+        payload["source_image_path"] = source_image_external_url
+    if source_image_data_url:
+        payload["image_url"] = source_image_data_url
+    if line.shot_type:
+        payload["shot_type"] = line.shot_type
+    if line.camera_direction:
+        payload["camera_direction"] = line.camera_direction
+
+    try:
+        selected_model = (body.model or profile.model_visualize_video or "").strip() or None
+        response = _gateway_client().execute_fal(
+            media_type=body.media_type,
+            payload=payload,
+            model=selected_model,
+            dry_run=body.dry_run,
+        )
+    except GatewayClientError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    gateway_job_id = response.get("job_id")
+    job_status = response.get("job_status") or ("completed" if body.dry_run else "processing")
+    estimate = response.get("estimate")
+    routing = response.get("routing") if isinstance(response.get("routing"), dict) else {}
+    model_used = selected_model or routing.get("model")
+
+    row = MoodBoardVideoHistory(
+        tram_line_id=source.tram_line_id,
+        user_id=user_id,
+        video_path="",
+        task_id=gateway_job_id,
+        generation_method=f"gateway_{body.media_type}",
+        prompt=prompt,
+        aspect_ratio=normalized_aspect_ratio,
+        duration=body.duration or source.duration,
+        take_number=take_number,
+        channel=channel,
+        source_type="video_continuation",
+        source_image_path=source_image_storage_key or source_image_external_url,
+        source_video_id=str(source.id),
+        is_print=False,
+    )
+    db.add(row)
+    db.flush()
+
+    _create_usage_event(
+        db,
+        user_id=user_id,
+        project_id=project_id,
+        tram_line_id=source.tram_line_id,
         video_history_id=row.id,
         gateway_job_id=gateway_job_id,
         model=model_used,

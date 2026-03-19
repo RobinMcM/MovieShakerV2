@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
 import type { ApiConfig, VideoHistoryItem, CompiledVideo } from "./types";
-import type { ProjectMood, TramLineWithScene } from "../moodboard/types";
+import type { ProjectMood, TramLineWithScene, CanvasComposition } from "../moodboard/types";
 
 export function useVisualize(projectId: string | null) {
   const [loading, setLoading] = useState(false);
@@ -12,6 +12,7 @@ export function useVisualize(projectId: string | null) {
   const [apiConfig, setApiConfig] = useState<ApiConfig | null>(null);
   const [videoHistory, setVideoHistory] = useState<VideoHistoryItem[]>([]);
   const [compiledVideos, setCompiledVideos] = useState<CompiledVideo[]>([]);
+  const [sourceCompositions, setSourceCompositions] = useState<CanvasComposition[]>([]);
 
   const loadProject = useCallback(async (pid: string) => {
     try {
@@ -88,12 +89,28 @@ export function useVisualize(projectId: string | null) {
     }
   }, []);
 
+  const loadSourceCompositions = useCallback(async (tramLineId: string | null) => {
+    if (!tramLineId) {
+      setSourceCompositions([]);
+      return;
+    }
+    try {
+      const res = await api.get<{ success: boolean; compositions: CanvasComposition[] }>(
+        `api/moodboard/${tramLineId}/compositions`
+      );
+      setSourceCompositions((res as { compositions?: CanvasComposition[] }).compositions ?? []);
+    } catch {
+      setSourceCompositions([]);
+    }
+  }, []);
+
   useEffect(() => {
     if (!projectId) {
       setProject(null);
       setTramLines([]);
       setVideoHistory([]);
       setCompiledVideos([]);
+      setSourceCompositions([]);
       return;
     }
     setLoading(true);
@@ -142,6 +159,24 @@ export function useVisualize(projectId: string | null) {
     [loadCompiledVideos]
   );
 
+  const continueVideo = useCallback(
+    async (
+      sourceVideoId: string,
+      mode: "same_channel" | "new_channel",
+      tramLineId: string,
+      options?: { prompt?: string; aspect_ratio?: string | null }
+    ) => {
+      await api.post("api/video-history/continue", {
+        source_video_id: sourceVideoId,
+        mode,
+        prompt: options?.prompt?.trim() || null,
+        aspect_ratio: options?.aspect_ratio || null,
+      });
+      loadVideoHistory(tramLineId);
+    },
+    [loadVideoHistory]
+  );
+
   const toggleMovieShakerTVPrint = useCallback(
     async (compiledId: string, showOnTV: boolean, tramLineId: string) => {
       await api.patch(`api/compiled-videos/${compiledId}/status`, {
@@ -159,13 +194,16 @@ export function useVisualize(projectId: string | null) {
     apiConfig,
     videoHistory,
     compiledVideos,
+    sourceCompositions,
     loadVideoHistory,
     loadCompiledVideos,
+    loadSourceCompositions,
     refetchVideoHistory,
     refetchCompiledVideos,
     toggleVideoPrint,
     deleteVideo,
     deleteCompiledVideo,
+    continueVideo,
     toggleMovieShakerTVPrint,
   };
 }

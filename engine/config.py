@@ -42,6 +42,10 @@ class Settings:
     gateway_internal_api_key: str
     gateway_timeout_seconds: float
     gateway_verify_tls: bool
+    media_handler_base_url: str
+    media_handler_internal_api_key: str
+    media_handler_timeout_seconds: float
+    media_handler_verify_tls: bool
     film_in_a_box_model: str
     sql_echo: bool
 
@@ -82,6 +86,7 @@ def load_settings() -> Settings:
     else:
         cors_origins = _dedupe(dev_origins + default_production_origins + env_origins + [website_domain])
     gateway_verify_tls = os.getenv("GATEWAY_VERIFY_TLS", "false").strip().lower() in {"1", "true", "yes"}
+    media_handler_verify_tls = os.getenv("MEDIA_HANDLER_VERIFY_TLS", "false").strip().lower() in {"1", "true", "yes"}
     sql_echo = os.getenv("SQL_ECHO", "false").strip().lower() in {"1", "true", "yes"}
 
     return Settings(
@@ -96,6 +101,10 @@ def load_settings() -> Settings:
         gateway_internal_api_key=os.getenv("GATEWAY_INTERNAL_API_KEY", "").strip(),
         gateway_timeout_seconds=float(os.getenv("GATEWAY_TIMEOUT_SECONDS", "45")),
         gateway_verify_tls=gateway_verify_tls,
+        media_handler_base_url=os.getenv("MEDIA_HANDLER_BASE_URL", "").rstrip("/"),
+        media_handler_internal_api_key=os.getenv("MEDIA_HANDLER_INTERNAL_API_KEY", "").strip(),
+        media_handler_timeout_seconds=float(os.getenv("MEDIA_HANDLER_TIMEOUT_SECONDS", "60")),
+        media_handler_verify_tls=media_handler_verify_tls,
         film_in_a_box_model=os.getenv("FILM_IN_A_BOX_MODEL", "google/gemma-3-12b-it:free").strip(),
         sql_echo=sql_echo,
     )

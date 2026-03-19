@@ -227,7 +227,7 @@ function MoodBoardContent() {
   return (
     <div className="min-h-screen bg-background">
       <AppHeader />
-      <main className="container mx-auto p-8">
+      <main className="w-full px-8 py-8">
         <div className="flex items-center gap-4 mb-6">
           <Button
             variant="ghost"
@@ -249,8 +249,8 @@ function MoodBoardContent() {
             Back
           </Button>
         </div>
-        <div className="flex flex-col items-center min-h-[60vh] space-y-6">
-          <div className="flex flex-col items-center w-full max-w-2xl p-8 border-2 border-dashed border-muted rounded-xl bg-muted/10 space-y-6">
+        <div className="flex flex-col items-center min-h-[60vh] space-y-6 w-full">
+          <div className="flex flex-col items-center w-full p-8 border-2 border-dashed border-muted rounded-xl bg-muted/10 space-y-6">
             <p className="text-lg font-medium">Select a Tram Line to begin</p>
             <div className="w-full max-w-md">
               <TramLineSelect

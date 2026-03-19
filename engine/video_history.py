@@ -16,12 +16,14 @@ from credits import apply_credit_cost, ensure_user_can_generate, extract_credit_
 from gateway_client import GatewayClient, GatewayClientError
 from models import (
     GatewayUsageEvent,
+    MoodBoardCompiledVideo,
     MoodBoardVideoHistory,
     ProjectMember,
     Scene,
     Script,
     TramLine,
 )
+from storage import delete_storage_file
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
 
@@ -133,6 +135,19 @@ def _normalize_video_aspect_ratio(aspect_ratio: Optional[str]) -> str:
     value = mapping.get(value, value)
     allowed = {"16:9", "9:16", "4:3", "3:4", "21:9", "9:21"}
     return value if value in allowed else "16:9"
+
+
+def _normalize_storage_key(path_or_url: Optional[str]) -> Optional[str]:
+    value = (path_or_url or "").strip()
+    if not value:
+        return None
+    marker = "/api/storage/"
+    idx = value.find(marker)
+    if idx >= 0:
+        return value[idx + len(marker):].split("?")[0]
+    if value.startswith("http://") or value.startswith("https://") or value.startswith("data:"):
+        return None
+    return value
 
 
 def _create_usage_event(
@@ -495,6 +510,59 @@ def delete_video(
 ):
     user_id = session.get_user_id()
     row = _ensure_video_access(db, video_id, user_id)
+    line = _ensure_tramline_access(db, str(row.tram_line_id), user_id)
+    project_id = _project_id_for_tramline(db, line)
+    video_id_str = str(row.id)
+
+    # Remove dependent usage rows first to avoid FK violations.
+    usage_rows = list(
+        db.exec(
+            select(GatewayUsageEvent).where(
+                GatewayUsageEvent.video_history_id == row.id
+            )
+        ).all()
+    )
+    if row.task_id:
+        usage_by_job = list(
+            db.exec(
+                select(GatewayUsageEvent).where(
+                    GatewayUsageEvent.gateway_job_id == row.task_id
+                )
+            ).all()
+        )
+        known_usage_ids = {str(item.id) for item in usage_rows}
+        usage_rows.extend([item for item in usage_by_job if str(item.id) not in known_usage_ids])
+    for usage_row in usage_rows:
+        db.delete(usage_row)
+
+    # Remove any compiled videos that include this video as a source artifact.
+    compiled_rows = list(
+        db.exec(
+            select(MoodBoardCompiledVideo).where(
+                MoodBoardCompiledVideo.project_id == project_id
+            )
+        ).all()
+    )
+    for compiled_row in compiled_rows:
+        source_ids = []
+        if compiled_row.source_video_ids:
+            try:
+                parsed = json.loads(compiled_row.source_video_ids)
+                if isinstance(parsed, list):
+                    source_ids = [str(item) for item in parsed]
+            except Exception:
+                source_ids = []
+        if video_id_str in source_ids:
+            compiled_storage_key = _normalize_storage_key(compiled_row.compiled_video_path)
+            if compiled_storage_key:
+                delete_storage_file(compiled_storage_key)
+            db.delete(compiled_row)
+
+    # Remove stored video file when this is an internal storage path.
+    video_storage_key = _normalize_storage_key(row.video_path)
+    if video_storage_key:
+        delete_storage_file(video_storage_key)
+
     db.delete(row)
     db.commit()
     return {"success": True, "video": _video_to_item(row)}

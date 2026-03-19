@@ -12,6 +12,7 @@ from sqlmodel import Session, select
 
 from db import get_session
 from models import MoodBoardCompiledVideo, ProjectMember, Scene, Script, TramLine
+from storage import delete_storage_file
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
 
@@ -85,6 +86,19 @@ def _compiled_to_response(c: MoodBoardCompiledVideo, tram_line: Optional[TramLin
             "shot_type": tram_line.shot_type,
         }
     return out
+
+
+def _normalize_storage_key(path_or_url: Optional[str]) -> Optional[str]:
+    value = (path_or_url or "").strip()
+    if not value:
+        return None
+    marker = "/api/storage/"
+    idx = value.find(marker)
+    if idx >= 0:
+        return value[idx + len(marker):].split("?")[0]
+    if value.startswith("http://") or value.startswith("https://") or value.startswith("data:"):
+        return None
+    return value
 
 
 class CreateCompiledBody(BaseModel):
@@ -239,6 +253,9 @@ def delete_compiled(
 ):
     user_id = session.get_user_id()
     row = _ensure_compiled_access(db, compiled_id, user_id)
+    compiled_storage_key = _normalize_storage_key(row.compiled_video_path)
+    if compiled_storage_key:
+        delete_storage_file(compiled_storage_key)
     db.delete(row)
     db.commit()
     return {"success": True}

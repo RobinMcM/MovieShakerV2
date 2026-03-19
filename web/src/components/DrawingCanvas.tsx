@@ -33,6 +33,7 @@ interface CanvasImage {
   id: string;
   src: string;
   name?: string;
+  isBackground?: boolean;
   x: number;
   y: number;
   width: number;
@@ -146,6 +147,11 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
       img.src = url;
     };
 
+    const createCanvasImagePromise = (url: string): Promise<HTMLImageElement> =>
+      new Promise((resolve, reject) => {
+        createCanvasImage(url, resolve, reject);
+      });
+
     useImperativeHandle(ref, () => ({
       addImage(url: string, fill = false) {
         createCanvasImage(url, (img) => {
@@ -187,8 +193,15 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
             height,
             image: img,
             name: "Imported Image",
+            isBackground: fill,
           };
-          setImages((prev) => [...prev, newImage]);
+          setImages((prev) => {
+            if (fill) {
+              const foreground = prev.filter((item) => !item.isBackground);
+              return [newImage, ...foreground];
+            }
+            return [...prev, newImage];
+          });
           setTool("select");
           setSelectedId(newImage.id);
         });
@@ -207,33 +220,65 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
     }));
 
     useEffect(() => {
+      let cancelled = false;
       setSelectedId(null);
       if (initialData) {
         setLines(Array.isArray(initialData.lines) ? (initialData.lines as CanvasLine[]) : []);
-        const loaded: CanvasImage[] = [];
         const incomingImages = Array.isArray(initialData.images) ? initialData.images : [];
-        const pending = { count: incomingImages.length };
-        const finalizeIfDone = () => {
-          pending.count -= 1;
-          if (pending.count <= 0) setImages(loaded);
-        };
-        incomingImages.forEach((imgData) => {
-          const originalSrc = (imgData.src || "").trim();
-          const resolvedSrc = resolveCanvasImageSrc(originalSrc);
-          if (!resolvedSrc) {
-            finalizeIfDone();
-            return;
-          }
-          createCanvasImage(resolvedSrc, (img) => {
-            loaded.push({ ...imgData, src: originalSrc || imgData.src, image: img } as CanvasImage);
-            finalizeIfDone();
-          }, finalizeIfDone);
+        if (incomingImages.length === 0) {
+          setImages([]);
+          return () => {
+            cancelled = true;
+          };
+        }
+
+        const savedWidth = Number(initialData.dimensions?.width) || 0;
+        const savedHeight = Number(initialData.dimensions?.height) || 0;
+
+        Promise.all(
+          incomingImages.map(async (imgData, idx) => {
+            const originalSrc = (imgData.src || "").trim();
+            const resolvedSrc = resolveCanvasImageSrc(originalSrc);
+            if (!resolvedSrc) return null;
+            try {
+              const loadedImg = await createCanvasImagePromise(resolvedSrc);
+              const isLikelyBackground =
+                imgData.x === 0 &&
+                imgData.y === 0 &&
+                savedWidth > 0 &&
+                savedHeight > 0 &&
+                imgData.width >= savedWidth - 1 &&
+                imgData.height >= savedHeight - 1;
+              return {
+                idx,
+                image: {
+                  ...imgData,
+                  src: originalSrc || imgData.src,
+                  image: loadedImg,
+                  isBackground: isLikelyBackground,
+                } as CanvasImage,
+              };
+            } catch {
+              return null;
+            }
+          })
+        ).then((results) => {
+          if (cancelled) return;
+          const ordered = results
+            .filter((entry): entry is { idx: number; image: CanvasImage } => !!entry)
+            .sort((a, b) => a.idx - b.idx)
+            .map((entry) => entry.image);
+          const backgrounds = ordered.filter((img) => img.isBackground);
+          const foregrounds = ordered.filter((img) => !img.isBackground);
+          setImages([...backgrounds, ...foregrounds]);
         });
-        if (incomingImages.length === 0) setImages([]);
       } else {
         setImages([]);
         setLines([]);
       }
+      return () => {
+        cancelled = true;
+      };
     }, [tramLineId, initialData]);
 
     const handleSave = async () => {
@@ -304,10 +349,9 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
       e.preventDefault();
       if (!stageRef.current) return;
       const stage = stageRef.current;
-      stage.setPointersPositions(e);
-      const pos = stage.getPointerPosition();
-      const x = pos?.x ?? 100;
-      const y = pos?.y ?? 100;
+      const rect = stage.container().getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
       let dragData: { name?: string; src?: string; type?: string } = {};
       try {
         const j = e.dataTransfer.getData("application/json");
@@ -350,42 +394,52 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
         const dataUrl = canvas.toDataURL("image/png");
         const img = new Image();
         img.onload = () => {
+          const newId = `img-${Date.now()}`;
+          const placedX = Math.max(0, Math.min(dimensions.width - size, x - size / 2));
+          const placedY = Math.max(0, Math.min(dimensions.height - (size + tagHeight), y - (size + tagHeight) / 2));
           setImages((prev) => [
             ...prev,
             {
-              id: `img-${Date.now()}`,
+              id: newId,
               src: dataUrl,
               name,
-              x: x - size / 2,
-              y: y - (size + tagHeight) / 2,
+              x: placedX,
+              y: placedY,
               width: size,
               height: size + tagHeight,
               image: img,
+              isBackground: false,
             },
           ]);
           setTool("select");
+          setSelectedId(newId);
         };
         img.src = dataUrl;
       } else {
         createCanvasImage(imageUrl, (img) => {
+          const newId = `img-${Date.now()}`;
           const maxSize = 200;
           const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
           const w = img.width * scale;
           const h = img.height * scale;
+          const placedX = Math.max(0, Math.min(dimensions.width - w, x - w / 2));
+          const placedY = Math.max(0, Math.min(dimensions.height - h, y - h / 2));
           setImages((prev) => [
             ...prev,
             {
-              id: `img-${Date.now()}`,
+              id: newId,
               src: imageUrl,
               name,
-              x: x - w / 2,
-              y: y - h / 2,
+              x: placedX,
+              y: placedY,
               width: w,
               height: h,
               image: img,
+              isBackground: false,
             },
           ]);
           setTool("select");
+          setSelectedId(newId);
         });
       }
     };

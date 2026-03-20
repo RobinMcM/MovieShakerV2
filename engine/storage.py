@@ -122,7 +122,7 @@ def get_script_file_stream(relative_path: str) -> Optional[Tuple[bytes, str]]:
 
 def get_storage_file(relative_path: str) -> Optional[Tuple[bytes, str]]:
     """
-    Return (body, content_type) for moodboard/object image keys.
+    Return (body, content_type) for moodboard/object assets.
     For local: read from STORAGE_ROOT. For Spaces: use S3 get_object.
     """
     if not relative_path or ".." in relative_path:
@@ -143,9 +143,20 @@ def get_storage_file(relative_path: str) -> Optional[Tuple[bytes, str]]:
     try:
         body = path.read_bytes()
         ext = path.suffix.lower()
-        content_type = "image/png" if ext == ".png" else "image/jpeg"
-        if ext in (".gif", ".webp"):
+        if ext == ".png":
+            content_type = "image/png"
+        elif ext in (".jpg", ".jpeg"):
+            content_type = "image/jpeg"
+        elif ext in (".gif", ".webp"):
             content_type = f"image/{ext[1:]}"
+        elif ext == ".mp4":
+            content_type = "video/mp4"
+        elif ext == ".webm":
+            content_type = "video/webm"
+        elif ext == ".mov":
+            content_type = "video/quicktime"
+        else:
+            content_type = "application/octet-stream"
         return (body, content_type)
     except Exception:
         return None
@@ -257,6 +268,57 @@ def save_moodboard_image(
         )
         return key
     d = STORAGE_ROOT / user_id / str(project_id) / "scene" / str(scene_id) / "moodboard" / tram_line_id
+    d.mkdir(parents=True, exist_ok=True)
+    path = d / filename
+    with open(path, "wb") as f:
+        shutil.copyfileobj(content, f)
+    return key
+
+
+def moodboard_video_relative_path(
+    user_id: str,
+    project_id: str,
+    scene_id: str,
+    tram_line_id: str,
+    filename: str,
+) -> str:
+    """Project-scoped moodboard video key."""
+    return f"{user_id}/{project_id}/scene/{scene_id}/moodboard/{tram_line_id}/videos/{filename}"
+
+
+def save_moodboard_video(
+    user_id: str,
+    project_id: str,
+    scene_id: str,
+    tram_line_id: str,
+    filename: str,
+    content: BinaryIO,
+    size: int,
+) -> str:
+    """Save moodboard video to storage. Returns relative path (key) for DB."""
+    if size > MAX_UPLOAD_BYTES:
+        raise ValueError(f"File size exceeds {MAX_UPLOAD_BYTES} bytes")
+    key = moodboard_video_relative_path(user_id, project_id, scene_id, tram_line_id, filename)
+    if uses_spaces():
+        body = content.read() if hasattr(content, "read") else content
+        lowered = filename.lower()
+        if lowered.endswith(".mp4"):
+            content_type = "video/mp4"
+        elif lowered.endswith(".webm"):
+            content_type = "video/webm"
+        elif lowered.endswith(".mov"):
+            content_type = "video/quicktime"
+        else:
+            content_type = "application/octet-stream"
+        client = _spaces_client()
+        client.put_object(
+            Bucket=DO_SPACES_BUCKET,
+            Key=key,
+            Body=body,
+            ContentType=content_type,
+        )
+        return key
+    d = STORAGE_ROOT / user_id / str(project_id) / "scene" / str(scene_id) / "moodboard" / tram_line_id / "videos"
     d.mkdir(parents=True, exist_ok=True)
     path = d / filename
     with open(path, "wb") as f:

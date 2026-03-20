@@ -3,9 +3,11 @@ Video history API for Visualize: list/create/patch/delete per tram line.
 Prefix: /api/video-history.
 """
 import json
+from io import BytesIO
 import uuid
 from typing import Any, Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlmodel import Session, select
@@ -31,7 +33,7 @@ from models import (
     Script,
     TramLine,
 )
-from storage import delete_storage_file, get_storage_access_url
+from storage import delete_storage_file, get_storage_access_url, save_moodboard_video
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
 
@@ -568,6 +570,69 @@ def _resolve_image_url_for_generation(
     return get_storage_access_url(path_value)
 
 
+def _detect_video_ext(video_url: str, content_type: Optional[str]) -> str:
+    lowered_type = (content_type or "").lower()
+    if "video/mp4" in lowered_type:
+        return "mp4"
+    if "video/webm" in lowered_type:
+        return "webm"
+    if "quicktime" in lowered_type or "video/mov" in lowered_type:
+        return "mov"
+    lowered_url = (video_url or "").lower()
+    for ext in ("mp4", "webm", "mov"):
+        if f".{ext}" in lowered_url:
+            return ext
+    return "mp4"
+
+
+def _ingest_video_to_storage(
+    *,
+    source_video_url: Optional[str],
+    user_id: str,
+    project_id: str,
+    scene_id: str,
+    tram_line_id: str,
+) -> Optional[str]:
+    """
+    Download provider video URL and copy it into project-scoped storage.
+    Falls back to original URL on any ingest failure.
+    """
+    source = (source_video_url or "").strip()
+    if not source:
+        return None
+    # Already a storage key/path.
+    if not source.startswith("http://") and not source.startswith("https://"):
+        return source
+    try:
+        response = httpx.get(
+            source,
+            timeout=max(30.0, settings.gateway_timeout_seconds * 2),
+            follow_redirects=True,
+            headers={"User-Agent": "MovieShakerEngine/1.0"},
+        )
+        response.raise_for_status()
+        content = response.content
+        if not content:
+            _trace("ingest_video.empty_content", source_video_url=source)
+            return source
+        ext = _detect_video_ext(source, response.headers.get("content-type"))
+        filename = f"{uuid.uuid4().hex}.{ext}"
+        key = save_moodboard_video(
+            user_id=user_id,
+            project_id=project_id,
+            scene_id=scene_id,
+            tram_line_id=tram_line_id,
+            filename=filename,
+            content=BytesIO(content),
+            size=len(content),
+        )
+        _trace("ingest_video.saved", source_video_url=source, storage_key=key, size=len(content))
+        return key
+    except Exception as exc:
+        _trace("ingest_video.failed", source_video_url=source, error=str(exc))
+        return source
+
+
 def _create_usage_event(
     db: Session,
     *,
@@ -845,11 +910,19 @@ def generate_video(
         )
     if gateway_error and str(job_status).strip().lower() in {"failed", "error", "cancelled"}:
         raise HTTPException(status_code=502, detail=gateway_error)
+    persisted_video_path = _ingest_video_to_storage(
+        source_video_url=direct_video_path,
+        user_id=user_id,
+        project_id=str(project_id),
+        scene_id=str(line.scene_id),
+        tram_line_id=body.tram_line_id,
+    )
     _trace(
         "generate.gateway_parsed",
         gateway_job_id=gateway_job_id,
         job_status=job_status,
         direct_video_path=direct_video_path,
+        persisted_video_path=persisted_video_path,
         gateway_error=gateway_error,
     )
     estimate = response.get("estimate")
@@ -859,7 +932,7 @@ def generate_video(
     row = MoodBoardVideoHistory(
         tram_line_id=uuid.UUID(body.tram_line_id),
         user_id=user_id,
-        video_path=(direct_video_path or ""),
+        video_path=(persisted_video_path or ""),
         task_id=gateway_job_id,
         generation_method="gateway_image-to-video",
         prompt=prompt,
@@ -1126,11 +1199,19 @@ def continue_video(
         )
     if gateway_error and str(job_status).strip().lower() in {"failed", "error", "cancelled"}:
         raise HTTPException(status_code=502, detail=gateway_error)
+    persisted_video_path = _ingest_video_to_storage(
+        source_video_url=direct_video_path,
+        user_id=user_id,
+        project_id=str(project_id),
+        scene_id=str(line.scene_id),
+        tram_line_id=str(source.tram_line_id),
+    )
     _trace(
         "continue.gateway_parsed",
         gateway_job_id=gateway_job_id,
         job_status=job_status,
         direct_video_path=direct_video_path,
+        persisted_video_path=persisted_video_path,
         gateway_error=gateway_error,
     )
     estimate = response.get("estimate")
@@ -1140,7 +1221,7 @@ def continue_video(
     row = MoodBoardVideoHistory(
         tram_line_id=source.tram_line_id,
         user_id=user_id,
-        video_path=(direct_video_path or ""),
+        video_path=(persisted_video_path or ""),
         task_id=gateway_job_id,
         generation_method="gateway_image-to-video",
         prompt=prompt,
@@ -1253,7 +1334,15 @@ def get_generation_status(
                 video_path = None
                 _trace("status.result_fallback_error", task_id=row.task_id)
         if video_path:
-            row.video_path = video_path
+            line = _ensure_tramline_access(db, str(row.tram_line_id), user_id)
+            project_id = _project_id_for_tramline(db, line)
+            row.video_path = _ingest_video_to_storage(
+                source_video_url=video_path,
+                user_id=user_id,
+                project_id=str(project_id),
+                scene_id=str(line.scene_id),
+                tram_line_id=str(row.tram_line_id),
+            ) or video_path
             db.add(row)
     if job_status == "failed" and not row.video_path and error_msg:
         row.video_path = ""

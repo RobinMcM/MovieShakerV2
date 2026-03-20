@@ -537,6 +537,37 @@ def generate_video(
     gateway_job_id, parsed_job_status, gateway_error, gateway_result = _extract_gateway_response_fields(response)
     job_status = parsed_job_status or ("completed" if body.dry_run else "processing")
     direct_video_path = _extract_video_path(gateway_result)
+    if (
+        selected_model
+        and gateway_error
+        and not gateway_job_id
+        and not direct_video_path
+        and _should_fallback_to_default_model(gateway_error)
+    ):
+        # Some gateway versions return model errors as 200 JSON payloads
+        # (e.g. {"status": "...", "message": "..."}). Retry default route.
+        request_body = _gateway_execute_body(
+            media_type="image-to-video",
+            payload=payload,
+            model=None,
+            dry_run=body.dry_run,
+        )
+        print(f"[video_history.generate] gateway execute soft-error fallback body: {json.dumps(request_body, ensure_ascii=False)}")
+        try:
+            response = gateway.execute_fal(
+                media_type="image-to-video",
+                payload=payload,
+                model=None,
+                dry_run=body.dry_run,
+            )
+            gateway_job_id, parsed_job_status, gateway_error, gateway_result = _extract_gateway_response_fields(response)
+            job_status = parsed_job_status or ("completed" if body.dry_run else "processing")
+            direct_video_path = _extract_video_path(gateway_result)
+        except GatewayClientError:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Selected video model '{selected_model}' soft-failed and default fallback failed: {gateway_error}",
+            )
     if not gateway_job_id and not direct_video_path:
         detail = gateway_error or "Gateway did not return a job identifier."
         raise HTTPException(
@@ -742,6 +773,35 @@ def continue_video(
     gateway_job_id, parsed_job_status, gateway_error, gateway_result = _extract_gateway_response_fields(response)
     job_status = parsed_job_status or ("completed" if body.dry_run else "processing")
     direct_video_path = _extract_video_path(gateway_result)
+    if (
+        selected_model
+        and gateway_error
+        and not gateway_job_id
+        and not direct_video_path
+        and _should_fallback_to_default_model(gateway_error)
+    ):
+        request_body = _gateway_execute_body(
+            media_type="image-to-video",
+            payload=payload,
+            model=None,
+            dry_run=body.dry_run,
+        )
+        print(f"[video_history.continue] gateway execute soft-error fallback body: {json.dumps(request_body, ensure_ascii=False)}")
+        try:
+            response = gateway.execute_fal(
+                media_type="image-to-video",
+                payload=payload,
+                model=None,
+                dry_run=body.dry_run,
+            )
+            gateway_job_id, parsed_job_status, gateway_error, gateway_result = _extract_gateway_response_fields(response)
+            job_status = parsed_job_status or ("completed" if body.dry_run else "processing")
+            direct_video_path = _extract_video_path(gateway_result)
+        except GatewayClientError:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Selected video model '{selected_model}' soft-failed and default fallback failed: {gateway_error}",
+            )
     if not gateway_job_id and not direct_video_path:
         detail = gateway_error or "Gateway did not return a job identifier."
         raise HTTPException(

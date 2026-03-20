@@ -85,7 +85,7 @@ function normalizeSourceImagePath(pathOrUrl: string | null | undefined): string 
     return value.slice(idx + marker.length).split("?")[0];
   }
   if (value.startsWith("http://") || value.startsWith("https://")) {
-    return null;
+    return value;
   }
   return value;
 }
@@ -203,9 +203,10 @@ function VisualizeContent() {
 
   const currentLine = tramLines.find((l) => l.id === selectedTramLine);
   const selectedSourcePath = sourceSnapshots[selectedSourceIndex] || null;
+  const canonicalRootSource = moodboardImageParam || selectedSourcePath || currentLine?.scene_visual || null;
   const imageUrl =
     generatedImageUrl ||
-    resolveSourceImageUrl(selectedSourcePath) ||
+    resolveSourceImageUrl(canonicalRootSource) ||
     resolveSourceImageUrl(currentLine?.scene_visual);
 
   const gatewayConnected = apiConfig?.gatewayConnected ?? false;
@@ -286,7 +287,10 @@ function VisualizeContent() {
         channel: nextChannel,
         take_number: nextTake,
         media_type: "video-generation",
-        source_image_path: generatedImagePath || normalizeSourceImagePath(selectedSourcePath) || currentLine?.scene_visual || null,
+        source_image_path:
+          generatedImagePath ||
+          normalizeSourceImagePath(canonicalRootSource) ||
+          null,
         source_image_data_url: generatedImageDataUrl || null,
       });
       if (typeof res.credits?.cost === "number") {

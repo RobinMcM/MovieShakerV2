@@ -340,6 +340,19 @@ def _normalize_video_aspect_ratio(aspect_ratio: Optional[str]) -> str:
     return value if value in allowed else "16:9"
 
 
+def _normalize_gateway_job_status(raw_status: Optional[str]) -> str:
+    value = (raw_status or "").strip().lower()
+    if not value:
+        return "processing"
+    if value in {"completed", "complete", "succeeded", "success", "done", "finished"}:
+        return "completed"
+    if value in {"failed", "error", "cancelled", "canceled", "rejected"}:
+        return "failed"
+    if value in {"processing", "pending", "queued", "in_progress", "running", "submitted"}:
+        return "processing"
+    return value
+
+
 def _normalize_payload_for_model(
     *,
     model_id: Optional[str],
@@ -1307,11 +1320,12 @@ def get_generation_status(
         status_keys=sorted(gateway_status.keys()) if isinstance(gateway_status, dict) else str(type(gateway_status)),
     )
 
-    raw_status = gateway_status.get("job_status") or gateway_status.get("status") or "processing"
-    job_status = str(raw_status).strip().lower()
+    _, parsed_job_status, parsed_error, _ = _extract_gateway_response_fields(gateway_status)
+    raw_status = parsed_job_status or gateway_status.get("job_status") or gateway_status.get("status") or "processing"
+    job_status = _normalize_gateway_job_status(str(raw_status))
     result = _extract_result_payload(gateway_status)
     usage = gateway_status.get("usage") if isinstance(gateway_status.get("usage"), dict) else None
-    error_msg = gateway_status.get("error")
+    error_msg = parsed_error or gateway_status.get("error")
 
     if job_status == "completed" and not row.video_path:
         video_path = _extract_video_path(result)

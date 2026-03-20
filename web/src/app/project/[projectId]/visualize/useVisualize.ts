@@ -164,13 +164,22 @@ export function useVisualize(projectId: string | null) {
       sourceVideoId: string,
       mode: "same_channel" | "new_channel",
       tramLineId: string,
-      options?: { prompt?: string; aspect_ratio?: string | null }
+      options?: {
+        prompt?: string;
+        aspect_ratio?: string | null;
+        duration?: number | null;
+        model?: string | null;
+        model_options?: Record<string, unknown> | null;
+      }
     ) => {
       await api.post("api/video-history/continue", {
         source_video_id: sourceVideoId,
         mode,
         prompt: options?.prompt?.trim() || null,
         aspect_ratio: options?.aspect_ratio || null,
+        duration: options?.duration ?? null,
+        model: options?.model || null,
+        model_options: options?.model_options || null,
       });
       loadVideoHistory(tramLineId);
     },

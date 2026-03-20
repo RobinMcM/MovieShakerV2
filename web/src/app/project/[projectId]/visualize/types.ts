@@ -28,6 +28,16 @@ export interface ModelOption extends GatewayModel {
   speed_tier?: string;
   quality_tier?: string;
   docs_url?: string | null;
+  generation_options?: ModelGenerationOptionDescriptor[];
+}
+
+export interface ModelGenerationOptionDescriptor {
+  key: string;
+  label: string;
+  type: "enum" | "text" | "number" | "boolean";
+  default?: string | number | boolean | null;
+  choices?: string[];
+  hint?: string;
 }
 
 export interface VideoHistoryItem {

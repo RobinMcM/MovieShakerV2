@@ -4,7 +4,7 @@ Prefix: /api/video-history.
 """
 import json
 import uuid
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -301,39 +301,177 @@ def _normalize_payload_for_model(
     *,
     model_id: Optional[str],
     payload: dict,
+    model_options: Optional[dict[str, Any]] = None,
 ) -> dict:
     """
     Apply model-specific input constraints before sending to gateway/FAL.
 
-    Current known constraint:
-    - fal-ai/minimax-hailuo-02/image-to-video
-      duration: "5" | "10"
-      aspect_ratio: "16:9" | "9:16" | "1:1"
+    Model families with distinct contracts are normalized here:
+    - Veo: duration "4s|6s|8s", aspect_ratio 16:9|9:16, plus
+      resolution/generate_audio/safety_tolerance.
+    - MiniMax/Hailuo: duration "6|10", resolution/prompt_optimizer.
+    - Wan: duration "5|10|15", resolution/enable_prompt_rewriting.
+    - Kling: duration "5|10", aspect_ratio + cfg_scale.
     """
-    normalized = dict(payload)
+    normalized = {
+        "prompt": str(payload.get("prompt") or "").strip(),
+        "image_url": str(payload.get("image_url") or "").strip(),
+    }
     model_key = (model_id or "").strip().lower()
+    source_aspect = str(payload.get("aspect_ratio") or "").strip() or "16:9"
+    source_duration_raw = payload.get("duration")
 
-    if model_key == "fal-ai/minimax-hailuo-02/image-to-video":
-        aspect = str(normalized.get("aspect_ratio") or "").strip()
-        if aspect in {"9:16", "9:21"}:
+    def _duration_int(value: object) -> Optional[int]:
+        try:
+            if value is None:
+                return None
+            return int(str(value).strip().lower().replace("s", ""))
+        except Exception:
+            return None
+
+    duration_int = _duration_int(source_duration_raw)
+    requested = model_options or {}
+
+    def _apply_requested_overrides(
+        values: dict,
+        *,
+        allowed_keys: set[str],
+    ) -> dict:
+        for key, value in requested.items():
+            if key in allowed_keys:
+                values[key] = value
+        return values
+
+    # Veo family: duration uses "4s|6s|8s", aspect is 16:9/9:16/auto.
+    if "veo3" in model_key:
+        if source_aspect in {"9:16", "9:21"}:
             normalized["aspect_ratio"] = "9:16"
-        elif aspect == "1:1":
+        else:
+            normalized["aspect_ratio"] = "16:9"
+        if duration_int is not None:
+            if duration_int <= 4:
+                normalized["duration"] = "4s"
+            elif duration_int <= 6:
+                normalized["duration"] = "6s"
+            else:
+                normalized["duration"] = "8s"
+        normalized["resolution"] = "720p"
+        normalized["generate_audio"] = True
+        normalized["safety_tolerance"] = "4"
+        return _apply_requested_overrides(
+            normalized,
+            allowed_keys={"duration", "aspect_ratio", "resolution", "generate_audio", "safety_tolerance", "negative_prompt", "auto_fix", "seed"},
+        )
+
+    # MiniMax/Hailuo family: duration enum as strings (commonly 6/10), no aspect_ratio field.
+    if "minimax" in model_key or "hailuo" in model_key:
+        if duration_int is not None:
+            normalized["duration"] = "10" if duration_int >= 8 else "6"
+        normalized["resolution"] = "768P"
+        normalized["prompt_optimizer"] = True
+        return _apply_requested_overrides(
+            normalized,
+            allowed_keys={"duration", "resolution", "prompt_optimizer", "end_image_url", "seed"},
+        )
+
+    # Wan family: duration enum 5/10/15, plus optional prompt rewriting.
+    if model_key.startswith("wan/") or "wan-i2v" in model_key:
+        if duration_int is not None:
+            if duration_int <= 5:
+                normalized["duration"] = "5"
+            elif duration_int <= 10:
+                normalized["duration"] = "10"
+            else:
+                normalized["duration"] = "15"
+        normalized["resolution"] = "720p"
+        normalized["enable_prompt_rewriting"] = True
+        return _apply_requested_overrides(
+            normalized,
+            allowed_keys={"duration", "resolution", "enable_prompt_rewriting", "negative_prompt", "audio_url", "seed"},
+        )
+
+    # Kling family: duration enum typically 5/10, supports aspect ratio and cfg_scale.
+    if "kling-video" in model_key:
+        if source_aspect in {"9:16", "9:21"}:
+            normalized["aspect_ratio"] = "9:16"
+        elif source_aspect == "1:1":
             normalized["aspect_ratio"] = "1:1"
         else:
-            # Includes 16:9, 21:9, 4:3, 3:4 and unknowns.
             normalized["aspect_ratio"] = "16:9"
-
-        duration_value = normalized.get("duration")
-        duration_int = None
-        try:
-            if duration_value is not None:
-                duration_int = int(duration_value)
-        except Exception:
-            duration_int = None
         if duration_int is not None:
             normalized["duration"] = "10" if duration_int >= 8 else "5"
+        normalized["cfg_scale"] = 0.5
+        return _apply_requested_overrides(
+            normalized,
+            allowed_keys={"duration", "aspect_ratio", "negative_prompt", "cfg_scale", "special_fx", "seed"},
+        )
 
-    return normalized
+    # Conservative fallback for unknown i2v models.
+    if source_aspect in {"9:16", "9:21"}:
+        normalized["aspect_ratio"] = "9:16"
+    else:
+        normalized["aspect_ratio"] = "16:9"
+    if duration_int is not None:
+        normalized["duration"] = str(duration_int)
+    return _apply_requested_overrides(
+        normalized,
+        allowed_keys={"duration", "aspect_ratio", "negative_prompt", "seed"},
+    )
+
+
+def _coerce_bool(value: object, *, key: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off"}:
+            return False
+    raise HTTPException(status_code=400, detail=f"model_options.{key} must be a boolean.")
+
+
+def _sanitize_model_options(model: Optional[dict], requested: Optional[dict[str, Any]]) -> dict[str, Any]:
+    if not requested:
+        return {}
+    if not isinstance(requested, dict):
+        raise HTTPException(status_code=400, detail="model_options must be a JSON object.")
+
+    options = model.get("generation_options") if isinstance(model, dict) else None
+    descriptors = options if isinstance(options, list) else []
+    descriptor_by_key: dict[str, dict] = {}
+    for item in descriptors:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("key") or "").strip()
+        if key:
+            descriptor_by_key[key] = item
+
+    if not descriptor_by_key:
+        raise HTTPException(status_code=400, detail="Selected model does not support additional options.")
+
+    sanitized: dict[str, Any] = {}
+    for key, value in requested.items():
+        descriptor = descriptor_by_key.get(key)
+        if not descriptor:
+            raise HTTPException(status_code=400, detail=f"model_options.{key} is not supported for this model.")
+        kind = str(descriptor.get("type") or "text").strip().lower()
+        if kind == "enum":
+            choices = [str(choice) for choice in descriptor.get("choices") or []]
+            candidate = str(value).strip()
+            if choices and candidate not in choices:
+                raise HTTPException(status_code=400, detail=f"model_options.{key} must be one of {choices}.")
+            sanitized[key] = candidate
+        elif kind == "boolean":
+            sanitized[key] = _coerce_bool(value, key=key)
+        elif kind == "number":
+            try:
+                sanitized[key] = float(value)
+            except Exception:
+                raise HTTPException(status_code=400, detail=f"model_options.{key} must be a number.")
+        else:
+            sanitized[key] = str(value).strip()
+    return sanitized
 
 
 def _normalize_storage_key(path_or_url: Optional[str]) -> Optional[str]:
@@ -486,6 +624,7 @@ class GenerateVideoBody(BaseModel):
     media_type: str = "image-to-video"
     source_image_path: Optional[str] = None
     source_image_data_url: Optional[str] = None
+    model_options: Optional[dict[str, Any]] = None
     dry_run: bool = False
 
 
@@ -497,6 +636,7 @@ class ContinueVideoBody(BaseModel):
     duration: Optional[int] = None
     model: Optional[str] = None
     media_type: str = "image-to-video"
+    model_options: Optional[dict[str, Any]] = None
     dry_run: bool = False
 
 
@@ -521,6 +661,10 @@ def generate_video(
     prompt = (body.prompt or line.action_text or "").strip()
     if not prompt:
         prompt = "Preserve the source image subject and scene."
+    if line.shot_type:
+        prompt = f"{prompt} Shot type: {line.shot_type}."
+    if line.camera_direction:
+        prompt = f"{prompt} Camera direction: {line.camera_direction}."
 
     source_image_path = (body.source_image_path or line.scene_visual or "").strip() or None
     resolved_image_url = _resolve_image_url_for_generation(
@@ -540,10 +684,6 @@ def generate_video(
     if body.duration:
         payload["duration"] = body.duration
     payload["image_url"] = resolved_image_url
-    if line.shot_type:
-        payload["shot_type"] = line.shot_type
-    if line.camera_direction:
-        payload["camera_direction"] = line.camera_direction
 
     gateway = _gateway_client()
     catalog = _video_model_catalog(gateway)
@@ -551,7 +691,13 @@ def generate_video(
         catalog=catalog,
         explicit_model=(body.model or None),
     )
-    model_payload = _normalize_payload_for_model(model_id=selected_model, payload=payload)
+    selected_model_meta = find_model(catalog, selected_model) if selected_model else None
+    sanitized_model_options = _sanitize_model_options(selected_model_meta, body.model_options)
+    model_payload = _normalize_payload_for_model(
+        model_id=selected_model,
+        payload=payload,
+        model_options=sanitized_model_options,
+    )
     try:
         request_body = _gateway_execute_body(
             media_type="image-to-video",
@@ -685,6 +831,7 @@ def generate_video(
             "model_used": model_used,
             "duration_used": model_payload.get("duration"),
             "aspect_ratio_used": model_payload.get("aspect_ratio"),
+            "model_options_used": sanitized_model_options,
             "image_source_used": resolved_image_url,
             "request_body": request_body,
         },
@@ -751,6 +898,10 @@ def continue_video(
         raise HTTPException(status_code=400, detail="Could not resolve continuation source image")
 
     prompt = (body.prompt or source.prompt or line.action_text or "").strip() or "Preserve the source image subject and continue motion naturally."
+    if line.shot_type:
+        prompt = f"{prompt} Shot type: {line.shot_type}."
+    if line.camera_direction:
+        prompt = f"{prompt} Camera direction: {line.camera_direction}."
     normalized_aspect_ratio = _normalize_video_aspect_ratio(body.aspect_ratio or source.aspect_ratio)
     requested_media_type = (body.media_type or "image-to-video").strip().lower()
     if requested_media_type != "image-to-video":
@@ -780,10 +931,6 @@ def continue_video(
     if body.duration:
         payload["duration"] = body.duration
     payload["image_url"] = resolved_image_url
-    if line.shot_type:
-        payload["shot_type"] = line.shot_type
-    if line.camera_direction:
-        payload["camera_direction"] = line.camera_direction
 
     gateway = _gateway_client()
     catalog = _video_model_catalog(gateway)
@@ -791,7 +938,13 @@ def continue_video(
         catalog=catalog,
         explicit_model=(body.model or None),
     )
-    model_payload = _normalize_payload_for_model(model_id=selected_model, payload=payload)
+    selected_model_meta = find_model(catalog, selected_model) if selected_model else None
+    sanitized_model_options = _sanitize_model_options(selected_model_meta, body.model_options)
+    model_payload = _normalize_payload_for_model(
+        model_id=selected_model,
+        payload=payload,
+        model_options=sanitized_model_options,
+    )
     try:
         request_body = _gateway_execute_body(
             media_type="image-to-video",
@@ -922,6 +1075,7 @@ def continue_video(
             "model_used": model_used,
             "duration_used": model_payload.get("duration"),
             "aspect_ratio_used": model_payload.get("aspect_ratio"),
+            "model_options_used": sanitized_model_options,
             "image_source_used": resolved_image_url,
             "request_body": request_body,
         },

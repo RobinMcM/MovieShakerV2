@@ -48,7 +48,12 @@ import {
 } from "lucide-react";
 import { TramLineSelect } from "../moodboard/TramLineSelect";
 import { useVisualize } from "./useVisualize";
-import type { VideoHistoryItem, CompiledVideo, Provider } from "./types";
+import type {
+  VideoHistoryItem,
+  CompiledVideo,
+  Provider,
+  ModelGenerationOptionDescriptor,
+} from "./types";
 import { API_URL, api, storageImageUrl } from "@/lib/api";
 
 function getVideoUrl(path: string): string {
@@ -89,6 +94,35 @@ function normalizeSourceImagePath(pathOrUrl: string | null | undefined): string 
     return value;
   }
   return value;
+}
+
+function parseDurationFromOption(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const parsed = Number.parseInt(String(value).trim().toLowerCase().replace("s", ""), 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function buildDefaultOptionValues(
+  descriptors: ModelGenerationOptionDescriptor[]
+): Record<string, unknown> {
+  const defaults: Record<string, unknown> = {};
+  for (const descriptor of descriptors) {
+    if (!descriptor?.key) continue;
+    if (descriptor.default !== undefined) {
+      defaults[descriptor.key] = descriptor.default;
+      continue;
+    }
+    if (descriptor.type === "boolean") {
+      defaults[descriptor.key] = false;
+      continue;
+    }
+    if (descriptor.type === "enum") {
+      defaults[descriptor.key] = descriptor.choices?.[0] ?? "";
+      continue;
+    }
+    defaults[descriptor.key] = "";
+  }
+  return defaults;
 }
 
 function VisualizeContent() {
@@ -133,6 +167,9 @@ function VisualizeContent() {
   const [hasUserChosenSource, setHasUserChosenSource] = useState(false);
   const [selectedVideoModel, setSelectedVideoModel] = useState<string | null>(null);
   const [durationSeconds, setDurationSeconds] = useState(6);
+  const [modelOptionValuesByModel, setModelOptionValuesByModel] = useState<
+    Record<string, Record<string, unknown>>
+  >({});
 
   const videoModelOptions = useMemo(() => {
     const rows = apiConfig?.visualizeVideoModels || [];
@@ -156,6 +193,60 @@ function VisualizeContent() {
     }
     setSelectedVideoModel(videoModelOptions[0]?.id || null);
   }, [videoModelOptions, selectedVideoModel]);
+
+  const selectedVideoModelMeta = useMemo(
+    () => videoModelOptions.find((model) => model.id === selectedVideoModel) || null,
+    [videoModelOptions, selectedVideoModel]
+  );
+  const optionDescriptors = useMemo(
+    () => selectedVideoModelMeta?.generation_options || [],
+    [selectedVideoModelMeta]
+  );
+
+  useEffect(() => {
+    const modelId = (selectedVideoModel || "").trim();
+    if (!modelId) return;
+    setModelOptionValuesByModel((prev) => {
+      if (prev[modelId]) return prev;
+      return {
+        ...prev,
+        [modelId]: buildDefaultOptionValues(optionDescriptors),
+      };
+    });
+  }, [selectedVideoModel, optionDescriptors]);
+
+  const activeModelOptionValues = useMemo(() => {
+    const modelId = (selectedVideoModel || "").trim();
+    if (!modelId) return {};
+    return modelOptionValuesByModel[modelId] || buildDefaultOptionValues(optionDescriptors);
+  }, [selectedVideoModel, modelOptionValuesByModel, optionDescriptors]);
+
+  const modelOptionsPayload = useMemo(() => {
+    const payload: Record<string, unknown> = {};
+    for (const descriptor of optionDescriptors) {
+      const key = descriptor.key;
+      const value = activeModelOptionValues[key];
+      if (value === undefined || value === null) continue;
+      if (typeof value === "string" && value.trim() === "") continue;
+      payload[key] = value;
+    }
+    return payload;
+  }, [optionDescriptors, activeModelOptionValues]);
+
+  const updateActiveModelOption = useCallback(
+    (key: string, value: unknown) => {
+      const modelId = (selectedVideoModel || "").trim();
+      if (!modelId) return;
+      setModelOptionValuesByModel((prev) => ({
+        ...prev,
+        [modelId]: {
+          ...(prev[modelId] || buildDefaultOptionValues(optionDescriptors)),
+          [key]: value,
+        },
+      }));
+    },
+    [selectedVideoModel, optionDescriptors]
+  );
 
   useEffect(() => {
     if (!moodboardImageParam) {
@@ -305,11 +396,14 @@ function VisualizeContent() {
         tram_line_id: selectedTramLine,
         prompt: prompt.trim() || currentLine?.action_text || "Cinematic shot",
         aspect_ratio: normalizeVideoAspectRatio(project?.aspect_ratio),
-        duration: durationSeconds,
+        duration:
+          parseDurationFromOption(modelOptionsPayload.duration) ??
+          durationSeconds,
         channel: nextChannel,
         take_number: nextTake,
         media_type: "image-to-video",
         model: selectedVideoModel,
+        model_options: modelOptionsPayload,
         source_image_path:
           generatedImagePath ||
           normalizeSourceImagePath(canonicalRootSource) ||
@@ -324,7 +418,9 @@ function VisualizeContent() {
           job_id?: string | null;
           job_status?: string;
           model_used?: string | null;
-          duration_used?: number | null;
+          duration_used?: string | number | null;
+          aspect_ratio_used?: string | null;
+          model_options_used?: Record<string, unknown> | null;
           image_source_used?: string | null;
           request_body?: Record<string, unknown> | null;
         };
@@ -354,6 +450,7 @@ function VisualizeContent() {
         error: e instanceof Error ? e.message : e,
         tram_line_id: selectedTramLine,
         selected_model: selectedVideoModel,
+        model_options: modelOptionsPayload,
         source_image_path:
           generatedImagePath ||
           normalizeSourceImagePath(canonicalRootSource) ||
@@ -374,6 +471,9 @@ function VisualizeContent() {
       await continueVideo(sourceVideoId, mode, selectedTramLine, {
         prompt,
         aspect_ratio: project?.aspect_ratio ?? null,
+        duration: parseDurationFromOption(modelOptionsPayload.duration),
+        model: selectedVideoModel,
+        model_options: modelOptionsPayload,
       });
       setToastMessage(mode === "same_channel" ? "Continuation started in same channel." : "Continuation started in a new channel.");
       await loadVideoHistory(selectedTramLine);
@@ -567,21 +667,93 @@ function VisualizeContent() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Duration (seconds)</label>
-                      <Input
-                        type="number"
-                        min={1}
-                        max={12}
-                        value={durationSeconds}
-                        onChange={(e) => {
-                          const parsed = Number.parseInt(e.target.value || "6", 10);
-                          if (!Number.isFinite(parsed)) return;
-                          setDurationSeconds(Math.min(12, Math.max(1, parsed)));
-                        }}
-                      />
-                    </div>
+                    {!optionDescriptors.some((option) => option.key === "duration") && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Duration (seconds)</label>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={12}
+                          value={durationSeconds}
+                          onChange={(e) => {
+                            const parsed = Number.parseInt(e.target.value || "6", 10);
+                            if (!Number.isFinite(parsed)) return;
+                            setDurationSeconds(Math.min(12, Math.max(1, parsed)));
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
+                  {optionDescriptors.length > 0 && (
+                    <div className="space-y-3 rounded-md border p-3">
+                      <p className="text-sm font-medium">Model Options</p>
+                      {optionDescriptors.map((descriptor) => {
+                        const currentValue = activeModelOptionValues[descriptor.key];
+                        const hint = descriptor.hint || "";
+                        if (descriptor.type === "enum") {
+                          return (
+                            <div key={`model-opt-${descriptor.key}`} className="space-y-1">
+                              <label className="text-xs font-medium">{descriptor.label}</label>
+                              <Select
+                                value={String(currentValue ?? descriptor.default ?? "")}
+                                onValueChange={(value) => updateActiveModelOption(descriptor.key, value)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder={descriptor.label} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {(descriptor.choices || []).map((choice) => (
+                                    <SelectItem key={`choice-${descriptor.key}-${choice}`} value={choice}>
+                                      {choice}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+                            </div>
+                          );
+                        }
+                        if (descriptor.type === "boolean") {
+                          return (
+                            <div key={`model-opt-${descriptor.key}`} className="space-y-1">
+                              <label className="text-xs font-medium">{descriptor.label}</label>
+                              <Select
+                                value={currentValue ? "true" : "false"}
+                                onValueChange={(value) => updateActiveModelOption(descriptor.key, value === "true")}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder={descriptor.label} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="true">Enabled</SelectItem>
+                                  <SelectItem value="false">Disabled</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+                            </div>
+                          );
+                        }
+                        return (
+                          <div key={`model-opt-${descriptor.key}`} className="space-y-1">
+                            <label className="text-xs font-medium">{descriptor.label}</label>
+                            <Input
+                              type={descriptor.type === "number" ? "number" : "text"}
+                              value={String(currentValue ?? descriptor.default ?? "")}
+                              onChange={(e) =>
+                                updateActiveModelOption(
+                                  descriptor.key,
+                                  descriptor.type === "number"
+                                    ? Number.parseFloat(e.target.value || "0")
+                                    : e.target.value
+                                )
+                              }
+                            />
+                            {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                   <Textarea
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}

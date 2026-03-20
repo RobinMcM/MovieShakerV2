@@ -28,6 +28,148 @@ ALL_PURPOSES = (
 )
 
 
+def _visualize_generation_options(model_id: str) -> list[dict[str, Any]]:
+    key = (model_id or "").strip().lower()
+    common_text = {
+        "key": "negative_prompt",
+        "label": "Negative Prompt",
+        "type": "text",
+        "default": "",
+        "hint": "Optional guidance for what to avoid in the output.",
+    }
+    if "veo3" in key:
+        return [
+            {
+                "key": "duration",
+                "label": "Duration",
+                "type": "enum",
+                "default": "6s",
+                "choices": ["4s", "6s", "8s"],
+                "hint": "Veo accepts 4s, 6s, or 8s clips.",
+            },
+            {
+                "key": "aspect_ratio",
+                "label": "Aspect Ratio",
+                "type": "enum",
+                "default": "16:9",
+                "choices": ["16:9", "9:16", "auto"],
+                "hint": "Use auto to let the provider determine framing.",
+            },
+            {
+                "key": "resolution",
+                "label": "Resolution",
+                "type": "enum",
+                "default": "720p",
+                "choices": ["720p", "1080p"],
+                "hint": "Higher resolution may increase cost and generation time.",
+            },
+            {
+                "key": "generate_audio",
+                "label": "Generate Audio",
+                "type": "boolean",
+                "default": True,
+                "hint": "Enable synchronized generated audio.",
+            },
+            {
+                "key": "safety_tolerance",
+                "label": "Safety Tolerance",
+                "type": "enum",
+                "default": "4",
+                "choices": ["1", "2", "3", "4", "5", "6"],
+                "hint": "1 is strictest filtering, 6 is least strict.",
+            },
+            common_text,
+        ]
+    if "minimax" in key or "hailuo" in key:
+        return [
+            {
+                "key": "duration",
+                "label": "Duration",
+                "type": "enum",
+                "default": "6",
+                "choices": ["6", "10"],
+                "hint": "Hailuo supports 6s or 10s.",
+            },
+            {
+                "key": "resolution",
+                "label": "Resolution",
+                "type": "enum",
+                "default": "768P",
+                "choices": ["512P", "768P"],
+                "hint": "Provider resolution enum for Hailuo standard models.",
+            },
+            {
+                "key": "prompt_optimizer",
+                "label": "Prompt Optimizer",
+                "type": "boolean",
+                "default": True,
+                "hint": "Allow provider prompt optimization before generation.",
+            },
+        ]
+    if key.startswith("wan/") or "wan-i2v" in key:
+        return [
+            {
+                "key": "duration",
+                "label": "Duration",
+                "type": "enum",
+                "default": "5",
+                "choices": ["5", "10", "15"],
+                "hint": "Wan supports 5s, 10s, or 15s.",
+            },
+            {
+                "key": "resolution",
+                "label": "Resolution",
+                "type": "enum",
+                "default": "720p",
+                "choices": ["720p", "1080p"],
+                "hint": "Resolution options supported by Wan v2.6.",
+            },
+            {
+                "key": "enable_prompt_rewriting",
+                "label": "Enable Prompt Rewriting",
+                "type": "boolean",
+                "default": True,
+                "hint": "Provider can rewrite prompt to improve results.",
+            },
+            common_text,
+            {
+                "key": "audio_url",
+                "label": "Audio URL",
+                "type": "text",
+                "default": "",
+                "hint": "Optional background audio URL when supported.",
+            },
+        ]
+    if "kling-video" in key:
+        return [
+            {
+                "key": "duration",
+                "label": "Duration",
+                "type": "enum",
+                "default": "5",
+                "choices": ["5", "10"],
+                "hint": "Kling commonly supports 5s or 10s.",
+            },
+            {
+                "key": "aspect_ratio",
+                "label": "Aspect Ratio",
+                "type": "enum",
+                "default": "16:9",
+                "choices": ["16:9", "9:16", "1:1"],
+                "hint": "Kling supports standard aspect ratio enums.",
+            },
+            common_text,
+            {
+                "key": "cfg_scale",
+                "label": "CFG Scale",
+                "type": "number",
+                "default": 0.5,
+                "hint": "Prompt adherence strength (typically 0.0-1.0).",
+            },
+        ]
+    return []
+
+
 def _seeded_models() -> list[dict[str, Any]]:
     return [
         # FIAB text
@@ -362,6 +504,7 @@ def _seeded_models() -> list[dict[str, Any]]:
             "speed_tier": "medium",
             "quality_tier": "high",
             "docs_url": "https://fal.ai/models",
+            "generation_options": _visualize_generation_options("fal-ai/minimax-hailuo-02/image-to-video"),
         },
         {
             "id": "fal-ai/veo3/image-to-video",
@@ -377,6 +520,7 @@ def _seeded_models() -> list[dict[str, Any]]:
             "speed_tier": "medium",
             "quality_tier": "high",
             "docs_url": "https://fal.ai/models",
+            "generation_options": _visualize_generation_options("fal-ai/veo3/image-to-video"),
         },
         {
             "id": "fal-ai/veo3.1/image-to-video",
@@ -392,6 +536,7 @@ def _seeded_models() -> list[dict[str, Any]]:
             "speed_tier": "medium",
             "quality_tier": "high",
             "docs_url": "https://fal.ai/models",
+            "generation_options": _visualize_generation_options("fal-ai/veo3.1/image-to-video"),
         },
         {
             "id": "wan/v2.6/image-to-video",
@@ -407,6 +552,7 @@ def _seeded_models() -> list[dict[str, Any]]:
             "speed_tier": "medium",
             "quality_tier": "high",
             "docs_url": "https://fal.ai/models",
+            "generation_options": _visualize_generation_options("wan/v2.6/image-to-video"),
         },
         {
             "id": "fal-ai/wan-i2v",
@@ -422,6 +568,7 @@ def _seeded_models() -> list[dict[str, Any]]:
             "speed_tier": "medium",
             "quality_tier": "high",
             "docs_url": "https://fal.ai/models",
+            "generation_options": _visualize_generation_options("fal-ai/wan-i2v"),
         },
         {
             "id": "fal-ai/kling-video/v2.5/turbo-pro/image-to-video",
@@ -437,6 +584,7 @@ def _seeded_models() -> list[dict[str, Any]]:
             "speed_tier": "medium",
             "quality_tier": "high",
             "docs_url": "https://fal.ai/models",
+            "generation_options": _visualize_generation_options("fal-ai/kling-video/v2.5/turbo-pro/image-to-video"),
         },
         {
             "id": "fal-ai/kling-video/v3/pro/image-to-video",
@@ -452,6 +600,7 @@ def _seeded_models() -> list[dict[str, Any]]:
             "speed_tier": "medium",
             "quality_tier": "high",
             "docs_url": "https://fal.ai/models",
+            "generation_options": _visualize_generation_options("fal-ai/kling-video/v3/pro/image-to-video"),
         },
         {
             "id": "xai/grok-imagine-video/image-to-video",
@@ -467,6 +616,7 @@ def _seeded_models() -> list[dict[str, Any]]:
             "speed_tier": "medium",
             "quality_tier": "high",
             "docs_url": "https://fal.ai/models",
+            "generation_options": _visualize_generation_options("xai/grok-imagine-video/image-to-video"),
         },
         # Sound/music
         {
@@ -503,6 +653,8 @@ def _ensure_defaults(model: dict[str, Any], purpose: str) -> dict[str, Any]:
     normalized["speed_tier"] = str(normalized.get("speed_tier") or "medium").strip().lower()
     normalized["quality_tier"] = str(normalized.get("quality_tier") or "standard").strip().lower()
     normalized["docs_url"] = str(normalized.get("docs_url") or "").strip() or None
+    options = normalized.get("generation_options")
+    normalized["generation_options"] = options if isinstance(options, list) else []
     return normalized
 
 

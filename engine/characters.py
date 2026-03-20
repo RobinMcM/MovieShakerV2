@@ -6,6 +6,7 @@ POST /api/characters/{id}/generate-image.
 import os
 import time
 import uuid
+import json
 from typing import Optional
 from urllib.parse import urlparse
 import base64
@@ -111,6 +112,24 @@ def _resolve_image_model_id(
         if str(item.get("default_for_media_type") or "").strip().lower() == MEDIA_IMAGE:
             return str(item.get("id") or "").strip() or None
     return None
+
+
+def _gateway_execute_body(
+    *,
+    media_type: str,
+    payload: dict,
+    model: Optional[str],
+    dry_run: bool,
+) -> dict:
+    body = {
+        "provider": "fal",
+        "media_type": media_type,
+        "payload": payload,
+        "dry_run": dry_run,
+    }
+    if model:
+        body["model"] = model
+    return body
 
 
 def _extract_generated_image_url(response: dict) -> Optional[str]:
@@ -351,7 +370,7 @@ def generate_character_image(
     db: Session = Depends(get_session),
 ):
     user_id = session.get_user_id()
-    profile = ensure_user_can_generate(db, user_id)
+    ensure_user_can_generate(db, user_id)
     character = _get_character_and_ensure_access(db, character_id, user_id)
     script = db.get(Script, character.script_id)
     if not script:
@@ -373,9 +392,16 @@ def generate_character_image(
     catalog = _image_model_catalog(gateway)
     selected_model = _resolve_image_model_id(
         catalog=catalog,
-        explicit_model=(body.model or profile.model_object_image or None),
+        explicit_model=(body.model or None),
     )
     try:
+        request_body = _gateway_execute_body(
+            media_type="image-generation",
+            payload=payload,
+            model=selected_model,
+            dry_run=body.dry_run,
+        )
+        print(f"[characters.generate-image] gateway execute body: {json.dumps(request_body, ensure_ascii=False)}")
         response = gateway.execute_fal(
             media_type="image-generation",
             payload=payload,
@@ -477,6 +503,10 @@ def generate_character_image(
         "credits": {
             "cost": credits_cost,
             "balance": balance,
+        },
+        "gateway": {
+            "request_body": request_body,
+            "model_used": selected_model,
         },
     }
 

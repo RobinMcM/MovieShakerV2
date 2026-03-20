@@ -381,7 +381,7 @@ def generate_video(
     db: Session = Depends(get_session),
 ):
     user_id = session.get_user_id()
-    profile = ensure_user_can_generate(db, user_id)
+    ensure_user_can_generate(db, user_id)
     line = _ensure_tramline_access(db, body.tram_line_id, user_id)
     project_id = _project_id_for_tramline(db, line)
 
@@ -423,7 +423,7 @@ def generate_video(
     catalog = _video_model_catalog(gateway)
     selected_model = _resolve_video_model_id(
         catalog=catalog,
-        explicit_model=(body.model or profile.model_visualize_video or None),
+        explicit_model=(body.model or None),
     )
     try:
         request_body = _gateway_execute_body(
@@ -518,7 +518,7 @@ def continue_video(
     source = _ensure_video_access(db, body.source_video_id, user_id)
     line = _ensure_tramline_access(db, str(source.tram_line_id), user_id)
     project_id = _project_id_for_tramline(db, line)
-    profile = ensure_user_can_generate(db, user_id)
+    ensure_user_can_generate(db, user_id)
 
     if body.duration is not None and body.duration <= 0:
         raise HTTPException(status_code=400, detail="duration must be greater than 0")
@@ -599,7 +599,7 @@ def continue_video(
     catalog = _video_model_catalog(gateway)
     selected_model = _resolve_video_model_id(
         catalog=catalog,
-        explicit_model=(body.model or profile.model_visualize_video or None),
+        explicit_model=(body.model or None),
     )
     try:
         request_body = _gateway_execute_body(

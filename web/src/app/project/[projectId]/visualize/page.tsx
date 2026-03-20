@@ -49,7 +49,7 @@ import {
 import { TramLineSelect } from "../moodboard/TramLineSelect";
 import { useVisualize } from "./useVisualize";
 import type { VideoHistoryItem, CompiledVideo, Provider } from "./types";
-import { API_URL, api, storageImageUrl } from "@/lib/api";
+import { API_URL, storageImageUrl } from "@/lib/api";
 
 function getVideoUrl(path: string): string {
   if (path.startsWith("http://") || path.startsWith("https://")) return path;
@@ -131,7 +131,6 @@ function VisualizeContent() {
   const [generatedImagePath, setGeneratedImagePath] = useState<string | null>(null);
   const [selectedSourceIndex, setSelectedSourceIndex] = useState(0);
   const [hasUserChosenSource, setHasUserChosenSource] = useState(false);
-  const [profileVideoModel, setProfileVideoModel] = useState<string | null>(null);
   const [selectedVideoModel, setSelectedVideoModel] = useState<string | null>(null);
   const [durationSeconds, setDurationSeconds] = useState(6);
 
@@ -141,36 +140,12 @@ function VisualizeContent() {
   }, [apiConfig?.visualizeVideoModels]);
 
   useEffect(() => {
-    let cancelled = false;
-    api
-      .get<{ model_visualize_video?: string | null }>("/profile/")
-      .then((profile) => {
-        if (cancelled) return;
-        const value = (profile?.model_visualize_video || "").trim();
-        setProfileVideoModel(value || null);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setProfileVideoModel(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
     if (videoModelOptions.length === 0) {
       setSelectedVideoModel(null);
       return;
     }
     const current = (selectedVideoModel || "").trim();
     if (current && videoModelOptions.some((model) => model.id === current)) return;
-
-    const preferred = (profileVideoModel || "").trim();
-    if (preferred && videoModelOptions.some((model) => model.id === preferred)) {
-      setSelectedVideoModel(preferred);
-      return;
-    }
     const catalogDefault =
       videoModelOptions.find(
         (model) => (model.default_for_media_type || "").toLowerCase() === "image-to-video"
@@ -180,7 +155,7 @@ function VisualizeContent() {
       return;
     }
     setSelectedVideoModel(videoModelOptions[0]?.id || null);
-  }, [videoModelOptions, selectedVideoModel, profileVideoModel]);
+  }, [videoModelOptions, selectedVideoModel]);
 
   useEffect(() => {
     if (!moodboardImageParam) {
@@ -335,6 +310,7 @@ function VisualizeContent() {
           model_used?: string | null;
           duration_used?: number | null;
           image_source_used?: string | null;
+          request_body?: Record<string, unknown> | null;
         };
         credits?: { cost?: number; balance?: number };
       }>("api/video-history/generate", {
@@ -357,6 +333,9 @@ function VisualizeContent() {
       }
       if (typeof res.credits?.balance === "number") {
         setLastCallBalance(res.credits.balance);
+      }
+      if (res.gateway?.request_body) {
+        console.log("[visualize.generate-video] gateway request body", res.gateway.request_body);
       }
       await loadVideoHistory(selectedTramLine);
       const createdVideoId = res.video?.id;

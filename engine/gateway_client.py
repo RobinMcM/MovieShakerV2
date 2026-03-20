@@ -80,14 +80,33 @@ class GatewayClient:
         except Exception:
             pass
 
+        allowlist = {
+            "fal-ai/flux/schnell",
+            "fal-ai/flux/dev",
+            "fal-ai/flux-pro",
+            "fal-ai/flux-pro/v1.1-ultra",
+            "fal-ai/flux-2-pro",
+            "fal-ai/flux-lora",
+            "fal-ai/nano-banana-2",
+            "fal-ai/nano-banana-pro",
+            "fal-ai/nano-banana",
+            "fal-ai/imagen4/preview",
+            "fal-ai/gpt-image-1.5",
+            "fal-ai/gpt-image-1.5/edit",
+            "fal-ai/recraft/v3/text-to-image",
+            "fal-ai/ideogram/v3",
+            "fal-ai/seedream-v45",
+            "fal-ai/stable-diffusion-v35-medium",
+            "xai/grok-imagine-image",
+            "fal-ai/sana",
+        }
         # Fallback for older gateway versions without /api/media/models.
         fallback = []
         for model in self.get_models():
             model_id = (model.get("id") or "").strip()
             if not model_id:
                 continue
-            lowered = model_id.lower()
-            if lowered.startswith("fal-ai/") or "flux" in lowered or "kling" in lowered or "luma" in lowered:
+            if model_id in allowlist:
                 fallback.append(
                     {
                         "id": model_id,
@@ -103,27 +122,24 @@ class GatewayClient:
         # Final fallback: curated text-to-image models for profile dropdown.
         # Keep this list conservative and aligned to currently preferred models.
         return [
-            {
-                "id": "fal-ai/flux/schnell",
-                "name": "FLUX Schnell",
-                "provider": "fal",
-                "media_type_support": ["image-generation"],
-                "default_for_media_type": "image-generation",
-            },
-            {
-                "id": "fal-ai/flux/dev",
-                "name": "FLUX Dev",
-                "provider": "fal",
-                "media_type_support": ["image-generation"],
-                "default_for_media_type": None,
-            },
-            {
-                "id": "fal-ai/flux-realism",
-                "name": "FLUX Realism",
-                "provider": "fal",
-                "media_type_support": ["image-generation"],
-                "default_for_media_type": None,
-            },
+            {"id": "fal-ai/flux/schnell", "name": "FLUX Schnell", "provider": "fal", "media_type_support": ["image-generation"], "default_for_media_type": "image-generation"},
+            {"id": "fal-ai/flux/dev", "name": "FLUX Dev", "provider": "fal", "media_type_support": ["image-generation"], "default_for_media_type": None},
+            {"id": "fal-ai/flux-pro", "name": "FLUX.1 Pro", "provider": "fal", "media_type_support": ["image-generation"], "default_for_media_type": None},
+            {"id": "fal-ai/flux-pro/v1.1-ultra", "name": "FLUX 1.1 Pro Ultra", "provider": "fal", "media_type_support": ["image-generation"], "default_for_media_type": None},
+            {"id": "fal-ai/flux-2-pro", "name": "FLUX.2 Pro", "provider": "fal", "media_type_support": ["image-generation"], "default_for_media_type": None},
+            {"id": "fal-ai/flux-lora", "name": "FLUX LoRA", "provider": "fal", "media_type_support": ["image-generation"], "default_for_media_type": None},
+            {"id": "fal-ai/nano-banana-2", "name": "Nano Banana 2", "provider": "fal", "media_type_support": ["image-generation"], "default_for_media_type": None},
+            {"id": "fal-ai/nano-banana-pro", "name": "Nano Banana Pro", "provider": "fal", "media_type_support": ["image-generation"], "default_for_media_type": None},
+            {"id": "fal-ai/nano-banana", "name": "Nano Banana", "provider": "fal", "media_type_support": ["image-generation"], "default_for_media_type": None},
+            {"id": "fal-ai/imagen4/preview", "name": "Imagen 4 Preview", "provider": "fal", "media_type_support": ["image-generation"], "default_for_media_type": None},
+            {"id": "fal-ai/gpt-image-1.5", "name": "GPT Image 1.5", "provider": "fal", "media_type_support": ["image-generation"], "default_for_media_type": None},
+            {"id": "fal-ai/gpt-image-1.5/edit", "name": "GPT Image 1.5 (Edit)", "provider": "fal", "media_type_support": ["image-generation"], "default_for_media_type": None},
+            {"id": "fal-ai/recraft/v3/text-to-image", "name": "Recraft V3", "provider": "fal", "media_type_support": ["image-generation"], "default_for_media_type": None},
+            {"id": "fal-ai/ideogram/v3", "name": "Ideogram V3", "provider": "fal", "media_type_support": ["image-generation"], "default_for_media_type": None},
+            {"id": "fal-ai/seedream-v45", "name": "Seedream 4.5", "provider": "fal", "media_type_support": ["image-generation"], "default_for_media_type": None},
+            {"id": "fal-ai/stable-diffusion-v35-medium", "name": "Stable Diffusion 3.5 Medium", "provider": "fal", "media_type_support": ["image-generation"], "default_for_media_type": None},
+            {"id": "xai/grok-imagine-image", "name": "Grok Imagine Image", "provider": "fal", "media_type_support": ["image-generation"], "default_for_media_type": None},
+            {"id": "fal-ai/sana", "name": "Sana", "provider": "fal", "media_type_support": ["image-generation"], "default_for_media_type": None},
         ]
 
     def get_visualize_video_models(self) -> list[dict]:

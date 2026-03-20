@@ -41,34 +41,6 @@ interface ConfigStatusResponse {
     success: boolean;
     config: {
         models: Array<{ id: string; name?: string; provider?: string }>;
-        objectImageModels?: Array<{
-            id: string;
-            name?: string;
-            provider?: string;
-            media_type_support?: string[];
-            required_inputs?: string[];
-            optional_inputs?: string[];
-            status?: string;
-            default_for_media_type?: string | null;
-            cost_tier?: string;
-            speed_tier?: string;
-            quality_tier?: string;
-            docs_url?: string | null;
-        }>;
-        visualizeVideoModels?: Array<{
-            id: string;
-            name?: string;
-            provider?: string;
-            media_type_support?: string[];
-            required_inputs?: string[];
-            optional_inputs?: string[];
-            status?: string;
-            default_for_media_type?: string | null;
-            cost_tier?: string;
-            speed_tier?: string;
-            quality_tier?: string;
-            docs_url?: string | null;
-        }>;
         soundMusicModels?: Array<{
             id: string;
             name?: string;
@@ -143,8 +115,6 @@ function ProfilePage() {
     const [verifiedBanner, setVerifiedBanner] = useState<"success" | "error" | null>(null);
     const [purchaseAmount, setPurchaseAmount] = useState("11");
     const [gatewayModels, setGatewayModels] = useState<Array<{ id: string; name?: string; provider?: string }>>([]);
-    const [objectImageModels, setObjectImageModels] = useState<ProfileModelOption[]>([]);
-    const [visualizeVideoModels, setVisualizeVideoModels] = useState<ProfileModelOption[]>([]);
     const [soundMusicModels, setSoundMusicModels] = useState<ProfileModelOption[]>([]);
     const [fiabTextModels, setFiabTextModels] = useState<Array<{
         id: string;
@@ -166,8 +136,6 @@ function ProfilePage() {
         phone: "",
         address: "",
         model_fiab_text: "",
-        model_visualize_video: "",
-        model_object_image: "",
         model_sound_music: "",
     });
 
@@ -195,8 +163,6 @@ function ProfilePage() {
                 phone: data.phone ?? "",
                 address: data.address ?? "",
                 model_fiab_text: data.model_fiab_text ?? "",
-                model_visualize_video: data.model_visualize_video ?? "",
-                model_object_image: data.model_object_image ?? "",
                 model_sound_music: data.model_sound_music ?? "",
             });
             setError(null);
@@ -212,19 +178,13 @@ function ProfilePage() {
         try {
             const data = await api.get<ConfigStatusResponse>("/api/config/status");
             const models = Array.isArray(data?.config?.models) ? data.config.models : [];
-            const imageModels = Array.isArray(data?.config?.objectImageModels) ? data.config.objectImageModels : [];
-            const videoModels = Array.isArray(data?.config?.visualizeVideoModels) ? data.config.visualizeVideoModels : [];
             const musicModels = Array.isArray(data?.config?.soundMusicModels) ? data.config.soundMusicModels : [];
             const fiabModels = Array.isArray(data?.config?.fiabTextModels) ? data.config.fiabTextModels : [];
             setGatewayModels(models);
-            setObjectImageModels(imageModels.map((m) => ({ ...m })));
-            setVisualizeVideoModels(videoModels.map((m) => ({ ...m })));
             setSoundMusicModels(musicModels.map((m) => ({ ...m })));
             setFiabTextModels(fiabModels);
         } catch {
             setGatewayModels([]);
-            setObjectImageModels([]);
-            setVisualizeVideoModels([]);
             setSoundMusicModels([]);
             setFiabTextModels([]);
         }
@@ -235,7 +195,7 @@ function ProfilePage() {
         setFormData((prev) => ({ ...prev, [name]: value }));
     };
 
-    const handleModelChange = (field: "model_fiab_text" | "model_visualize_video" | "model_object_image" | "model_sound_music", value: string) => {
+    const handleModelChange = (field: "model_fiab_text" | "model_sound_music", value: string) => {
         setFormData((prev) => ({ ...prev, [field]: value === "__none__" ? "" : value }));
     };
 
@@ -297,32 +257,6 @@ function ProfilePage() {
         );
         return sorted;
     }, [fiabCostSort, fiabTextModels, gatewayModels, selectedFiabCategory]);
-    const objectImageModelsForSelect = useMemo(() => {
-        const current = (formData.model_object_image || "").trim();
-        if (!current) return objectImageModels;
-        if (objectImageModels.some((model) => model.id === current)) return objectImageModels;
-        return [
-            {
-                id: current,
-                name: `${current} (legacy/unavailable)`,
-                provider: "unknown",
-            },
-            ...objectImageModels,
-        ];
-    }, [formData.model_object_image, objectImageModels]);
-    const visualizeVideoModelsForSelect = useMemo(() => {
-        const current = (formData.model_visualize_video || "").trim();
-        if (!current) return visualizeVideoModels;
-        if (visualizeVideoModels.some((model) => model.id === current)) return visualizeVideoModels;
-        return [
-            {
-                id: current,
-                name: `${current} (legacy/unavailable)`,
-                provider: "unknown",
-            },
-            ...visualizeVideoModels,
-        ];
-    }, [formData.model_visualize_video, visualizeVideoModels]);
     const soundMusicModelsForSelect = useMemo(() => {
         const current = (formData.model_sound_music || "").trim();
         if (!current) return soundMusicModels;
@@ -351,16 +285,12 @@ function ProfilePage() {
             setSavingModels(true);
             const data = await api.put<Profile>("/profile/", {
                 model_fiab_text: formData.model_fiab_text || null,
-                model_visualize_video: formData.model_visualize_video || null,
-                model_object_image: formData.model_object_image || null,
                 model_sound_music: formData.model_sound_music || null,
             });
             setProfile(data);
             setFormData((prev) => ({
                 ...prev,
                 model_fiab_text: data.model_fiab_text ?? "",
-                model_visualize_video: data.model_visualize_video ?? "",
-                model_object_image: data.model_object_image ?? "",
                 model_sound_music: data.model_sound_music ?? "",
             }));
             setError(null);
@@ -670,51 +600,6 @@ function ProfilePage() {
                         <CardTitle className="text-lg">Media Model Selection</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
-
-                        <div className="space-y-2">
-                            <Label>Model for Visualize (Video)</Label>
-                            <Select
-                                value={formData.model_visualize_video || "__none__"}
-                                onValueChange={(value) => handleModelChange("model_visualize_video", value)}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select video model" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="__none__">No default</SelectItem>
-                                    {visualizeVideoModelsForSelect.map((model) => (
-                                        <SelectItem key={`video-${model.id}`} value={model.id}>
-                                            {model.name || model.id}
-                                            {model.provider ? ` (${model.provider})` : ""}
-                                            {` · ${optionSummary(model)}`}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label>Model for Object (Image)</Label>
-                            <Select
-                                value={formData.model_object_image || "__none__"}
-                                onValueChange={(value) => handleModelChange("model_object_image", value)}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select image model" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="__none__">No default</SelectItem>
-                                    {objectImageModelsForSelect.map((model) => (
-                                        <SelectItem key={`image-${model.id}`} value={model.id}>
-                                            {model.name || model.id}
-                                            {model.provider ? ` (${model.provider})` : ""}
-                                            {` · ${optionSummary(model)}`}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-
                         <div className="space-y-2">
                             <Label>Model for Sound (Music)</Label>
                             <Select
@@ -744,7 +629,7 @@ function ProfilePage() {
                                     Saving…
                                 </>
                             ) : (
-                                "Save other model choices"
+                                "Save media model choice"
                             )}
                         </Button>
                     </CardContent>

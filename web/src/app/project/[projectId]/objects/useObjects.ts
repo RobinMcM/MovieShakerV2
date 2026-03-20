@@ -11,12 +11,22 @@ export interface ProjectObjects {
   aspect_ratio?: string | null;
 }
 
+export interface ObjectImageModelOption {
+  id: string;
+  name?: string;
+  provider?: string;
+  status?: string;
+  media_type_support?: string[];
+  default_for_media_type?: string | null;
+}
+
 export function useObjects(projectId: string | null) {
   const [loading, setLoading] = useState(false);
   const [project, setProject] = useState<ProjectObjects | null>(null);
   const [currentScriptId, setCurrentScriptId] = useState<string | null>(null);
   const [characters, setCharacters] = useState<CharacterMood[]>([]);
   const [sceneCharacterIds, setSceneCharacterIds] = useState<Set<string>>(new Set());
+  const [objectImageModels, setObjectImageModels] = useState<ObjectImageModelOption[]>([]);
 
   const loadProject = useCallback(async (pid: string) => {
     try {
@@ -71,6 +81,19 @@ export function useObjects(projectId: string | null) {
     }
   }, []);
 
+  const loadConfigModels = useCallback(async () => {
+    try {
+      const res = await api.get<{
+        success: boolean;
+        config?: { objectImageModels?: ObjectImageModelOption[] };
+      }>("api/config/status");
+      const options = (res as { config?: { objectImageModels?: ObjectImageModelOption[] } }).config?.objectImageModels;
+      setObjectImageModels(Array.isArray(options) ? options : []);
+    } catch {
+      setObjectImageModels([]);
+    }
+  }, []);
+
   useEffect(() => {
     if (!projectId) {
       setProject(null);
@@ -83,7 +106,8 @@ export function useObjects(projectId: string | null) {
     Promise.all([loadProject(projectId), loadScriptsAndCharacters(projectId)]).finally(() =>
       setLoading(false)
     );
-  }, [projectId, loadProject, loadScriptsAndCharacters]);
+    void loadConfigModels();
+  }, [projectId, loadProject, loadScriptsAndCharacters, loadConfigModels]);
 
   const objects = useMemo(() => {
     return characters.filter((c) => !sceneCharacterIds.has(c.id));
@@ -95,8 +119,9 @@ export function useObjects(projectId: string | null) {
       Promise.all([loadProject(projectId), loadScriptsAndCharacters(projectId)]).finally(() =>
         setLoading(false)
       );
+      void loadConfigModels();
     }
-  }, [projectId, loadProject, loadScriptsAndCharacters]);
+  }, [projectId, loadProject, loadScriptsAndCharacters, loadConfigModels]);
 
   const createObject = useCallback(
     async (params: {
@@ -169,19 +194,27 @@ export function useObjects(projectId: string | null) {
   }, []);
 
   const generateImage = useCallback(
-    async (characterId: string, prompt: string, aspectRatio?: string) => {
-      const res = await api.post<{ success: boolean; data: CharacterMood }>(
+    async (characterId: string, prompt: string, aspectRatio?: string, model?: string | null) => {
+      const res = await api.post<{
+        success: boolean;
+        data: CharacterMood;
+        gateway?: {
+          request_body?: Record<string, unknown>;
+          model_used?: string | null;
+        };
+      }>(
         `api/characters/${characterId}/generate-image`,
         {
           prompt: prompt.trim(),
           aspect_ratio: aspectRatio || null,
+          model: model || null,
         }
       );
       const data = (res as { data?: CharacterMood }).data;
       if (data) {
         setCharacters((prev) => prev.map((c) => (c.id === characterId ? { ...c, ...data } : c)));
       }
-      return data;
+      return res;
     },
     []
   );
@@ -190,6 +223,7 @@ export function useObjects(projectId: string | null) {
     loading,
     project,
     currentScriptId,
+    objectImageModels,
     objects,
     refetch,
     createObject,

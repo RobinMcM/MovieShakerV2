@@ -246,6 +246,20 @@ def _extract_gateway_response_fields(response: dict) -> tuple[Optional[str], Opt
     return job_id, job_status, error_message, result_dict if isinstance(result_dict, dict) else {}
 
 
+def _should_fallback_to_default_model(error_text: str) -> bool:
+    text = (error_text or "").lower()
+    fallback_markers = (
+        "not in allowlist",
+        "model not allowed",
+        "unknown media_type",
+        "unknown model",
+        "invalid model",
+        "unsupported model",
+        "not found",
+    )
+    return any(marker in text for marker in fallback_markers)
+
+
 def _normalize_video_aspect_ratio(aspect_ratio: Optional[str]) -> str:
     """
     Normalize UI/project aspect ratios to Fal-supported values:
@@ -496,7 +510,29 @@ def generate_video(
             dry_run=body.dry_run,
         )
     except GatewayClientError as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        error_text = str(exc)
+        if not selected_model or not _should_fallback_to_default_model(error_text):
+            raise HTTPException(status_code=502, detail=error_text)
+        # If selected model is invalid/unavailable in gateway, retry on default route.
+        request_body = _gateway_execute_body(
+            media_type="image-to-video",
+            payload=payload,
+            model=None,
+            dry_run=body.dry_run,
+        )
+        print(f"[video_history.generate] gateway execute fallback body: {json.dumps(request_body, ensure_ascii=False)}")
+        try:
+            response = gateway.execute_fal(
+                media_type="image-to-video",
+                payload=payload,
+                model=None,
+                dry_run=body.dry_run,
+            )
+        except GatewayClientError:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Selected video model '{selected_model}' is unavailable and default fallback failed: {error_text}",
+            )
 
     gateway_job_id, parsed_job_status, gateway_error, gateway_result = _extract_gateway_response_fields(response)
     job_status = parsed_job_status or ("completed" if body.dry_run else "processing")
@@ -680,7 +716,28 @@ def continue_video(
             dry_run=body.dry_run,
         )
     except GatewayClientError as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        error_text = str(exc)
+        if not selected_model or not _should_fallback_to_default_model(error_text):
+            raise HTTPException(status_code=502, detail=error_text)
+        request_body = _gateway_execute_body(
+            media_type="image-to-video",
+            payload=payload,
+            model=None,
+            dry_run=body.dry_run,
+        )
+        print(f"[video_history.continue] gateway execute fallback body: {json.dumps(request_body, ensure_ascii=False)}")
+        try:
+            response = gateway.execute_fal(
+                media_type="image-to-video",
+                payload=payload,
+                model=None,
+                dry_run=body.dry_run,
+            )
+        except GatewayClientError:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Selected video model '{selected_model}' is unavailable and default fallback failed: {error_text}",
+            )
 
     gateway_job_id, parsed_job_status, gateway_error, gateway_result = _extract_gateway_response_fields(response)
     job_status = parsed_job_status or ("completed" if body.dry_run else "processing")

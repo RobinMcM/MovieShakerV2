@@ -71,7 +71,7 @@ def _ensure_video_access(db: Session, video_id: str, user_id: str) -> MoodBoardV
     return video
 
 
-def _video_to_item(v: MoodBoardVideoHistory) -> dict:
+def _video_to_item(v: MoodBoardVideoHistory, credit_cost: Optional[int] = None) -> dict:
     status = "completed" if v.video_path else ("processing" if v.task_id else "pending")
     return {
         "id": str(v.id),
@@ -90,6 +90,7 @@ def _video_to_item(v: MoodBoardVideoHistory) -> dict:
         "source_video_id": v.source_video_id,
         "is_print": v.is_print,
         "status": status,
+        "credit_cost": credit_cost,
         "created_at": v.created_at.isoformat() if v.created_at else None,
     }
 
@@ -220,6 +221,35 @@ def _create_usage_event(
     db.add(row)
 
 
+def _video_credit_cost_map(db: Session, video_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+    if not video_ids:
+        return {}
+    events = list(
+        db.exec(
+            select(GatewayUsageEvent).where(
+                GatewayUsageEvent.video_history_id.in_(video_ids)
+            )
+        ).all()
+    )
+    rank = {"completed": 3, "failed": 3, "processing": 2, "submitted": 1}
+    chosen: dict[uuid.UUID, tuple[int, int]] = {}
+    for event in events:
+        video_id = event.video_history_id
+        if video_id is None:
+            continue
+        cost = extract_credit_cost(
+            event.actual_usage_json
+            or event.estimate_json
+            or event.raw_response_json
+            or {}
+        )
+        priority = rank.get((event.status or "").lower(), 0)
+        existing = chosen.get(video_id)
+        if existing is None or priority > existing[0]:
+            chosen[video_id] = (priority, cost)
+    return {video_id: data[1] for video_id, data in chosen.items()}
+
+
 class CreateVideoHistoryBody(BaseModel):
     tram_line_id: str
     task_id: Optional[str] = None
@@ -244,7 +274,7 @@ class GenerateVideoBody(BaseModel):
     channel: Optional[int] = None
     take_number: Optional[int] = None
     model: Optional[str] = None
-    media_type: str = "video-generation"
+    media_type: str = "image-to-video"
     source_image_path: Optional[str] = None
     source_image_data_url: Optional[str] = None
     dry_run: bool = False
@@ -257,7 +287,7 @@ class ContinueVideoBody(BaseModel):
     aspect_ratio: Optional[str] = None
     duration: Optional[int] = None
     model: Optional[str] = None
-    media_type: str = "video-generation"
+    media_type: str = "image-to-video"
     dry_run: bool = False
 
 
@@ -279,13 +309,16 @@ def generate_video(
 
     prompt = (body.prompt or line.action_text or "").strip()
     if not prompt:
-        prompt = "Cinematic shot"
+        prompt = "Preserve the source image subject and scene."
 
     source_image_path = (body.source_image_path or line.scene_visual or "").strip() or None
     has_source_image = bool(source_image_path or (body.source_image_data_url or "").strip())
     if not has_source_image:
         raise HTTPException(status_code=400, detail="A source image is required to generate video")
     normalized_aspect_ratio = _normalize_video_aspect_ratio(body.aspect_ratio)
+    requested_media_type = (body.media_type or "image-to-video").strip().lower()
+    if requested_media_type != "image-to-video":
+        raise HTTPException(status_code=400, detail="media_type must be image-to-video")
     payload: dict = {
         "prompt": prompt,
         "aspect_ratio": normalized_aspect_ratio,
@@ -304,7 +337,7 @@ def generate_video(
     try:
         selected_model = (body.model or profile.model_visualize_video or "").strip() or None
         response = _gateway_client().execute_fal(
-            media_type=body.media_type,
+            media_type="image-to-video",
             payload=payload,
             model=selected_model,
             dry_run=body.dry_run,
@@ -323,7 +356,7 @@ def generate_video(
         user_id=user_id,
         video_path="",
         task_id=gateway_job_id,
-        generation_method=f"gateway_{body.media_type}",
+        generation_method="gateway_image-to-video",
         prompt=prompt,
         aspect_ratio=normalized_aspect_ratio,
         duration=body.duration,
@@ -344,7 +377,7 @@ def generate_video(
         video_history_id=row.id,
         gateway_job_id=gateway_job_id,
         model=model_used,
-        media_type=body.media_type,
+        media_type="image-to-video",
         status=job_status,
         estimate=estimate if isinstance(estimate, dict) else None,
         raw_response=response if isinstance(response, dict) else None,
@@ -416,8 +449,11 @@ def continue_video(
     source_image_storage_key, source_image_external_url = _to_storage_or_url(frame.get("image_url"))
     source_image_data_url = frame.get("image_data_url")
 
-    prompt = (body.prompt or source.prompt or line.action_text or "").strip() or "Cinematic continuation shot"
+    prompt = (body.prompt or source.prompt or line.action_text or "").strip() or "Preserve the source image subject and continue motion naturally."
     normalized_aspect_ratio = _normalize_video_aspect_ratio(body.aspect_ratio or source.aspect_ratio)
+    requested_media_type = (body.media_type or "image-to-video").strip().lower()
+    if requested_media_type != "image-to-video":
+        raise HTTPException(status_code=400, detail="media_type must be image-to-video")
 
     rows = list(
         db.exec(
@@ -456,7 +492,7 @@ def continue_video(
     try:
         selected_model = (body.model or profile.model_visualize_video or "").strip() or None
         response = _gateway_client().execute_fal(
-            media_type=body.media_type,
+            media_type="image-to-video",
             payload=payload,
             model=selected_model,
             dry_run=body.dry_run,
@@ -475,7 +511,7 @@ def continue_video(
         user_id=user_id,
         video_path="",
         task_id=gateway_job_id,
-        generation_method=f"gateway_{body.media_type}",
+        generation_method="gateway_image-to-video",
         prompt=prompt,
         aspect_ratio=normalized_aspect_ratio,
         duration=body.duration or source.duration,
@@ -497,7 +533,7 @@ def continue_video(
         video_history_id=row.id,
         gateway_job_id=gateway_job_id,
         model=model_used,
-        media_type=body.media_type,
+        media_type="image-to-video",
         status=job_status,
         estimate=estimate if isinstance(estimate, dict) else None,
         raw_response=response if isinstance(response, dict) else None,
@@ -621,7 +657,11 @@ def list_videos(
             .order_by(MoodBoardVideoHistory.channel.asc(), MoodBoardVideoHistory.take_number.asc(), MoodBoardVideoHistory.created_at.asc())
         ).all()
     )
-    return {"success": True, "videos": [_video_to_item(r) for r in rows]}
+    cost_map = _video_credit_cost_map(db, [r.id for r in rows if r.id is not None])
+    return {
+        "success": True,
+        "videos": [_video_to_item(r, cost_map.get(r.id)) for r in rows],
+    }
 
 
 @router.get("")
@@ -645,7 +685,11 @@ def list_videos_by_ids(
     rows = list(db.exec(select(MoodBoardVideoHistory).where(MoodBoardVideoHistory.id.in_(uuids))).all())
     for r in rows:
         _ensure_tramline_access(db, str(r.tram_line_id), user_id)
-    return {"success": True, "videos": [_video_to_item(r) for r in rows]}
+    cost_map = _video_credit_cost_map(db, [r.id for r in rows if r.id is not None])
+    return {
+        "success": True,
+        "videos": [_video_to_item(r, cost_map.get(r.id)) for r in rows],
+    }
 
 
 @router.post("", status_code=201)

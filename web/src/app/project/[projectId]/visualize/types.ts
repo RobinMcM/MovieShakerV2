@@ -32,6 +32,7 @@ export interface VideoHistoryItem {
   source_type?: string | null;
   source_image_path?: string | null;
   source_video_id?: string | null;
+  credit_cost?: number | null;
   status?: string | null;
 }
 

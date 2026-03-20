@@ -286,7 +286,7 @@ function VisualizeContent() {
         aspect_ratio: normalizeVideoAspectRatio(project?.aspect_ratio),
         channel: nextChannel,
         take_number: nextTake,
-        media_type: "video-generation",
+        media_type: "image-to-video",
         source_image_path:
           generatedImagePath ||
           normalizeSourceImagePath(canonicalRootSource) ||
@@ -611,6 +611,9 @@ function VisualizeContent() {
                                       <Trash2 className="h-3 w-3" />
                                     </Button>
                                   </div>
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  Cost {typeof video.credit_cost === "number" ? video.credit_cost : "-"} credits
                                 </div>
                               </div>
                             ))}

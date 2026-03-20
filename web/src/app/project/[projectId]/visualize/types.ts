@@ -7,6 +7,7 @@ export interface ApiConfig {
   gatewayConnected: boolean;
   hasGatewayKey: boolean;
   models: GatewayModel[];
+  visualizeVideoModels?: ModelOption[];
 }
 
 export type Provider = "gateway";
@@ -15,6 +16,18 @@ export interface GatewayModel {
   id: string;
   name: string;
   provider?: string | null;
+}
+
+export interface ModelOption extends GatewayModel {
+  media_type_support?: string[];
+  required_inputs?: string[];
+  optional_inputs?: string[];
+  status?: string;
+  default_for_media_type?: string | null;
+  cost_tier?: string;
+  speed_tier?: string;
+  quality_tier?: string;
+  docs_url?: string | null;
 }
 
 export interface VideoHistoryItem {

@@ -17,6 +17,13 @@ from supertokens_python.recipe.session import SessionContainer
 from config import load_settings
 from gateway_client import GatewayClient
 from media_handler_client import MediaHandlerClient, MediaHandlerClientError
+from model_catalog import (
+    PURPOSE_FIAB_TEXT,
+    PURPOSE_OBJECT_IMAGE,
+    PURPOSE_SOUND_MUSIC,
+    PURPOSE_VISUALIZE_VIDEO,
+    build_model_catalog,
+)
 from db import get_session
 from models import (
     MoodBoardCompiledVideo,
@@ -226,9 +233,15 @@ def get_config_status(
     object_image_models = client.get_object_image_models() if connected and settings.gateway_internal_api_key else []
     visualize_video_models = client.get_visualize_video_models() if connected and settings.gateway_internal_api_key else []
     sound_music_models = client.get_sound_music_models() if connected and settings.gateway_internal_api_key else []
+    catalog = build_model_catalog(
+        fiab_text_gateway_models=models,
+        object_image_gateway_models=object_image_models,
+        visualize_video_gateway_models=visualize_video_models,
+        sound_music_gateway_models=sound_music_models,
+    )
     compact_models = []
     fiab_text_models = []
-    for model in models:
+    for model in catalog.get(PURPOSE_FIAB_TEXT, []):
         model_id = model.get("id")
         model_name = model.get("name") or model_id
         provider = model.get("provider")
@@ -243,6 +256,15 @@ def get_config_status(
             "id": model_id,
             "name": model_name,
             "provider": provider,
+            "media_type_support": model.get("media_type_support") or [],
+            "required_inputs": model.get("required_inputs") or [],
+            "optional_inputs": model.get("optional_inputs") or [],
+            "status": model.get("status") or "active",
+            "default_for_media_type": model.get("default_for_media_type"),
+            "cost_tier": model.get("cost_tier"),
+            "speed_tier": model.get("speed_tier"),
+            "quality_tier": model.get("quality_tier"),
+            "docs_url": model.get("docs_url"),
             "cost_rank": _extract_cost_rank(model),
             "creativity_rank": _extract_creativity_rank(model),
             "categories": _infer_fiab_categories(model),
@@ -259,9 +281,9 @@ def get_config_status(
             "gatewayConnected": connected,
             "hasGatewayKey": bool(settings.gateway_internal_api_key),
             "models": compact_models,
-            "objectImageModels": object_image_models,
-            "visualizeVideoModels": visualize_video_models,
-            "soundMusicModels": sound_music_models,
+            "objectImageModels": catalog.get(PURPOSE_OBJECT_IMAGE, []),
+            "visualizeVideoModels": catalog.get(PURPOSE_VISUALIZE_VIDEO, []),
+            "soundMusicModels": catalog.get(PURPOSE_SOUND_MUSIC, []),
             "fiabTextModels": fiab_text_models,
         },
     }

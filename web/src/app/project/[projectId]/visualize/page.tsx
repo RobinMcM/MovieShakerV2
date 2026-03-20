@@ -8,6 +8,7 @@ import { AppHeader } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   Select,
@@ -130,6 +131,56 @@ function VisualizeContent() {
   const [generatedImagePath, setGeneratedImagePath] = useState<string | null>(null);
   const [selectedSourceIndex, setSelectedSourceIndex] = useState(0);
   const [hasUserChosenSource, setHasUserChosenSource] = useState(false);
+  const [profileVideoModel, setProfileVideoModel] = useState<string | null>(null);
+  const [selectedVideoModel, setSelectedVideoModel] = useState<string | null>(null);
+  const [durationSeconds, setDurationSeconds] = useState(6);
+
+  const videoModelOptions = useMemo(() => {
+    const rows = apiConfig?.visualizeVideoModels || [];
+    return rows.filter((model) => (model.status || "active") !== "deprecated");
+  }, [apiConfig?.visualizeVideoModels]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<{ model_visualize_video?: string | null }>("/profile/")
+      .then((profile) => {
+        if (cancelled) return;
+        const value = (profile?.model_visualize_video || "").trim();
+        setProfileVideoModel(value || null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setProfileVideoModel(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (videoModelOptions.length === 0) {
+      setSelectedVideoModel(null);
+      return;
+    }
+    const current = (selectedVideoModel || "").trim();
+    if (current && videoModelOptions.some((model) => model.id === current)) return;
+
+    const preferred = (profileVideoModel || "").trim();
+    if (preferred && videoModelOptions.some((model) => model.id === preferred)) {
+      setSelectedVideoModel(preferred);
+      return;
+    }
+    const catalogDefault =
+      videoModelOptions.find(
+        (model) => (model.default_for_media_type || "").toLowerCase() === "image-to-video"
+      )?.id || null;
+    if (catalogDefault) {
+      setSelectedVideoModel(catalogDefault);
+      return;
+    }
+    setSelectedVideoModel(videoModelOptions[0]?.id || null);
+  }, [videoModelOptions, selectedVideoModel, profileVideoModel]);
 
   useEffect(() => {
     if (!moodboardImageParam) {
@@ -278,15 +329,23 @@ function VisualizeContent() {
       const res = await api.post<{
         success: boolean;
         video: VideoHistoryItem;
-        gateway: { job_id?: string | null; job_status?: string };
+        gateway: {
+          job_id?: string | null;
+          job_status?: string;
+          model_used?: string | null;
+          duration_used?: number | null;
+          image_source_used?: string | null;
+        };
         credits?: { cost?: number; balance?: number };
       }>("api/video-history/generate", {
         tram_line_id: selectedTramLine,
         prompt: prompt.trim() || currentLine?.action_text || "Cinematic shot",
         aspect_ratio: normalizeVideoAspectRatio(project?.aspect_ratio),
+        duration: durationSeconds,
         channel: nextChannel,
         take_number: nextTake,
         media_type: "image-to-video",
+        model: selectedVideoModel,
         source_image_path:
           generatedImagePath ||
           normalizeSourceImagePath(canonicalRootSource) ||
@@ -492,6 +551,47 @@ function VisualizeContent() {
                   Gateway generation supports prompt + optional moodboard source image.
                 </p>
                 <div className="space-y-3 max-w-xl">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Video model</label>
+                      <Select
+                        value={selectedVideoModel || "__none__"}
+                        onValueChange={(value) =>
+                          setSelectedVideoModel(value === "__none__" ? null : value)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select video model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {videoModelOptions.length === 0 ? (
+                            <SelectItem value="__none__">No models available</SelectItem>
+                          ) : (
+                            videoModelOptions.map((model) => (
+                              <SelectItem key={model.id} value={model.id}>
+                                {model.name || model.id}
+                                {model.provider ? ` (${model.provider})` : ""}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Duration (seconds)</label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={12}
+                        value={durationSeconds}
+                        onChange={(e) => {
+                          const parsed = Number.parseInt(e.target.value || "6", 10);
+                          if (!Number.isFinite(parsed)) return;
+                          setDurationSeconds(Math.min(12, Math.max(1, parsed)));
+                        }}
+                      />
+                    </div>
+                  </div>
                   <Textarea
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}

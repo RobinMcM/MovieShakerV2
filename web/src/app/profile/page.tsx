@@ -46,21 +46,42 @@ interface ConfigStatusResponse {
             name?: string;
             provider?: string;
             media_type_support?: string[];
+            required_inputs?: string[];
+            optional_inputs?: string[];
+            status?: string;
             default_for_media_type?: string | null;
+            cost_tier?: string;
+            speed_tier?: string;
+            quality_tier?: string;
+            docs_url?: string | null;
         }>;
         visualizeVideoModels?: Array<{
             id: string;
             name?: string;
             provider?: string;
             media_type_support?: string[];
+            required_inputs?: string[];
+            optional_inputs?: string[];
+            status?: string;
             default_for_media_type?: string | null;
+            cost_tier?: string;
+            speed_tier?: string;
+            quality_tier?: string;
+            docs_url?: string | null;
         }>;
         soundMusicModels?: Array<{
             id: string;
             name?: string;
             provider?: string;
             media_type_support?: string[];
+            required_inputs?: string[];
+            optional_inputs?: string[];
+            status?: string;
             default_for_media_type?: string | null;
+            cost_tier?: string;
+            speed_tier?: string;
+            quality_tier?: string;
+            docs_url?: string | null;
         }>;
         fiabTextModels?: Array<{
             id: string;
@@ -87,6 +108,31 @@ const FIAB_CATEGORY_OPTIONS: Array<{ id: FiabCategory; label: string }> = [
 ];
 const ALL_FIAB_CATEGORIES: FiabCategory[] = FIAB_CATEGORY_OPTIONS.map((option) => option.id);
 
+type ProfileModelOption = {
+    id: string;
+    name?: string;
+    provider?: string;
+    media_type_support?: string[];
+    required_inputs?: string[];
+    optional_inputs?: string[];
+    status?: string;
+    default_for_media_type?: string | null;
+    cost_tier?: string;
+    speed_tier?: string;
+    quality_tier?: string;
+    docs_url?: string | null;
+};
+
+function optionSummary(model: ProfileModelOption): string {
+    const supports = Array.isArray(model.media_type_support) && model.media_type_support.length > 0
+        ? model.media_type_support.join(", ")
+        : "unspecified";
+    const quality = model.quality_tier ? `quality ${model.quality_tier}` : null;
+    const speed = model.speed_tier ? `speed ${model.speed_tier}` : null;
+    const bits = [supports, quality, speed].filter(Boolean);
+    return bits.join(" · ");
+}
+
 function ProfilePage() {
     const searchParams = useSearchParams();
     const [profile, setProfile] = useState<Profile | null>(null);
@@ -97,9 +143,9 @@ function ProfilePage() {
     const [verifiedBanner, setVerifiedBanner] = useState<"success" | "error" | null>(null);
     const [purchaseAmount, setPurchaseAmount] = useState("11");
     const [gatewayModels, setGatewayModels] = useState<Array<{ id: string; name?: string; provider?: string }>>([]);
-    const [objectImageModels, setObjectImageModels] = useState<Array<{ id: string; name?: string; provider?: string }>>([]);
-    const [visualizeVideoModels, setVisualizeVideoModels] = useState<Array<{ id: string; name?: string; provider?: string }>>([]);
-    const [soundMusicModels, setSoundMusicModels] = useState<Array<{ id: string; name?: string; provider?: string }>>([]);
+    const [objectImageModels, setObjectImageModels] = useState<ProfileModelOption[]>([]);
+    const [visualizeVideoModels, setVisualizeVideoModels] = useState<ProfileModelOption[]>([]);
+    const [soundMusicModels, setSoundMusicModels] = useState<ProfileModelOption[]>([]);
     const [fiabTextModels, setFiabTextModels] = useState<Array<{
         id: string;
         name?: string;
@@ -171,9 +217,9 @@ function ProfilePage() {
             const musicModels = Array.isArray(data?.config?.soundMusicModels) ? data.config.soundMusicModels : [];
             const fiabModels = Array.isArray(data?.config?.fiabTextModels) ? data.config.fiabTextModels : [];
             setGatewayModels(models);
-            setObjectImageModels(imageModels.map((m) => ({ id: m.id, name: m.name, provider: m.provider })));
-            setVisualizeVideoModels(videoModels.map((m) => ({ id: m.id, name: m.name, provider: m.provider })));
-            setSoundMusicModels(musicModels.map((m) => ({ id: m.id, name: m.name, provider: m.provider })));
+            setObjectImageModels(imageModels.map((m) => ({ ...m })));
+            setVisualizeVideoModels(videoModels.map((m) => ({ ...m })));
+            setSoundMusicModels(musicModels.map((m) => ({ ...m })));
             setFiabTextModels(fiabModels);
         } catch {
             setGatewayModels([]);
@@ -640,6 +686,7 @@ function ProfilePage() {
                                         <SelectItem key={`video-${model.id}`} value={model.id}>
                                             {model.name || model.id}
                                             {model.provider ? ` (${model.provider})` : ""}
+                                            {` · ${optionSummary(model)}`}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
@@ -661,6 +708,7 @@ function ProfilePage() {
                                         <SelectItem key={`image-${model.id}`} value={model.id}>
                                             {model.name || model.id}
                                             {model.provider ? ` (${model.provider})` : ""}
+                                            {` · ${optionSummary(model)}`}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
@@ -682,6 +730,7 @@ function ProfilePage() {
                                         <SelectItem key={`music-${model.id}`} value={model.id}>
                                             {model.name || model.id}
                                             {model.provider ? ` (${model.provider})` : ""}
+                                            {` · ${optionSummary(model)}`}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>

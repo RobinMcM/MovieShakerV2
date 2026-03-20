@@ -19,6 +19,13 @@ from config import load_settings
 from credits import apply_credit_cost, ensure_user_can_generate, extract_credit_cost
 from db import get_session
 from gateway_client import GatewayClient, GatewayClientError
+from model_catalog import (
+    MEDIA_IMAGE,
+    PURPOSE_OBJECT_IMAGE,
+    build_model_catalog,
+    find_model,
+    model_supports_media_type,
+)
 from models import Character, ProjectMember, Script
 from storage import save_character_image
 from supertokens_python.recipe.session.framework.fastapi import verify_session
@@ -67,6 +74,43 @@ def _gateway_client() -> GatewayClient:
         timeout_seconds=settings.gateway_timeout_seconds,
         verify_tls=settings.gateway_verify_tls,
     )
+
+
+def _image_model_catalog(client: GatewayClient) -> dict[str, list[dict]]:
+    return build_model_catalog(
+        object_image_gateway_models=client.get_object_image_models()
+    )
+
+
+def _resolve_image_model_id(
+    *,
+    catalog: dict[str, list[dict]],
+    explicit_model: Optional[str],
+) -> Optional[str]:
+    candidate = (explicit_model or "").strip()
+    if candidate:
+        model = find_model(catalog, candidate)
+        if not model:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model '{candidate}' is not available for selection.",
+            )
+        if not model_supports_media_type(model, MEDIA_IMAGE):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model '{candidate}' does not support media_type '{MEDIA_IMAGE}'.",
+            )
+        if str(model.get("status") or "active").strip().lower() not in {"active", "beta"}:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model '{candidate}' is not active.",
+            )
+        return candidate
+
+    for item in catalog.get(PURPOSE_OBJECT_IMAGE, []):
+        if str(item.get("default_for_media_type") or "").strip().lower() == MEDIA_IMAGE:
+            return str(item.get("id") or "").strip() or None
+    return None
 
 
 def _extract_generated_image_url(response: dict) -> Optional[str]:
@@ -321,12 +365,16 @@ def generate_character_image(
     if not settings.gateway_internal_api_key:
         raise HTTPException(status_code=503, detail="Gateway API key is not configured")
 
-    selected_model = (body.model or profile.model_object_image or "").strip() or None
     payload: dict = {
         "prompt": prompt,
         "aspect_ratio": (body.aspect_ratio or character.aspect_ratio or "1:1"),
     }
     gateway = _gateway_client()
+    catalog = _image_model_catalog(gateway)
+    selected_model = _resolve_image_model_id(
+        catalog=catalog,
+        explicit_model=(body.model or profile.model_object_image or None),
+    )
     try:
         response = gateway.execute_fal(
             media_type="image-generation",

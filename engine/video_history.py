@@ -15,6 +15,13 @@ from config import load_settings
 from credits import apply_credit_cost, ensure_user_can_generate, extract_credit_cost
 from gateway_client import GatewayClient, GatewayClientError
 from media_handler_client import MediaHandlerClient, MediaHandlerClientError
+from model_catalog import (
+    MEDIA_IMAGE_TO_VIDEO,
+    PURPOSE_VISUALIZE_VIDEO,
+    build_model_catalog,
+    find_model,
+    model_supports_media_type,
+)
 from models import (
     GatewayUsageEvent,
     MoodBoardCompiledVideo,
@@ -102,6 +109,43 @@ def _gateway_client() -> GatewayClient:
         timeout_seconds=settings.gateway_timeout_seconds,
         verify_tls=settings.gateway_verify_tls,
     )
+
+
+def _video_model_catalog(client: GatewayClient) -> dict[str, list[dict]]:
+    return build_model_catalog(
+        visualize_video_gateway_models=client.get_visualize_video_models()
+    )
+
+
+def _resolve_video_model_id(
+    *,
+    catalog: dict[str, list[dict]],
+    explicit_model: Optional[str],
+) -> Optional[str]:
+    candidate = (explicit_model or "").strip()
+    if candidate:
+        model = find_model(catalog, candidate)
+        if not model:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model '{candidate}' is not available for selection.",
+            )
+        if not model_supports_media_type(model, MEDIA_IMAGE_TO_VIDEO):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model '{candidate}' does not support media_type '{MEDIA_IMAGE_TO_VIDEO}'.",
+            )
+        if str(model.get("status") or "active").strip().lower() not in {"active", "beta"}:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model '{candidate}' is not active.",
+            )
+        return candidate
+
+    for item in catalog.get(PURPOSE_VISUALIZE_VIDEO, []):
+        if str(item.get("default_for_media_type") or "").strip().lower() == MEDIA_IMAGE_TO_VIDEO:
+            return str(item.get("id") or "").strip() or None
+    return None
 
 
 def _media_handler_client() -> MediaHandlerClient:
@@ -323,6 +367,8 @@ def generate_video(
     line = _ensure_tramline_access(db, body.tram_line_id, user_id)
     project_id = _project_id_for_tramline(db, line)
 
+    if body.duration is not None and body.duration <= 0:
+        raise HTTPException(status_code=400, detail="duration must be greater than 0")
     if not settings.gateway_base_url:
         raise HTTPException(status_code=503, detail="Gateway base URL is not configured")
     if not settings.gateway_internal_api_key:
@@ -355,9 +401,14 @@ def generate_video(
     if line.camera_direction:
         payload["camera_direction"] = line.camera_direction
 
+    gateway = _gateway_client()
+    catalog = _video_model_catalog(gateway)
+    selected_model = _resolve_video_model_id(
+        catalog=catalog,
+        explicit_model=(body.model or profile.model_visualize_video or None),
+    )
     try:
-        selected_model = (body.model or profile.model_visualize_video or "").strip() or None
-        response = _gateway_client().execute_fal(
+        response = gateway.execute_fal(
             media_type="image-to-video",
             payload=payload,
             model=selected_model,
@@ -416,6 +467,9 @@ def generate_video(
             "job_id": gateway_job_id,
             "job_status": job_status,
             "estimate": estimate,
+            "model_used": model_used,
+            "duration_used": body.duration,
+            "image_source_used": resolved_image_url,
         },
         "credits": {
             "cost": credits_cost,
@@ -439,6 +493,8 @@ def continue_video(
     project_id = _project_id_for_tramline(db, line)
     profile = ensure_user_can_generate(db, user_id)
 
+    if body.duration is not None and body.duration <= 0:
+        raise HTTPException(status_code=400, detail="duration must be greater than 0")
     if not settings.gateway_base_url:
         raise HTTPException(status_code=503, detail="Gateway base URL is not configured")
     if not settings.gateway_internal_api_key:
@@ -512,9 +568,14 @@ def continue_video(
     if line.camera_direction:
         payload["camera_direction"] = line.camera_direction
 
+    gateway = _gateway_client()
+    catalog = _video_model_catalog(gateway)
+    selected_model = _resolve_video_model_id(
+        catalog=catalog,
+        explicit_model=(body.model or profile.model_visualize_video or None),
+    )
     try:
-        selected_model = (body.model or profile.model_visualize_video or "").strip() or None
-        response = _gateway_client().execute_fal(
+        response = gateway.execute_fal(
             media_type="image-to-video",
             payload=payload,
             model=selected_model,
@@ -574,6 +635,9 @@ def continue_video(
             "job_id": gateway_job_id,
             "job_status": job_status,
             "estimate": estimate,
+            "model_used": model_used,
+            "duration_used": body.duration or source.duration,
+            "image_source_used": resolved_image_url,
         },
         "credits": {
             "cost": credits_cost,

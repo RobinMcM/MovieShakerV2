@@ -407,3 +407,33 @@ class GatewayClient:
                 pass
             raise GatewayClientError(f"Gateway status failed: {detail}")
         return response.json()
+
+    def get_result(self, job_id: str) -> dict:
+        """
+        Fetch final result payload for completed jobs.
+        Gateways vary by route naming, so try common variants.
+        """
+        endpoints = (
+            f"/api/result/{job_id}",
+            f"/api/results/{job_id}",
+            f"/api/status/{job_id}?include_result=true",
+            f"/api/status/{job_id}?result=true",
+        )
+        last_detail = "Unknown gateway result error"
+        with httpx.Client(timeout=self.timeout_seconds, verify=self.verify_tls) as client:
+            for endpoint in endpoints:
+                response = client.get(
+                    f"{self.base_url}{endpoint}",
+                    headers=self._headers(),
+                )
+                if response.status_code < 400:
+                    try:
+                        return response.json()
+                    except Exception:
+                        raise GatewayClientError("Gateway result response is not valid JSON")
+                try:
+                    body = response.json()
+                    last_detail = body.get("message") or body.get("detail") or response.text
+                except Exception:
+                    last_detail = response.text or last_detail
+        raise GatewayClientError(f"Gateway result failed: {last_detail}")

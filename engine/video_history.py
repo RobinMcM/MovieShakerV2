@@ -178,6 +178,14 @@ def _media_handler_client() -> MediaHandlerClient:
 def _extract_video_path(result: object) -> Optional[str]:
     def looks_like_video_url(value: str) -> bool:
         lowered = value.lower()
+        if not (lowered.startswith("http://") or lowered.startswith("https://")):
+            return False
+        # Prefer clearly video-like URLs to avoid selecting source image URLs.
+        video_tokens = (".mp4", ".webm", ".mov", "/video", "content_type=video", "video/mp4")
+        return any(token in lowered for token in video_tokens)
+
+    def looks_like_any_url(value: str) -> bool:
+        lowered = value.lower()
         return lowered.startswith("http://") or lowered.startswith("https://")
 
     def walk(node: object) -> Optional[str]:
@@ -187,7 +195,7 @@ def _extract_video_path(result: object) -> Optional[str]:
         if isinstance(node, dict):
             for key in ("video_url", "url", "output_url", "download_url", "file_url"):
                 value = node.get(key)
-                if isinstance(value, str) and looks_like_video_url(value.strip()):
+                if isinstance(value, str) and looks_like_any_url(value.strip()):
                     return value.strip()
             files = node.get("files")
             if isinstance(files, list):
@@ -207,6 +215,21 @@ def _extract_video_path(result: object) -> Optional[str]:
         return None
 
     return walk(result)
+
+
+def _extract_result_payload(response: object) -> dict:
+    if isinstance(response, dict):
+        result = response.get("result")
+        if isinstance(result, dict):
+            return result
+        data = response.get("data")
+        if isinstance(data, dict):
+            nested = data.get("result")
+            if isinstance(nested, dict):
+                return nested
+            return data
+        return response
+    return {}
 
 
 def _first_non_empty_string(*values: object) -> Optional[str]:
@@ -1105,16 +1128,22 @@ def get_generation_status(
 
     raw_status = gateway_status.get("job_status") or gateway_status.get("status") or "processing"
     job_status = str(raw_status).strip().lower()
-    result = gateway_status.get("result")
-    if result is None and isinstance(gateway_status.get("data"), dict):
-        result = gateway_status.get("data", {}).get("result")
-    if result is None:
-        result = gateway_status
+    result = _extract_result_payload(gateway_status)
     usage = gateway_status.get("usage") if isinstance(gateway_status.get("usage"), dict) else None
     error_msg = gateway_status.get("error")
 
     if job_status == "completed" and not row.video_path:
         video_path = _extract_video_path(result)
+        if not video_path and row.task_id:
+            # Some gateway status payloads omit final output; fetch explicit result.
+            try:
+                final_result_response = _gateway_client().get_result(row.task_id)
+                final_result = _extract_result_payload(final_result_response)
+                video_path = _extract_video_path(final_result)
+                if not video_path:
+                    video_path = _extract_video_path(final_result_response)
+            except GatewayClientError:
+                video_path = None
         if video_path:
             row.video_path = video_path
             db.add(row)

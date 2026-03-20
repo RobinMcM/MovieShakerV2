@@ -301,19 +301,7 @@ function VisualizeContent() {
           : 1;
       const currentChannelVideos = (channelGroups[nextChannel] ?? []).filter((v) => !!v.video_path);
       const nextTake = currentChannelVideos.length + 1;
-      const res = await api.post<{
-        success: boolean;
-        video: VideoHistoryItem;
-        gateway: {
-          job_id?: string | null;
-          job_status?: string;
-          model_used?: string | null;
-          duration_used?: number | null;
-          image_source_used?: string | null;
-          request_body?: Record<string, unknown> | null;
-        };
-        credits?: { cost?: number; balance?: number };
-      }>("api/video-history/generate", {
+      const requestPayload = {
         tram_line_id: selectedTramLine,
         prompt: prompt.trim() || currentLine?.action_text || "Cinematic shot",
         aspect_ratio: normalizeVideoAspectRatio(project?.aspect_ratio),
@@ -327,7 +315,21 @@ function VisualizeContent() {
           normalizeSourceImagePath(canonicalRootSource) ||
           null,
         source_image_data_url: generatedImageDataUrl || null,
-      });
+      };
+      console.log("[visualize.generate-video] request payload", requestPayload);
+      const res = await api.post<{
+        success: boolean;
+        video: VideoHistoryItem;
+        gateway: {
+          job_id?: string | null;
+          job_status?: string;
+          model_used?: string | null;
+          duration_used?: number | null;
+          image_source_used?: string | null;
+          request_body?: Record<string, unknown> | null;
+        };
+        credits?: { cost?: number; balance?: number };
+      }>("api/video-history/generate", requestPayload);
       if (typeof res.credits?.cost === "number") {
         setLastCallCost(res.credits.cost);
       }
@@ -348,6 +350,15 @@ function VisualizeContent() {
         setToastMessage("Generation submitted.");
       }
     } catch (e) {
+      console.error("[visualize.generate-video] failed", {
+        error: e instanceof Error ? e.message : e,
+        tram_line_id: selectedTramLine,
+        selected_model: selectedVideoModel,
+        source_image_path:
+          generatedImagePath ||
+          normalizeSourceImagePath(canonicalRootSource) ||
+          null,
+      });
       setToastMessage(e instanceof Error ? e.message : "Failed to start video generation.");
     } finally {
       setIsGenerating(false);

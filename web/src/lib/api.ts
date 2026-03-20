@@ -34,6 +34,12 @@ export async function apiRequest<T>(endpoint: string, options: RequestOptions = 
         }
 
         const errorData = await response.json().catch(() => ({ detail: "An unknown error occurred" }));
+        console.error("[apiRequest] request failed", {
+            url,
+            method: config.method,
+            status: response.status,
+            response: errorData,
+        });
         const message =
             response.status === 500 && (errorData as { error?: string }).error
                 ? `${(errorData as { detail?: string }).detail}: ${(errorData as { error?: string }).error}`
@@ -58,6 +64,11 @@ export async function apiPostForm<T>(endpoint: string, formData: FormData): Prom
     });
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: "Request failed" }));
+        console.error("[apiPostForm] request failed", {
+            url,
+            status: response.status,
+            response: errorData,
+        });
         const message =
             response.status === 500 && (errorData as { error?: string }).error
                 ? `${(errorData as { detail?: string }).detail}: ${(errorData as { error?: string }).error}`

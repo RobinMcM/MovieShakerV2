@@ -4,6 +4,7 @@ Prefix: /api/video-history.
 """
 import json
 import uuid
+import base64
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -24,7 +25,7 @@ from models import (
     Script,
     TramLine,
 )
-from storage import delete_storage_file
+from storage import delete_storage_file, get_storage_file
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
 
@@ -180,6 +181,52 @@ def _to_storage_or_url(value: Optional[str]) -> tuple[Optional[str], Optional[st
     return (trimmed, None)
 
 
+def _image_data_url_from_storage_key(storage_key: str) -> Optional[str]:
+    result = get_storage_file(storage_key)
+    if not result:
+        return None
+    body, content_type = result
+    if not body:
+        return None
+    mime = (content_type or "").strip().lower()
+    if not mime.startswith("image/"):
+        # Best-effort fallback for mislabeled storage objects.
+        ext = storage_key.lower().rsplit(".", 1)[-1] if "." in storage_key else ""
+        if ext in {"jpg", "jpeg"}:
+            mime = "image/jpeg"
+        elif ext == "png":
+            mime = "image/png"
+        elif ext == "gif":
+            mime = "image/gif"
+        elif ext == "webp":
+            mime = "image/webp"
+        else:
+            return None
+    encoded = base64.b64encode(body).decode("ascii")
+    return f"data:{mime};base64,{encoded}"
+
+
+def _resolve_image_url_for_generation(
+    *,
+    source_image_path: Optional[str],
+    source_image_data_url: Optional[str],
+) -> Optional[str]:
+    data_url = (source_image_data_url or "").strip()
+    if data_url.startswith("data:image/"):
+        return data_url
+
+    path_value = (source_image_path or "").strip()
+    if not path_value:
+        return None
+    if path_value.startswith("http://") or path_value.startswith("https://"):
+        return path_value
+    if path_value.startswith("data:image/"):
+        return path_value
+
+    # Internal storage key -> convert to data URL so Fal can always access it.
+    return _image_data_url_from_storage_key(path_value)
+
+
 def _create_usage_event(
     db: Session,
     *,
@@ -312,8 +359,11 @@ def generate_video(
         prompt = "Preserve the source image subject and scene."
 
     source_image_path = (body.source_image_path or line.scene_visual or "").strip() or None
-    has_source_image = bool(source_image_path or (body.source_image_data_url or "").strip())
-    if not has_source_image:
+    resolved_image_url = _resolve_image_url_for_generation(
+        source_image_path=source_image_path,
+        source_image_data_url=body.source_image_data_url,
+    )
+    if not resolved_image_url:
         raise HTTPException(status_code=400, detail="A source image is required to generate video")
     normalized_aspect_ratio = _normalize_video_aspect_ratio(body.aspect_ratio)
     requested_media_type = (body.media_type or "image-to-video").strip().lower()
@@ -325,10 +375,7 @@ def generate_video(
     }
     if body.duration:
         payload["duration"] = body.duration
-    if source_image_path:
-        payload["source_image_path"] = source_image_path
-    if body.source_image_data_url:
-        payload["image_url"] = body.source_image_data_url
+    payload["image_url"] = resolved_image_url
     if line.shot_type:
         payload["shot_type"] = line.shot_type
     if line.camera_direction:
@@ -362,7 +409,7 @@ def generate_video(
         duration=body.duration,
         take_number=body.take_number,
         channel=body.channel,
-        source_type="image" if (source_image_path or body.source_image_data_url) else "text",
+        source_type="image",
         source_image_path=source_image_path,
         is_print=False,
     )
@@ -448,6 +495,13 @@ def continue_video(
 
     source_image_storage_key, source_image_external_url = _to_storage_or_url(frame.get("image_url"))
     source_image_data_url = frame.get("image_data_url")
+    continuation_source_path = source_image_storage_key or source_image_external_url
+    resolved_image_url = _resolve_image_url_for_generation(
+        source_image_path=continuation_source_path,
+        source_image_data_url=source_image_data_url,
+    )
+    if not resolved_image_url:
+        raise HTTPException(status_code=400, detail="Could not resolve continuation source image")
 
     prompt = (body.prompt or source.prompt or line.action_text or "").strip() or "Preserve the source image subject and continue motion naturally."
     normalized_aspect_ratio = _normalize_video_aspect_ratio(body.aspect_ratio or source.aspect_ratio)
@@ -478,12 +532,7 @@ def continue_video(
     }
     if body.duration:
         payload["duration"] = body.duration
-    if source_image_storage_key:
-        payload["source_image_path"] = source_image_storage_key
-    elif source_image_external_url:
-        payload["source_image_path"] = source_image_external_url
-    if source_image_data_url:
-        payload["image_url"] = source_image_data_url
+    payload["image_url"] = resolved_image_url
     if line.shot_type:
         payload["shot_type"] = line.shot_type
     if line.camera_direction:
@@ -518,7 +567,7 @@ def continue_video(
         take_number=take_number,
         channel=channel,
         source_type="video_continuation",
-        source_image_path=source_image_storage_key or source_image_external_url,
+        source_image_path=continuation_source_path,
         source_video_id=str(source.id),
         is_print=False,
     )

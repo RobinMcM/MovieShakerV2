@@ -175,20 +175,38 @@ def _media_handler_client() -> MediaHandlerClient:
     )
 
 
-def _extract_video_path(result: dict) -> Optional[str]:
-    files = result.get("files")
-    if isinstance(files, list):
-        for item in files:
-            if not isinstance(item, dict):
-                continue
-            url = item.get("url") or item.get("download_url") or item.get("file_url")
-            if isinstance(url, str) and url.strip():
-                return url.strip()
-    for key in ("video_url", "url", "output_url"):
-        value = result.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-    return None
+def _extract_video_path(result: object) -> Optional[str]:
+    def looks_like_video_url(value: str) -> bool:
+        lowered = value.lower()
+        return lowered.startswith("http://") or lowered.startswith("https://")
+
+    def walk(node: object) -> Optional[str]:
+        if isinstance(node, str):
+            value = node.strip()
+            return value if looks_like_video_url(value) else None
+        if isinstance(node, dict):
+            for key in ("video_url", "url", "output_url", "download_url", "file_url"):
+                value = node.get(key)
+                if isinstance(value, str) and looks_like_video_url(value.strip()):
+                    return value.strip()
+            files = node.get("files")
+            if isinstance(files, list):
+                for item in files:
+                    found = walk(item)
+                    if found:
+                        return found
+            for value in node.values():
+                found = walk(value)
+                if found:
+                    return found
+        if isinstance(node, list):
+            for value in node:
+                found = walk(value)
+                if found:
+                    return found
+        return None
+
+    return walk(result)
 
 
 def _first_non_empty_string(*values: object) -> Optional[str]:
@@ -931,8 +949,13 @@ def get_generation_status(
     except GatewayClientError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
-    job_status = gateway_status.get("job_status", "processing")
-    result = gateway_status.get("result") if isinstance(gateway_status.get("result"), dict) else {}
+    raw_status = gateway_status.get("job_status") or gateway_status.get("status") or "processing"
+    job_status = str(raw_status).strip().lower()
+    result = gateway_status.get("result")
+    if result is None and isinstance(gateway_status.get("data"), dict):
+        result = gateway_status.get("data", {}).get("result")
+    if result is None:
+        result = gateway_status
     usage = gateway_status.get("usage") if isinstance(gateway_status.get("usage"), dict) else None
     error_msg = gateway_status.get("error")
 

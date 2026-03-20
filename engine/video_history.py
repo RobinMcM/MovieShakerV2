@@ -39,6 +39,19 @@ router = APIRouter(prefix="/api/video-history", tags=["video-history"])
 settings = load_settings()
 
 
+def _trace(event: str, **fields: object) -> None:
+    safe_fields: dict[str, object] = {}
+    for key, value in fields.items():
+        if isinstance(value, str):
+            safe_fields[key] = value if len(value) <= 600 else f"{value[:600]}...(truncated)"
+        else:
+            safe_fields[key] = value
+    try:
+        print(f"[video_history.{event}] {json.dumps(safe_fields, ensure_ascii=False, default=str)}")
+    except Exception:
+        print(f"[video_history.{event}] {safe_fields}")
+
+
 def _ensure_tramline_access(db: Session, tramline_id: str, user_id: str) -> TramLine:
     line = db.get(TramLine, uuid.UUID(tramline_id))
     if not line:
@@ -195,8 +208,13 @@ def _extract_video_path(result: object) -> Optional[str]:
         if isinstance(node, dict):
             for key in ("video_url", "url", "output_url", "download_url", "file_url"):
                 value = node.get(key)
-                if isinstance(value, str) and looks_like_any_url(value.strip()):
-                    return value.strip()
+                if not isinstance(value, str):
+                    continue
+                candidate = value.strip()
+                if key == "video_url" and looks_like_any_url(candidate):
+                    return candidate
+                if looks_like_video_url(candidate):
+                    return candidate
             files = node.get("files")
             if isinstance(files, list):
                 for item in files:
@@ -670,6 +688,16 @@ def generate_video(
     db: Session = Depends(get_session),
 ):
     user_id = session.get_user_id()
+    _trace(
+        "generate.start",
+        user_id=user_id,
+        tram_line_id=body.tram_line_id,
+        model=body.model,
+        duration=body.duration,
+        aspect_ratio=body.aspect_ratio,
+        media_type=body.media_type,
+        has_model_options=bool(body.model_options),
+    )
     ensure_user_can_generate(db, user_id)
     line = _ensure_tramline_access(db, body.tram_line_id, user_id)
     project_id = _project_id_for_tramline(db, line)
@@ -696,6 +724,11 @@ def generate_video(
     )
     if not resolved_image_url:
         raise HTTPException(status_code=400, detail="A source image is required to generate video")
+    _trace(
+        "generate.source",
+        source_image_path=source_image_path,
+        resolved_image_url=resolved_image_url,
+    )
     normalized_aspect_ratio = _normalize_video_aspect_ratio(body.aspect_ratio)
     requested_media_type = (body.media_type or "image-to-video").strip().lower()
     if requested_media_type != "image-to-video":
@@ -716,11 +749,17 @@ def generate_video(
     )
     selected_model_meta = find_model(catalog, selected_model) if selected_model else None
     sanitized_model_options = _sanitize_model_options(selected_model_meta, body.model_options)
+    _trace(
+        "generate.model",
+        selected_model=selected_model,
+        sanitized_model_options=sanitized_model_options,
+    )
     model_payload = _normalize_payload_for_model(
         model_id=selected_model,
         payload=payload,
         model_options=sanitized_model_options,
     )
+    _trace("generate.payload", model_payload=model_payload)
     try:
         request_body = _gateway_execute_body(
             media_type="image-to-video",
@@ -736,6 +775,7 @@ def generate_video(
             model=selected_model,
             dry_run=body.dry_run,
         )
+        _trace("generate.gateway_submit_response", response_keys=sorted(response.keys()) if isinstance(response, dict) else str(type(response)))
     except GatewayClientError as exc:
         error_text = str(exc)
         if not selected_model or not _should_fallback_to_default_model(error_text):
@@ -755,6 +795,7 @@ def generate_video(
                 model=None,
                 dry_run=body.dry_run,
             )
+            _trace("generate.gateway_fallback_response", response_keys=sorted(response.keys()) if isinstance(response, dict) else str(type(response)))
         except GatewayClientError:
             raise HTTPException(
                 status_code=502,
@@ -787,6 +828,7 @@ def generate_video(
                 model=None,
                 dry_run=body.dry_run,
             )
+            _trace("generate.gateway_soft_fallback_response", response_keys=sorted(response.keys()) if isinstance(response, dict) else str(type(response)))
             gateway_job_id, parsed_job_status, gateway_error, gateway_result = _extract_gateway_response_fields(response)
             job_status = parsed_job_status or ("completed" if body.dry_run else "processing")
             direct_video_path = _extract_video_path(gateway_result)
@@ -803,6 +845,13 @@ def generate_video(
         )
     if gateway_error and str(job_status).strip().lower() in {"failed", "error", "cancelled"}:
         raise HTTPException(status_code=502, detail=gateway_error)
+    _trace(
+        "generate.gateway_parsed",
+        gateway_job_id=gateway_job_id,
+        job_status=job_status,
+        direct_video_path=direct_video_path,
+        gateway_error=gateway_error,
+    )
     estimate = response.get("estimate")
     routing = response.get("routing") if isinstance(response.get("routing"), dict) else {}
     model_used = selected_model or routing.get("model")
@@ -844,6 +893,13 @@ def generate_video(
 
     db.commit()
     db.refresh(row)
+    _trace(
+        "generate.saved",
+        video_history_id=str(row.id),
+        task_id=row.task_id,
+        video_path=row.video_path,
+        job_status=job_status,
+    )
     return {
         "success": True,
         "video": _video_to_item(row),
@@ -872,6 +928,16 @@ def continue_video(
     db: Session = Depends(get_session),
 ):
     user_id = session.get_user_id()
+    _trace(
+        "continue.start",
+        user_id=user_id,
+        source_video_id=body.source_video_id,
+        mode=body.mode,
+        model=body.model,
+        duration=body.duration,
+        aspect_ratio=body.aspect_ratio,
+        has_model_options=bool(body.model_options),
+    )
     if body.mode not in {"same_channel", "new_channel"}:
         raise HTTPException(status_code=400, detail="mode must be same_channel or new_channel")
 
@@ -919,6 +985,11 @@ def continue_video(
     )
     if not resolved_image_url:
         raise HTTPException(status_code=400, detail="Could not resolve continuation source image")
+    _trace(
+        "continue.source",
+        continuation_source_path=continuation_source_path,
+        resolved_image_url=resolved_image_url,
+    )
 
     prompt = (body.prompt or source.prompt or line.action_text or "").strip() or "Preserve the source image subject and continue motion naturally."
     if line.shot_type:
@@ -963,11 +1034,17 @@ def continue_video(
     )
     selected_model_meta = find_model(catalog, selected_model) if selected_model else None
     sanitized_model_options = _sanitize_model_options(selected_model_meta, body.model_options)
+    _trace(
+        "continue.model",
+        selected_model=selected_model,
+        sanitized_model_options=sanitized_model_options,
+    )
     model_payload = _normalize_payload_for_model(
         model_id=selected_model,
         payload=payload,
         model_options=sanitized_model_options,
     )
+    _trace("continue.payload", model_payload=model_payload)
     try:
         request_body = _gateway_execute_body(
             media_type="image-to-video",
@@ -982,6 +1059,7 @@ def continue_video(
             model=selected_model,
             dry_run=body.dry_run,
         )
+        _trace("continue.gateway_submit_response", response_keys=sorted(response.keys()) if isinstance(response, dict) else str(type(response)))
     except GatewayClientError as exc:
         error_text = str(exc)
         if not selected_model or not _should_fallback_to_default_model(error_text):
@@ -1000,6 +1078,7 @@ def continue_video(
                 model=None,
                 dry_run=body.dry_run,
             )
+            _trace("continue.gateway_fallback_response", response_keys=sorted(response.keys()) if isinstance(response, dict) else str(type(response)))
         except GatewayClientError:
             raise HTTPException(
                 status_code=502,
@@ -1030,6 +1109,7 @@ def continue_video(
                 model=None,
                 dry_run=body.dry_run,
             )
+            _trace("continue.gateway_soft_fallback_response", response_keys=sorted(response.keys()) if isinstance(response, dict) else str(type(response)))
             gateway_job_id, parsed_job_status, gateway_error, gateway_result = _extract_gateway_response_fields(response)
             job_status = parsed_job_status or ("completed" if body.dry_run else "processing")
             direct_video_path = _extract_video_path(gateway_result)
@@ -1046,6 +1126,13 @@ def continue_video(
         )
     if gateway_error and str(job_status).strip().lower() in {"failed", "error", "cancelled"}:
         raise HTTPException(status_code=502, detail=gateway_error)
+    _trace(
+        "continue.gateway_parsed",
+        gateway_job_id=gateway_job_id,
+        job_status=job_status,
+        direct_video_path=direct_video_path,
+        gateway_error=gateway_error,
+    )
     estimate = response.get("estimate")
     routing = response.get("routing") if isinstance(response.get("routing"), dict) else {}
     model_used = selected_model or routing.get("model")
@@ -1088,6 +1175,13 @@ def continue_video(
 
     db.commit()
     db.refresh(row)
+    _trace(
+        "continue.saved",
+        video_history_id=str(row.id),
+        task_id=row.task_id,
+        video_path=row.video_path,
+        job_status=job_status,
+    )
     return {
         "success": True,
         "video": _video_to_item(row),
@@ -1117,6 +1211,7 @@ def get_generation_status(
 ):
     user_id = session.get_user_id()
     row = _ensure_video_access(db, video_id, user_id)
+    _trace("status.start", video_id=video_id, task_id=row.task_id, current_video_path=row.video_path)
     if not row.task_id:
         status = "completed" if row.video_path else "pending"
         return {"success": True, "status": status, "video": _video_to_item(row)}
@@ -1125,6 +1220,11 @@ def get_generation_status(
         gateway_status = _gateway_client().get_status(row.task_id)
     except GatewayClientError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
+    _trace(
+        "status.gateway_status",
+        task_id=row.task_id,
+        status_keys=sorted(gateway_status.keys()) if isinstance(gateway_status, dict) else str(type(gateway_status)),
+    )
 
     raw_status = gateway_status.get("job_status") or gateway_status.get("status") or "processing"
     job_status = str(raw_status).strip().lower()
@@ -1134,6 +1234,7 @@ def get_generation_status(
 
     if job_status == "completed" and not row.video_path:
         video_path = _extract_video_path(result)
+        _trace("status.completed_parse", task_id=row.task_id, parsed_video_path=video_path)
         if not video_path and row.task_id:
             # Some gateway status payloads omit final output; fetch explicit result.
             try:
@@ -1142,8 +1243,15 @@ def get_generation_status(
                 video_path = _extract_video_path(final_result)
                 if not video_path:
                     video_path = _extract_video_path(final_result_response)
+                _trace(
+                    "status.result_fallback",
+                    task_id=row.task_id,
+                    fallback_keys=sorted(final_result_response.keys()) if isinstance(final_result_response, dict) else str(type(final_result_response)),
+                    fallback_video_path=video_path,
+                )
             except GatewayClientError:
                 video_path = None
+                _trace("status.result_fallback_error", task_id=row.task_id)
         if video_path:
             row.video_path = video_path
             db.add(row)

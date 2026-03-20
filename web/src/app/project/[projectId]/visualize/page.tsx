@@ -345,6 +345,7 @@ function VisualizeContent() {
   const pollVideoUntilTerminal = async (videoId: string) => {
     setPollingVideoId(videoId);
     const maxAttempts = 40;
+    console.log("[visualize.poll] start", { videoId, maxAttempts });
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       try {
         const statusRes = await api.get<{
@@ -353,6 +354,13 @@ function VisualizeContent() {
           error?: string | null;
           video?: VideoHistoryItem;
         }>(`api/video-history/${videoId}/status`);
+        console.log("[visualize.poll] status", {
+          videoId,
+          attempt: attempt + 1,
+          status: statusRes.status,
+          error: statusRes.error || null,
+          hasVideoPath: Boolean(statusRes.video?.video_path),
+        });
         const status = statusRes.status;
         if (status === "completed") {
           if (selectedTramLine) {
@@ -370,12 +378,14 @@ function VisualizeContent() {
           }
           return;
         }
-      } catch {
+      } catch (error) {
         // Keep polling for transient failures.
+        console.error("[visualize.poll] transient error", { videoId, attempt: attempt + 1, error });
       }
       await sleep(3000);
     }
     setPollingVideoId(null);
+    console.warn("[visualize.poll] timeout", { videoId, maxAttempts });
     setToastMessage("Generation is still processing. Refresh in a few moments.");
   };
 
@@ -435,7 +445,19 @@ function VisualizeContent() {
       if (res.gateway?.request_body) {
         console.log("[visualize.generate-video] gateway request body", res.gateway.request_body);
       }
+      console.log("[visualize.generate-video] gateway response", {
+        job_id: res.gateway?.job_id ?? null,
+        job_status: res.gateway?.job_status ?? null,
+        model_used: res.gateway?.model_used ?? null,
+        duration_used: res.gateway?.duration_used ?? null,
+        aspect_ratio_used: res.gateway?.aspect_ratio_used ?? null,
+        model_options_used: res.gateway?.model_options_used ?? null,
+      });
       await loadVideoHistory(selectedTramLine);
+      console.log("[visualize.generate-video] history reloaded", {
+        selectedTramLine,
+        createdVideoId: res.video?.id ?? null,
+      });
       const createdVideoId = res.video?.id;
       if (res.gateway?.job_status === "completed") {
         setToastMessage("Video generated.");
@@ -467,6 +489,13 @@ function VisualizeContent() {
     mode: "same_channel" | "new_channel"
   ) => {
     if (!selectedTramLine) return;
+    console.log("[visualize.continue] request", {
+      sourceVideoId,
+      mode,
+      selectedTramLine,
+      selectedVideoModel,
+      modelOptions: modelOptionsPayload,
+    });
     try {
       await continueVideo(sourceVideoId, mode, selectedTramLine, {
         prompt,
@@ -477,7 +506,14 @@ function VisualizeContent() {
       });
       setToastMessage(mode === "same_channel" ? "Continuation started in same channel." : "Continuation started in a new channel.");
       await loadVideoHistory(selectedTramLine);
+      console.log("[visualize.continue] history reloaded", { selectedTramLine });
     } catch (e) {
+      console.error("[visualize.continue] failed", {
+        sourceVideoId,
+        mode,
+        selectedTramLine,
+        error: e instanceof Error ? e.message : e,
+      });
       setToastMessage(e instanceof Error ? e.message : "Failed to start continuation.");
     }
   };

@@ -4,7 +4,6 @@ Prefix: /api/video-history.
 """
 import json
 import uuid
-import base64
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -25,7 +24,7 @@ from models import (
     Script,
     TramLine,
 )
-from storage import delete_storage_file, get_storage_file
+from storage import delete_storage_file, get_storage_access_url
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
 
@@ -181,39 +180,14 @@ def _to_storage_or_url(value: Optional[str]) -> tuple[Optional[str], Optional[st
     return (trimmed, None)
 
 
-def _image_data_url_from_storage_key(storage_key: str) -> Optional[str]:
-    result = get_storage_file(storage_key)
-    if not result:
-        return None
-    body, content_type = result
-    if not body:
-        return None
-    mime = (content_type or "").strip().lower()
-    if not mime.startswith("image/"):
-        # Best-effort fallback for mislabeled storage objects.
-        ext = storage_key.lower().rsplit(".", 1)[-1] if "." in storage_key else ""
-        if ext in {"jpg", "jpeg"}:
-            mime = "image/jpeg"
-        elif ext == "png":
-            mime = "image/png"
-        elif ext == "gif":
-            mime = "image/gif"
-        elif ext == "webp":
-            mime = "image/webp"
-        else:
-            return None
-    encoded = base64.b64encode(body).decode("ascii")
-    return f"data:{mime};base64,{encoded}"
-
-
 def _resolve_image_url_for_generation(
     *,
     source_image_path: Optional[str],
     source_image_data_url: Optional[str],
 ) -> Optional[str]:
-    data_url = (source_image_data_url or "").strip()
-    if data_url.startswith("data:image/"):
-        return data_url
+    data_or_url = (source_image_data_url or "").strip()
+    if data_or_url.startswith("http://") or data_or_url.startswith("https://"):
+        return data_or_url
 
     path_value = (source_image_path or "").strip()
     if not path_value:
@@ -221,10 +195,10 @@ def _resolve_image_url_for_generation(
     if path_value.startswith("http://") or path_value.startswith("https://"):
         return path_value
     if path_value.startswith("data:image/"):
-        return path_value
+        return None
 
-    # Internal storage key -> convert to data URL so Fal can always access it.
-    return _image_data_url_from_storage_key(path_value)
+    # Internal storage key -> convert to signed URL.
+    return get_storage_access_url(path_value)
 
 
 def _create_usage_event(

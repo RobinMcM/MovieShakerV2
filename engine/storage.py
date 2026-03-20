@@ -151,6 +151,31 @@ def get_storage_file(relative_path: str) -> Optional[Tuple[bytes, str]]:
         return None
 
 
+def get_storage_access_url(relative_path: str, expires_seconds: int = 3600) -> Optional[str]:
+    """
+    Return a time-limited URL to access a storage object.
+    For Spaces, returns a pre-signed GET URL.
+    For local storage, returns None (no anonymous URL available).
+    """
+    if not relative_path or ".." in relative_path:
+        return None
+    is_legacy = relative_path.startswith(("moodboard/", "objects/"))
+    is_project_scoped = ("/moodboard/" in relative_path) or ("/objects/" in relative_path)
+    if not (is_legacy or is_project_scoped):
+        return None
+    if not uses_spaces():
+        return None
+    try:
+        client = _spaces_client()
+        return client.generate_presigned_url(
+            ClientMethod="get_object",
+            Params={"Bucket": DO_SPACES_BUCKET, "Key": relative_path},
+            ExpiresIn=max(60, int(expires_seconds)),
+        )
+    except Exception:
+        return None
+
+
 def delete_storage_file(relative_path: str) -> bool:
     """
     Delete a storage object by relative key/path.

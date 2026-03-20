@@ -279,6 +279,45 @@ def _normalize_video_aspect_ratio(aspect_ratio: Optional[str]) -> str:
     return value if value in allowed else "16:9"
 
 
+def _normalize_payload_for_model(
+    *,
+    model_id: Optional[str],
+    payload: dict,
+) -> dict:
+    """
+    Apply model-specific input constraints before sending to gateway/FAL.
+
+    Current known constraint:
+    - fal-ai/minimax-hailuo-02/image-to-video
+      duration: "5" | "10"
+      aspect_ratio: "16:9" | "9:16" | "1:1"
+    """
+    normalized = dict(payload)
+    model_key = (model_id or "").strip().lower()
+
+    if model_key == "fal-ai/minimax-hailuo-02/image-to-video":
+        aspect = str(normalized.get("aspect_ratio") or "").strip()
+        if aspect in {"9:16", "9:21"}:
+            normalized["aspect_ratio"] = "9:16"
+        elif aspect == "1:1":
+            normalized["aspect_ratio"] = "1:1"
+        else:
+            # Includes 16:9, 21:9, 4:3, 3:4 and unknowns.
+            normalized["aspect_ratio"] = "16:9"
+
+        duration_value = normalized.get("duration")
+        duration_int = None
+        try:
+            if duration_value is not None:
+                duration_int = int(duration_value)
+        except Exception:
+            duration_int = None
+        if duration_int is not None:
+            normalized["duration"] = "10" if duration_int >= 8 else "5"
+
+    return normalized
+
+
 def _normalize_storage_key(path_or_url: Optional[str]) -> Optional[str]:
     value = (path_or_url or "").strip()
     if not value:
@@ -494,10 +533,11 @@ def generate_video(
         catalog=catalog,
         explicit_model=(body.model or None),
     )
+    model_payload = _normalize_payload_for_model(model_id=selected_model, payload=payload)
     try:
         request_body = _gateway_execute_body(
             media_type="image-to-video",
-            payload=payload,
+            payload=model_payload,
             model=selected_model,
             dry_run=body.dry_run,
         )
@@ -505,7 +545,7 @@ def generate_video(
         print(f"[video_history.generate] gateway execute body: {json.dumps(request_body, ensure_ascii=False)}")
         response = gateway.execute_fal(
             media_type="image-to-video",
-            payload=payload,
+            payload=model_payload,
             model=selected_model,
             dry_run=body.dry_run,
         )
@@ -516,7 +556,7 @@ def generate_video(
         # If selected model is invalid/unavailable in gateway, retry on default route.
         request_body = _gateway_execute_body(
             media_type="image-to-video",
-            payload=payload,
+            payload=model_payload,
             model=None,
             dry_run=body.dry_run,
         )
@@ -524,7 +564,7 @@ def generate_video(
         try:
             response = gateway.execute_fal(
                 media_type="image-to-video",
-                payload=payload,
+                payload=model_payload,
                 model=None,
                 dry_run=body.dry_run,
             )
@@ -548,7 +588,7 @@ def generate_video(
         # (e.g. {"status": "...", "message": "..."}). Retry default route.
         request_body = _gateway_execute_body(
             media_type="image-to-video",
-            payload=payload,
+            payload=model_payload,
             model=None,
             dry_run=body.dry_run,
         )
@@ -556,7 +596,7 @@ def generate_video(
         try:
             response = gateway.execute_fal(
                 media_type="image-to-video",
-                payload=payload,
+                payload=model_payload,
                 model=None,
                 dry_run=body.dry_run,
             )
@@ -625,7 +665,8 @@ def generate_video(
             "job_status": job_status,
             "estimate": estimate,
             "model_used": model_used,
-            "duration_used": body.duration,
+            "duration_used": model_payload.get("duration"),
+            "aspect_ratio_used": model_payload.get("aspect_ratio"),
             "image_source_used": resolved_image_url,
             "request_body": request_body,
         },
@@ -732,17 +773,18 @@ def continue_video(
         catalog=catalog,
         explicit_model=(body.model or None),
     )
+    model_payload = _normalize_payload_for_model(model_id=selected_model, payload=payload)
     try:
         request_body = _gateway_execute_body(
             media_type="image-to-video",
-            payload=payload,
+            payload=model_payload,
             model=selected_model,
             dry_run=body.dry_run,
         )
         print(f"[video_history.continue] gateway execute body: {json.dumps(request_body, ensure_ascii=False)}")
         response = gateway.execute_fal(
             media_type="image-to-video",
-            payload=payload,
+            payload=model_payload,
             model=selected_model,
             dry_run=body.dry_run,
         )
@@ -752,7 +794,7 @@ def continue_video(
             raise HTTPException(status_code=502, detail=error_text)
         request_body = _gateway_execute_body(
             media_type="image-to-video",
-            payload=payload,
+            payload=model_payload,
             model=None,
             dry_run=body.dry_run,
         )
@@ -760,7 +802,7 @@ def continue_video(
         try:
             response = gateway.execute_fal(
                 media_type="image-to-video",
-                payload=payload,
+                payload=model_payload,
                 model=None,
                 dry_run=body.dry_run,
             )
@@ -782,7 +824,7 @@ def continue_video(
     ):
         request_body = _gateway_execute_body(
             media_type="image-to-video",
-            payload=payload,
+            payload=model_payload,
             model=None,
             dry_run=body.dry_run,
         )
@@ -790,7 +832,7 @@ def continue_video(
         try:
             response = gateway.execute_fal(
                 media_type="image-to-video",
-                payload=payload,
+                payload=model_payload,
                 model=None,
                 dry_run=body.dry_run,
             )
@@ -860,7 +902,8 @@ def continue_video(
             "job_status": job_status,
             "estimate": estimate,
             "model_used": model_used,
-            "duration_used": body.duration or source.duration,
+            "duration_used": model_payload.get("duration"),
+            "aspect_ratio_used": model_payload.get("aspect_ratio"),
             "image_source_used": resolved_image_url,
             "request_body": request_body,
         },

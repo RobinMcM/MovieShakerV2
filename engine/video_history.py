@@ -1306,6 +1306,9 @@ def get_generation_status(
     user_id = session.get_user_id()
     row = _ensure_video_access(db, video_id, user_id)
     _trace("status.start", video_id=video_id, task_id=row.task_id, current_video_path=row.video_path)
+    # If a persisted path already exists, this row is terminal from the app's perspective.
+    if row.video_path:
+        return {"success": True, "status": "completed", "video": _video_to_item(row)}
     if not row.task_id:
         status = "completed" if row.video_path else "pending"
         return {"success": True, "status": status, "video": _video_to_item(row)}
@@ -1326,38 +1329,41 @@ def get_generation_status(
     result = _extract_result_payload(gateway_status)
     usage = gateway_status.get("usage") if isinstance(gateway_status.get("usage"), dict) else None
     error_msg = parsed_error or gateway_status.get("error")
+    video_path = _extract_video_path(result)
+    _trace("status.parse", task_id=row.task_id, job_status=job_status, parsed_video_path=video_path)
 
-    if job_status == "completed" and not row.video_path:
-        video_path = _extract_video_path(result)
-        _trace("status.completed_parse", task_id=row.task_id, parsed_video_path=video_path)
-        if not video_path and row.task_id:
-            # Some gateway status payloads omit final output; fetch explicit result.
-            try:
-                final_result_response = _gateway_client().get_result(row.task_id)
-                final_result = _extract_result_payload(final_result_response)
-                video_path = _extract_video_path(final_result)
-                if not video_path:
-                    video_path = _extract_video_path(final_result_response)
-                _trace(
-                    "status.result_fallback",
-                    task_id=row.task_id,
-                    fallback_keys=sorted(final_result_response.keys()) if isinstance(final_result_response, dict) else str(type(final_result_response)),
-                    fallback_video_path=video_path,
-                )
-            except GatewayClientError:
-                video_path = None
-                _trace("status.result_fallback_error", task_id=row.task_id)
-        if video_path:
-            line = _ensure_tramline_access(db, str(row.tram_line_id), user_id)
-            project_id = _project_id_for_tramline(db, line)
-            row.video_path = _ingest_video_to_storage(
-                source_video_url=video_path,
-                user_id=user_id,
-                project_id=str(project_id),
-                scene_id=str(line.scene_id),
-                tram_line_id=str(row.tram_line_id),
-            ) or video_path
-            db.add(row)
+    if not video_path and row.task_id and job_status != "failed":
+        # Some gateway status payloads omit final output; fetch explicit result.
+        try:
+            final_result_response = _gateway_client().get_result(row.task_id)
+            final_result = _extract_result_payload(final_result_response)
+            video_path = _extract_video_path(final_result)
+            if not video_path:
+                video_path = _extract_video_path(final_result_response)
+            _trace(
+                "status.result_fallback",
+                task_id=row.task_id,
+                fallback_keys=sorted(final_result_response.keys()) if isinstance(final_result_response, dict) else str(type(final_result_response)),
+                fallback_video_path=video_path,
+            )
+        except GatewayClientError:
+            video_path = None
+            _trace("status.result_fallback_error", task_id=row.task_id)
+    if video_path and not row.video_path:
+        line = _ensure_tramline_access(db, str(row.tram_line_id), user_id)
+        project_id = _project_id_for_tramline(db, line)
+        row.video_path = _ingest_video_to_storage(
+            source_video_url=video_path,
+            user_id=user_id,
+            project_id=str(project_id),
+            scene_id=str(line.scene_id),
+            tram_line_id=str(row.tram_line_id),
+        ) or video_path
+        db.add(row)
+        # If we have a real video URL/path, treat this job as completed regardless of
+        # gateway status string shape.
+        job_status = "completed"
+        error_msg = None
     if job_status == "failed" and not row.video_path and error_msg:
         row.video_path = ""
         db.add(row)

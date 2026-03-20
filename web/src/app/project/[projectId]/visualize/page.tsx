@@ -344,7 +344,7 @@ function VisualizeContent() {
 
   const pollVideoUntilTerminal = async (videoId: string) => {
     setPollingVideoId(videoId);
-    const maxAttempts = 40;
+    const maxAttempts = 120;
     console.log("[visualize.poll] start", { videoId, maxAttempts });
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       try {
@@ -362,7 +362,7 @@ function VisualizeContent() {
           hasVideoPath: Boolean(statusRes.video?.video_path),
         });
         const status = statusRes.status;
-        if (status === "completed") {
+        if (status === "completed" || Boolean(statusRes.video?.video_path)) {
           if (selectedTramLine) {
             await loadVideoHistory(selectedTramLine);
           }

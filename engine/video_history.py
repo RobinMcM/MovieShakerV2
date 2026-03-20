@@ -282,6 +282,9 @@ def generate_video(
         prompt = "Cinematic shot"
 
     source_image_path = (body.source_image_path or line.scene_visual or "").strip() or None
+    has_source_image = bool(source_image_path or (body.source_image_data_url or "").strip())
+    if not has_source_image:
+        raise HTTPException(status_code=400, detail="A source image is required to generate video")
     normalized_aspect_ratio = _normalize_video_aspect_ratio(body.aspect_ratio)
     payload: dict = {
         "prompt": prompt,

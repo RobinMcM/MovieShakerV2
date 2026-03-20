@@ -129,6 +129,7 @@ function VisualizeContent() {
   const [generatedImageDataUrl, setGeneratedImageDataUrl] = useState<string | null>(null);
   const [generatedImagePath, setGeneratedImagePath] = useState<string | null>(null);
   const [selectedSourceIndex, setSelectedSourceIndex] = useState(0);
+  const [hasUserChosenSource, setHasUserChosenSource] = useState(false);
 
   useEffect(() => {
     if (!moodboardImageParam) {
@@ -192,12 +193,13 @@ function VisualizeContent() {
   }, [sourceSnapshots, moodboardImageParam]);
 
   useEffect(() => {
+    if (!hasUserChosenSource) return;
     const selectedSource = sourceSnapshots[selectedSourceIndex] || null;
     if (!selectedSource) return;
     setGeneratedImageDataUrl(null);
     setGeneratedImagePath(normalizeSourceImagePath(selectedSource));
     setGeneratedImageUrl(resolveSourceImageUrl(selectedSource));
-  }, [selectedSourceIndex, sourceSnapshots]);
+  }, [selectedSourceIndex, sourceSnapshots, hasUserChosenSource]);
 
   const currentLine = tramLines.find((l) => l.id === selectedTramLine);
   const selectedSourcePath = sourceSnapshots[selectedSourceIndex] || null;
@@ -449,7 +451,10 @@ function VisualizeContent() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setSelectedSourceIndex((idx) => Math.max(0, idx - 1))}
+                      onClick={() => {
+                        setHasUserChosenSource(true);
+                        setSelectedSourceIndex((idx) => Math.max(0, idx - 1));
+                      }}
                       disabled={selectedSourceIndex <= 0}
                     >
                       <ChevronLeft className="h-4 w-4" />
@@ -460,11 +465,12 @@ function VisualizeContent() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() =>
+                      onClick={() => {
+                        setHasUserChosenSource(true);
                         setSelectedSourceIndex((idx) =>
                           Math.min(sourceSnapshots.length - 1, idx + 1)
-                        )
-                      }
+                        );
+                      }}
                       disabled={selectedSourceIndex >= sourceSnapshots.length - 1}
                     >
                       <ChevronRight className="h-4 w-4" />

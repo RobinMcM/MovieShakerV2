@@ -49,7 +49,7 @@ import {
 import { TramLineSelect } from "../moodboard/TramLineSelect";
 import { useVisualize } from "./useVisualize";
 import type { VideoHistoryItem, CompiledVideo, Provider } from "./types";
-import { API_URL, storageImageUrl } from "@/lib/api";
+import { API_URL, api, storageImageUrl } from "@/lib/api";
 
 function getVideoUrl(path: string): string {
   if (path.startsWith("http://") || path.startsWith("https://")) return path;

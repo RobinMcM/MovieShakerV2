@@ -111,6 +111,24 @@ def _gateway_client() -> GatewayClient:
     )
 
 
+def _gateway_execute_body(
+    *,
+    media_type: str,
+    payload: dict,
+    model: Optional[str],
+    dry_run: bool,
+) -> dict:
+    body = {
+        "provider": "fal",
+        "media_type": media_type,
+        "payload": payload,
+        "dry_run": dry_run,
+    }
+    if model:
+        body["model"] = model
+    return body
+
+
 def _video_model_catalog(client: GatewayClient) -> dict[str, list[dict]]:
     return build_model_catalog(
         visualize_video_gateway_models=client.get_visualize_video_models()
@@ -408,6 +426,14 @@ def generate_video(
         explicit_model=(body.model or profile.model_visualize_video or None),
     )
     try:
+        request_body = _gateway_execute_body(
+            media_type="image-to-video",
+            payload=payload,
+            model=selected_model,
+            dry_run=body.dry_run,
+        )
+        # Temporary diagnostics for troubleshooting missing provider requests.
+        print(f"[video_history.generate] gateway execute body: {json.dumps(request_body, ensure_ascii=False)}")
         response = gateway.execute_fal(
             media_type="image-to-video",
             payload=payload,
@@ -470,6 +496,7 @@ def generate_video(
             "model_used": model_used,
             "duration_used": body.duration,
             "image_source_used": resolved_image_url,
+            "request_body": request_body,
         },
         "credits": {
             "cost": credits_cost,
@@ -575,6 +602,13 @@ def continue_video(
         explicit_model=(body.model or profile.model_visualize_video or None),
     )
     try:
+        request_body = _gateway_execute_body(
+            media_type="image-to-video",
+            payload=payload,
+            model=selected_model,
+            dry_run=body.dry_run,
+        )
+        print(f"[video_history.continue] gateway execute body: {json.dumps(request_body, ensure_ascii=False)}")
         response = gateway.execute_fal(
             media_type="image-to-video",
             payload=payload,
@@ -638,6 +672,7 @@ def continue_video(
             "model_used": model_used,
             "duration_used": body.duration or source.duration,
             "image_source_used": resolved_image_url,
+            "request_body": request_body,
         },
         "credits": {
             "cost": credits_cost,

@@ -191,6 +191,61 @@ def _extract_video_path(result: dict) -> Optional[str]:
     return None
 
 
+def _first_non_empty_string(*values: object) -> Optional[str]:
+    for value in values:
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _extract_gateway_response_fields(response: dict) -> tuple[Optional[str], Optional[str], Optional[str], dict]:
+    """
+    Parse multiple known gateway response shapes and return:
+    (job_id, job_status, error_message, result_dict)
+    """
+    if not isinstance(response, dict):
+        return None, None, "Gateway response is not a JSON object.", {}
+
+    nested_data = response.get("data") if isinstance(response.get("data"), dict) else {}
+    nested_job = response.get("job") if isinstance(response.get("job"), dict) else {}
+    nested_result = response.get("result") if isinstance(response.get("result"), dict) else {}
+    nested_data_result = nested_data.get("result") if isinstance(nested_data.get("result"), dict) else {}
+
+    job_id = _first_non_empty_string(
+        response.get("job_id"),
+        response.get("task_id"),
+        response.get("request_id"),
+        nested_data.get("job_id"),
+        nested_data.get("task_id"),
+        nested_data.get("request_id"),
+        nested_job.get("id"),
+        nested_job.get("job_id"),
+        nested_result.get("job_id"),
+        nested_data_result.get("job_id"),
+    )
+    job_status = _first_non_empty_string(
+        response.get("job_status"),
+        response.get("status"),
+        nested_data.get("job_status"),
+        nested_data.get("status"),
+        nested_job.get("status"),
+    )
+    error_message = _first_non_empty_string(
+        response.get("error"),
+        response.get("detail"),
+        response.get("message"),
+        nested_data.get("error"),
+        nested_data.get("detail"),
+        nested_data.get("message"),
+        nested_result.get("error"),
+        nested_data_result.get("error"),
+    )
+
+    # Prefer explicit result payload, then data.result, then whole response.
+    result_dict = nested_result or nested_data_result or response
+    return job_id, job_status, error_message, result_dict if isinstance(result_dict, dict) else {}
+
+
 def _normalize_video_aspect_ratio(aspect_ratio: Optional[str]) -> str:
     """
     Normalize UI/project aspect ratios to Fal-supported values:
@@ -443,8 +498,17 @@ def generate_video(
     except GatewayClientError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
-    gateway_job_id = response.get("job_id")
-    job_status = response.get("job_status") or ("completed" if body.dry_run else "processing")
+    gateway_job_id, parsed_job_status, gateway_error, gateway_result = _extract_gateway_response_fields(response)
+    job_status = parsed_job_status or ("completed" if body.dry_run else "processing")
+    direct_video_path = _extract_video_path(gateway_result)
+    if not gateway_job_id and not direct_video_path:
+        detail = gateway_error or "Gateway did not return a job identifier."
+        raise HTTPException(
+            status_code=502,
+            detail=f"{detail} model={selected_model or 'default'} keys={sorted(response.keys())}",
+        )
+    if gateway_error and str(job_status).strip().lower() in {"failed", "error", "cancelled"}:
+        raise HTTPException(status_code=502, detail=gateway_error)
     estimate = response.get("estimate")
     routing = response.get("routing") if isinstance(response.get("routing"), dict) else {}
     model_used = selected_model or routing.get("model")
@@ -452,7 +516,7 @@ def generate_video(
     row = MoodBoardVideoHistory(
         tram_line_id=uuid.UUID(body.tram_line_id),
         user_id=user_id,
-        video_path="",
+        video_path=(direct_video_path or ""),
         task_id=gateway_job_id,
         generation_method="gateway_image-to-video",
         prompt=prompt,
@@ -618,8 +682,17 @@ def continue_video(
     except GatewayClientError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
-    gateway_job_id = response.get("job_id")
-    job_status = response.get("job_status") or ("completed" if body.dry_run else "processing")
+    gateway_job_id, parsed_job_status, gateway_error, gateway_result = _extract_gateway_response_fields(response)
+    job_status = parsed_job_status or ("completed" if body.dry_run else "processing")
+    direct_video_path = _extract_video_path(gateway_result)
+    if not gateway_job_id and not direct_video_path:
+        detail = gateway_error or "Gateway did not return a job identifier."
+        raise HTTPException(
+            status_code=502,
+            detail=f"{detail} model={selected_model or 'default'} keys={sorted(response.keys())}",
+        )
+    if gateway_error and str(job_status).strip().lower() in {"failed", "error", "cancelled"}:
+        raise HTTPException(status_code=502, detail=gateway_error)
     estimate = response.get("estimate")
     routing = response.get("routing") if isinstance(response.get("routing"), dict) else {}
     model_used = selected_model or routing.get("model")
@@ -627,7 +700,7 @@ def continue_video(
     row = MoodBoardVideoHistory(
         tram_line_id=source.tram_line_id,
         user_id=user_id,
-        video_path="",
+        video_path=(direct_video_path or ""),
         task_id=gateway_job_id,
         generation_method="gateway_image-to-video",
         prompt=prompt,

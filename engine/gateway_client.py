@@ -197,7 +197,7 @@ class GatewayClient:
 
         return [
             {
-                "id": "fal-ai/minimax-hailuo-02/image-to-video",
+                "id": "fal-ai/minimax/hailuo-02/standard/image-to-video",
                 "name": "MiniMax Hailuo-02",
                 "provider": "fal",
                 "media_type_support": ["image-to-video"],

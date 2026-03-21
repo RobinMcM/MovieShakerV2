@@ -491,7 +491,7 @@ def _seeded_models() -> list[dict[str, Any]]:
         },
         # Visualize video
         {
-            "id": "fal-ai/minimax-hailuo-02/image-to-video",
+            "id": "fal-ai/minimax/hailuo-02/standard/image-to-video",
             "name": "MiniMax Hailuo-02",
             "provider": "fal",
             "purpose": PURPOSE_VISUALIZE_VIDEO,
@@ -504,7 +504,7 @@ def _seeded_models() -> list[dict[str, Any]]:
             "speed_tier": "medium",
             "quality_tier": "high",
             "docs_url": "https://fal.ai/models",
-            "generation_options": _visualize_generation_options("fal-ai/minimax-hailuo-02/image-to-video"),
+            "generation_options": _visualize_generation_options("fal-ai/minimax/hailuo-02/standard/image-to-video"),
         },
         {
             "id": "fal-ai/veo3/image-to-video",
@@ -737,7 +737,7 @@ def _merge_gateway_models(
             "fal-ai/kling-video/v2.5/turbo-pro/image-to-video",
             "fal-ai/kling-video/v3/pro/image-to-video",
             "xai/grok-imagine-video/image-to-video",
-            "fal-ai/minimax-hailuo-02/image-to-video",
+            "fal-ai/minimax/hailuo-02/standard/image-to-video",
         }
         rows = [row for row in rows if str(row.get("id") or "").strip() in allowlist]
     rows.sort(key=lambda m: (0 if m.get("default_for_media_type") else 1, str(m.get("name") or m.get("id") or "")))

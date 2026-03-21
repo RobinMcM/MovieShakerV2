@@ -220,6 +220,15 @@ def _extract_video_path(result: object) -> Optional[str]:
             files = node.get("files")
             if isinstance(files, list):
                 for item in files:
+                    # Fal-style payloads often return [{"url": "...", "content_type": "video/mp4"}].
+                    # Accept those even when URL path does not include a video-like token.
+                    if isinstance(item, dict):
+                        file_url = item.get("url") or item.get("file_url") or item.get("download_url")
+                        content_type = str(item.get("content_type") or item.get("mime_type") or "").lower()
+                        if isinstance(file_url, str):
+                            candidate = file_url.strip()
+                            if looks_like_any_url(candidate) and ("video" in content_type or looks_like_video_url(candidate)):
+                                return candidate
                     found = walk(item)
                     if found:
                         return found

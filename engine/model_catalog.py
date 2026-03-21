@@ -664,6 +664,7 @@ def _merge_gateway_models(
     purpose: str,
 ) -> list[dict[str, Any]]:
     merged = {str(item.get("id")): _ensure_defaults(item, purpose) for item in catalog_models if str(item.get("id") or "").strip()}
+    gateway_ids = {str(item.get("id") or "").strip() for item in gateway_models if str(item.get("id") or "").strip()}
 
     for model in gateway_models:
         model_id = str(model.get("id") or "").strip()
@@ -699,7 +700,10 @@ def _merge_gateway_models(
         merged[model_id] = existing
 
     rows = list(merged.values())
-    if purpose == PURPOSE_OBJECT_IMAGE:
+    if purpose == PURPOSE_OBJECT_IMAGE and gateway_ids:
+        # When gateway media models are available, treat gateway as source-of-truth.
+        rows = [row for row in rows if str(row.get("id") or "").strip() in gateway_ids]
+    elif purpose == PURPOSE_OBJECT_IMAGE:
         allowlist = {
             "fal-ai/flux/schnell",
             "fal-ai/flux/dev",
@@ -721,7 +725,10 @@ def _merge_gateway_models(
             "fal-ai/sana",
         }
         rows = [row for row in rows if str(row.get("id") or "").strip() in allowlist]
-    if purpose == PURPOSE_VISUALIZE_VIDEO:
+    if purpose == PURPOSE_VISUALIZE_VIDEO and gateway_ids:
+        # When gateway media models are available, treat gateway as source-of-truth.
+        rows = [row for row in rows if str(row.get("id") or "").strip() in gateway_ids]
+    elif purpose == PURPOSE_VISUALIZE_VIDEO:
         allowlist = {
             "fal-ai/veo3/image-to-video",
             "fal-ai/veo3.1/image-to-video",

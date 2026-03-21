@@ -86,9 +86,9 @@ def _visualize_generation_options(model_id: str) -> list[dict[str, Any]]:
                 "key": "duration",
                 "label": "Duration",
                 "type": "enum",
-                "default": "5",
-                "choices": ["5", "10"],
-                "hint": "Hailuo supports 5s or 10s on this gateway route.",
+                "default": "6",
+                "choices": ["6", "10"],
+                "hint": "Hailuo supports 6s or 10s on this gateway route.",
             },
             {
                 "key": "resolution",

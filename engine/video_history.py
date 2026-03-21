@@ -374,7 +374,7 @@ def _normalize_payload_for_model(
     Model families with distinct contracts are normalized here:
     - Veo: duration "4s|6s|8s", aspect_ratio 16:9|9:16, plus
       resolution/generate_audio/safety_tolerance.
-    - MiniMax/Hailuo: duration "5|10", resolution/prompt_optimizer.
+    - MiniMax/Hailuo: duration "6|10", resolution/prompt_optimizer.
     - Wan: duration "5|10|15", resolution/enable_prompt_rewriting.
     - Kling: duration "5|10", aspect_ratio + cfg_scale.
     """
@@ -428,10 +428,10 @@ def _normalize_payload_for_model(
             allowed_keys={"duration", "aspect_ratio", "resolution", "generate_audio", "safety_tolerance", "negative_prompt", "auto_fix", "seed"},
         )
 
-    # MiniMax/Hailuo family: duration enum as strings (5/10), no aspect_ratio field.
+    # MiniMax/Hailuo family: duration enum as strings (6/10), no aspect_ratio field.
     if "minimax" in model_key or "hailuo" in model_key:
         if duration_int is not None:
-            normalized["duration"] = "10" if duration_int >= 8 else "5"
+            normalized["duration"] = "10" if duration_int >= 10 else "6"
         normalized["resolution"] = "768P"
         normalized["prompt_optimizer"] = True
         return _apply_requested_overrides(

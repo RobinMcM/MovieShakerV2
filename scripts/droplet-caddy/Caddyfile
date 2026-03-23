@@ -13,3 +13,19 @@ api.movieshaker.com {
         reverse_proxy 127.0.0.1:8000
     }
 }
+
+# auth.rapidmvp.io -> http://127.0.0.1:8000 (auth endpoints)
+# HTTPS certificate is obtained and renewed automatically by Caddy (Let's Encrypt).
+auth.rapidmvp.io {
+    @auth path /auth /auth/*
+    handle @auth {
+        reverse_proxy 127.0.0.1:8000
+    }
+
+    @health path /health
+    handle @health {
+        reverse_proxy 127.0.0.1:8000
+    }
+
+    respond 404
+}

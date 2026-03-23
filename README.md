@@ -115,6 +115,7 @@ Copy `.env.example` to `.env` at repo root, then set values for your environment
 ### Frontend variables (`web/.env.local`)
 
 - `NEXT_PUBLIC_API_URL` (example: `http://localhost:8000`)
+- `NEXT_PUBLIC_AUTH_API_URL` (optional override for auth routes; for MovieShaker Option 1 keep unset or set to same value as `NEXT_PUBLIC_API_URL`)
 - `NEXT_PUBLIC_WEBSITE_DOMAIN` (example: `http://localhost:3000`)
 
 ## Shared auth standard (RapidMVP apps)
@@ -131,6 +132,8 @@ Canonical identity/auth domain:
 - `auth.rapidmvp.io`
 
 Use redirect-based SSO for cross-app authentication. Do not attempt to share a single cookie across different top-level domains. Each app must create and own a first-party local session after successful callback validation.
+
+For MovieShaker Option 1 deployment, keep auth requests first-party by proxying `https://api.movieshaker.com/auth/*` to `https://auth.rapidmvp.io/auth/*` at Caddy. Keep CRUD routes served directly by MovieShaker engine on `api.movieshaker.com`.
 
 The full deployment guardrails, callback allowlist rules, Resend requirements, and cutover checklist are defined in:
 

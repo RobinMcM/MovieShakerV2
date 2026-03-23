@@ -1,7 +1,15 @@
 # Caddy reverse proxy for MovieShaker API
-# api.movieshaker.com -> http://127.0.0.1:8000
+# api.movieshaker.com -> http://127.0.0.1:8000 (CRUD)
+# api.movieshaker.com/auth/* -> https://auth.rapidmvp.io/auth/* (central auth)
 # HTTPS certificate is obtained and renewed automatically by Caddy (Let's Encrypt).
 
 api.movieshaker.com {
-    reverse_proxy 127.0.0.1:8000
+    @auth path /auth /auth/*
+    handle @auth {
+        reverse_proxy https://auth.rapidmvp.io
+    }
+
+    handle {
+        reverse_proxy 127.0.0.1:8000
+    }
 }

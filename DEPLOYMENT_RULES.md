@@ -29,6 +29,13 @@ The current test environment uses the following fixed service split:
 
 No migration path is required for this test setup. New integrations should match this mapping directly unless explicitly changed.
 
+For MovieShaker specifically, client auth requests are kept first-party via API-domain proxying:
+
+- Public auth URL used by MovieShaker web client: `https://api.movieshaker.com/auth/*`
+- Reverse proxy behavior: `api.movieshaker.com/auth/*` -> `https://auth.rapidmvp.io/auth/*`
+
+This keeps MovieShaker session and CRUD behavior stable while centralizing the auth service.
+
 ## 3) User Identity and Profile Ownership
 
 - Authentication identity is stored in SuperTokens (global `user_id`).
@@ -70,6 +77,7 @@ Required guardrails:
 
 - `AUTH_BASE_URL=https://auth.rapidmvp.io`
 - `NEXT_PUBLIC_AUTH_BASE_URL=https://auth.rapidmvp.io` (for web apps)
+- `NEXT_PUBLIC_AUTH_API_URL` (optional; for MovieShaker Option 1 keep this unset or set to `https://api.movieshaker.com` so auth calls stay first-party)
 - `APP_BASE_URL=<this app public origin>`
 - `AUTH_CALLBACK_URL=<this app callback endpoint>`
 - `INTERNAL_API_KEY=<shared secret between backend and internal email sender>`

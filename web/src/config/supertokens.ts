@@ -2,13 +2,14 @@ import SuperTokens from "supertokens-auth-react";
 import EmailPassword from "supertokens-auth-react/recipe/emailpassword";
 import Session from "supertokens-auth-react/recipe/session";
 
-const apiDomain = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const crudApiDomain = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const authApiDomain = process.env.NEXT_PUBLIC_AUTH_API_URL || crudApiDomain;
 const websiteDomain = process.env.NEXT_PUBLIC_WEBSITE_DOMAIN || "http://localhost:3000";
 
 export const SuperTokensConfig = {
     appInfo: {
         appName: "MovieShaker",
-        apiDomain,
+        apiDomain: authApiDomain,
         websiteDomain,
         apiBasePath: "/auth",
         websiteBasePath: "/auth",
@@ -18,7 +19,8 @@ export const SuperTokensConfig = {
             return undefined;
         }
         try {
-            const res = await fetch(`${apiDomain}/profile/`, { credentials: "include" });
+            // Profile/role data stays on MovieShaker CRUD API even when auth endpoints are centralized.
+            const res = await fetch(`${crudApiDomain}/profile/`, { credentials: "include" });
             if (res.ok) {
                 const profile = await res.json();
                 if (profile?.role === "admin") {

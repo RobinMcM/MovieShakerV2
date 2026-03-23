@@ -117,6 +117,25 @@ Copy `.env.example` to `.env` at repo root, then set values for your environment
 - `NEXT_PUBLIC_API_URL` (example: `http://localhost:8000`)
 - `NEXT_PUBLIC_WEBSITE_DOMAIN` (example: `http://localhost:3000`)
 
+## Shared auth standard (RapidMVP apps)
+
+MovieShaker is the reference implementation for shared auth across:
+
+- `rapidmvp.io`
+- `afilminabox.com`
+- `reelinvesting.com`
+- `ooocreatives.com`
+
+Canonical identity/auth domain:
+
+- `auth.rapidmvp.io`
+
+Use redirect-based SSO for cross-app authentication. Do not attempt to share a single cookie across different top-level domains. Each app must create and own a first-party local session after successful callback validation.
+
+The full deployment guardrails, callback allowlist rules, Resend requirements, and cutover checklist are defined in:
+
+- `DEPLOYMENT_RULES.md`
+
 ## Testing
 
 Backend tests:
@@ -131,6 +150,7 @@ pytest engine/tests -q
 - Keep `API_BASE_URL` and `WEBSITE_DOMAIN` set explicitly in production.
 - CORS defaults include key production domains; localhost dev origins are only included outside production unless explicitly added via `CORS_ORIGINS`.
 - SuperTokens dashboard recipe is disabled in the backend service.
+- Resend is required for auth email delivery in shared-auth deployments (`RESEND_API_KEY`, `RESEND_FROM`).
 - For auth refresh issues, validate preflight:
 
 ```bash
@@ -145,6 +165,10 @@ curl -i -X OPTIONS "https://api.movieshaker.com/auth/session/refresh" \
 - **CORS/session refresh failures**:
   - verify `API_BASE_URL`, `WEBSITE_DOMAIN`, and `CORS_ORIGINS`
   - redeploy/restart engine after env changes
+- **Cross-app SSO rollout issues**:
+  - verify `AUTH_BASE_URL` / `NEXT_PUBLIC_AUTH_BASE_URL` point to `https://auth.rapidmvp.io`
+  - verify callback and `return_to` URLs are allowlisted
+  - run the validation checklist in `DEPLOYMENT_RULES.md`
 - **Stuck git operations in Cursor**:
   - stop queued git jobs in the IDE terminal queue
   - retry commit/push

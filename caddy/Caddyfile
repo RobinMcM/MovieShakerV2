@@ -16,6 +16,12 @@ api.movieshaker.com {
 # auth.rapidmvp.io -> engine:8000 (auth endpoints)
 # HTTPS certificate obtained and renewed automatically by Caddy (Let's Encrypt).
 auth.rapidmvp.io {
+    # SuperTokens Core endpoint for apps that use SUPERTOKENS_CONNECTION_URI.
+    # This must answer /core/apiversion with HTTP 200.
+    handle_path /core/* {
+        reverse_proxy supertokens:3567
+    }
+
     @auth path /auth /auth/*
     handle @auth {
         reverse_proxy engine:8000

@@ -1,7 +1,8 @@
 services:
   # 1. The Brain: SuperTokens Authentication Engine
   supertokens:
-    image: supertokens/supertokens-postgresql:9.1.1
+    # Keep Core current for cross-app compatibility (for example Node SDKs that require newer CDI versions).
+    image: ${SUPERTOKENS_IMAGE:-supertokens/supertokens-postgresql:latest}
     depends_on:
       db:
         condition: service_healthy

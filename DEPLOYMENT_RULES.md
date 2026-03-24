@@ -73,6 +73,11 @@ Required guardrails:
 - `RESEND_API_KEY=<resend-api-key>`
 - `RESEND_FROM=<verified-from-address>`
 
+Core compatibility requirement:
+
+- `SUPERTOKENS_CONNECTION_URI` must resolve to a SuperTokens Core endpoint where `/apiversion` returns HTTP `200`.
+- The returned CDI versions must satisfy the highest SDK requirement across apps (for example `supertokens-node@24.x` requires CDI `5.4` or newer).
+
 ### Each client app (RapidMVP, FilmInABox, ReelInvesting, OOOCreatives)
 
 - `AUTH_BASE_URL=https://auth.rapidmvp.io`

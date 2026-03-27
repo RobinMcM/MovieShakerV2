@@ -99,6 +99,14 @@ def on_startup():
         settings.website_domain,
     )
     logger.info("CORS allowed origins (%d): %s", len(_CORS_ORIGINS), _CORS_ORIGINS)
+    logger.info(
+        "Gateway target=%s tls_verify=%s timeout_total=%ss connect_timeout=%ss read_timeout=%ss",
+        settings.gateway_base_url,
+        settings.gateway_verify_tls,
+        settings.gateway_timeout_seconds,
+        settings.gateway_connect_timeout_seconds,
+        settings.gateway_read_timeout_seconds,
+    )
 
 # --- Middleware ---
 app.add_middleware(get_middleware())

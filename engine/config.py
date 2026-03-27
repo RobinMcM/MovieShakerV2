@@ -19,6 +19,13 @@ def _split_csv_env(name: str) -> list[str]:
     return [item.strip().rstrip("/") for item in value.split(",") if item.strip()]
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _dedupe(values: list[str]) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
@@ -41,6 +48,8 @@ class Settings:
     gateway_base_url: str
     gateway_internal_api_key: str
     gateway_timeout_seconds: float
+    gateway_connect_timeout_seconds: float
+    gateway_read_timeout_seconds: float
     gateway_verify_tls: bool
     media_handler_base_url: str
     media_handler_internal_api_key: str
@@ -85,8 +94,14 @@ def load_settings() -> Settings:
         cors_origins = _dedupe(default_production_origins + env_origins + [website_domain])
     else:
         cors_origins = _dedupe(dev_origins + default_production_origins + env_origins + [website_domain])
-    gateway_verify_tls = os.getenv("GATEWAY_VERIFY_TLS", "false").strip().lower() in {"1", "true", "yes"}
-    media_handler_verify_tls = os.getenv("MEDIA_HANDLER_VERIFY_TLS", "false").strip().lower() in {"1", "true", "yes"}
+    gateway_verify_tls = _env_bool(
+        "GATEWAY_VERIFY_TLS",
+        default=(app_env in {"prod", "production"}),
+    )
+    media_handler_verify_tls = _env_bool(
+        "MEDIA_HANDLER_VERIFY_TLS",
+        default=(app_env in {"prod", "production"}),
+    )
     sql_echo = os.getenv("SQL_ECHO", "false").strip().lower() in {"1", "true", "yes"}
 
     return Settings(
@@ -97,9 +112,11 @@ def load_settings() -> Settings:
         website_domain=website_domain,
         supertokens_connection_uri=os.getenv("SUPERTOKENS_CONNECTION_URI", "http://supertokens:3567"),
         cors_origins=cors_origins,
-        gateway_base_url=os.getenv("GATEWAY_BASE_URL", "https://134.209.184.66").rstrip("/"),
+        gateway_base_url=os.getenv("GATEWAY_BASE_URL", "https://models.rapidmvp.io").rstrip("/"),
         gateway_internal_api_key=os.getenv("GATEWAY_INTERNAL_API_KEY", "").strip(),
         gateway_timeout_seconds=float(os.getenv("GATEWAY_TIMEOUT_SECONDS", "45")),
+        gateway_connect_timeout_seconds=float(os.getenv("GATEWAY_CONNECT_TIMEOUT_SECONDS", "8")),
+        gateway_read_timeout_seconds=float(os.getenv("GATEWAY_READ_TIMEOUT_SECONDS", "45")),
         gateway_verify_tls=gateway_verify_tls,
         media_handler_base_url=os.getenv("MEDIA_HANDLER_BASE_URL", "").rstrip("/"),
         media_handler_internal_api_key=os.getenv("MEDIA_HANDLER_INTERNAL_API_KEY", "").strip(),

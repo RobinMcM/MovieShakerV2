@@ -122,6 +122,8 @@ def _gateway_client() -> GatewayClient:
         base_url=settings.gateway_base_url,
         api_key=settings.gateway_internal_api_key,
         timeout_seconds=settings.gateway_timeout_seconds,
+        connect_timeout_seconds=settings.gateway_connect_timeout_seconds,
+        read_timeout_seconds=settings.gateway_read_timeout_seconds,
         verify_tls=settings.gateway_verify_tls,
     )
 
@@ -353,6 +355,8 @@ def _normalize_gateway_job_status(raw_status: Optional[str]) -> str:
     value = (raw_status or "").strip().lower()
     if not value:
         return "processing"
+    if value in {"queued", "in_queue"}:
+        return "queued"
     if value in {"completed", "complete", "succeeded", "success", "done", "finished"}:
         return "completed"
     if value in {"failed", "error", "cancelled", "canceled", "rejected"}:

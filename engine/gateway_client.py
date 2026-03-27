@@ -6,11 +6,31 @@ class GatewayClientError(Exception):
 
 
 class GatewayClient:
-    def __init__(self, base_url: str, api_key: str, timeout_seconds: float = 45, verify_tls: bool = False):
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        timeout_seconds: float = 45,
+        verify_tls: bool = False,
+        connect_timeout_seconds: float | None = None,
+        read_timeout_seconds: float | None = None,
+        max_retries: int = 2,
+    ):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.timeout_seconds = timeout_seconds
         self.verify_tls = verify_tls
+        self.connect_timeout_seconds = (
+            connect_timeout_seconds
+            if connect_timeout_seconds is not None
+            else min(10.0, max(1.0, timeout_seconds / 3.0))
+        )
+        self.read_timeout_seconds = (
+            read_timeout_seconds
+            if read_timeout_seconds is not None
+            else max(5.0, timeout_seconds)
+        )
+        self.max_retries = max(0, max_retries)
 
     def _headers(self) -> dict[str, str]:
         if not self.api_key:
@@ -20,29 +40,84 @@ class GatewayClient:
             "X-Internal-API-Key": self.api_key,
         }
 
+    def _timeout(self) -> httpx.Timeout:
+        return httpx.Timeout(
+            timeout=self.read_timeout_seconds,
+            connect=self.connect_timeout_seconds,
+            read=self.read_timeout_seconds,
+            write=self.read_timeout_seconds,
+            pool=self.connect_timeout_seconds,
+        )
+
+    def _request_json(
+        self,
+        *,
+        method: str,
+        path: str,
+        json_body: dict | None = None,
+        require_auth: bool = True,
+        retry_on_5xx: bool = True,
+    ) -> tuple[int, dict | None, str]:
+        url = f"{self.base_url}{path}"
+        headers = self._headers() if require_auth else None
+        attempts = self.max_retries + 1
+        last_error = "Unknown gateway error"
+        for attempt in range(1, attempts + 1):
+            try:
+                with httpx.Client(timeout=self._timeout(), verify=self.verify_tls) as client:
+                    response = client.request(method, url, headers=headers, json=json_body)
+            except httpx.RequestError as exc:
+                last_error = f"{exc.__class__.__name__}: {exc}"
+                if attempt < attempts:
+                    continue
+                raise GatewayClientError(
+                    f"Gateway request failed ({method} {path}) after {attempts} attempts: {last_error}"
+                )
+
+            response_text = response.text or ""
+            response_json = None
+            if response_text:
+                try:
+                    response_json = response.json()
+                except Exception:
+                    response_json = None
+
+            if response.status_code >= 500 and retry_on_5xx and attempt < attempts:
+                continue
+
+            detail = response_text
+            if isinstance(response_json, dict):
+                detail = (
+                    response_json.get("message")
+                    or response_json.get("detail")
+                    or response_json.get("error")
+                    or response_text
+                )
+            return response.status_code, response_json, detail
+
+        raise GatewayClientError(f"Gateway request failed ({method} {path}): {last_error}")
+
     def health(self) -> bool:
         try:
-            with httpx.Client(timeout=self.timeout_seconds, verify=self.verify_tls) as client:
-                response = client.get(f"{self.base_url}/health")
-                if response.status_code != 200:
-                    return False
-                body = response.json()
-                return body.get("status") == "healthy"
+            status_code, body, _ = self._request_json(
+                method="GET",
+                path="/health",
+                require_auth=False,
+                retry_on_5xx=False,
+            )
+            if status_code != 200 or not isinstance(body, dict):
+                return False
+            return body.get("status") == "healthy"
         except Exception:
             return False
 
     def get_models(self) -> list[dict]:
         try:
-            with httpx.Client(timeout=self.timeout_seconds, verify=self.verify_tls) as client:
-                response = client.get(
-                    f"{self.base_url}/api/models",
-                    headers=self._headers(),
-                )
-                if response.status_code != 200:
-                    return []
-                data = response.json()
-                models = data.get("models")
-                return models if isinstance(models, list) else []
+            status_code, data, _ = self._request_json(method="GET", path="/api/models")
+            if status_code != 200 or not isinstance(data, dict):
+                return []
+            models = data.get("models")
+            return models if isinstance(models, list) else []
         except Exception:
             return []
 
@@ -53,30 +128,25 @@ class GatewayClient:
         Fallback: filter generic /api/models response for known FAL-style ids.
         """
         try:
-            with httpx.Client(timeout=self.timeout_seconds, verify=self.verify_tls) as client:
-                response = client.get(
-                    f"{self.base_url}/api/media/models",
-                    headers=self._headers(),
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    models = data.get("models")
-                    if isinstance(models, list):
-                        compact = []
-                        for model in models:
-                            model_id = model.get("id")
-                            if not isinstance(model_id, str) or not model_id.strip():
-                                continue
-                            compact.append(
-                                {
-                                    "id": model_id.strip(),
-                                    "name": model.get("name") or model_id.strip(),
-                                    "provider": model.get("provider") or "fal",
-                                    "media_type_support": model.get("media_type_support") or [],
-                                    "default_for_media_type": model.get("default_for_media_type"),
-                                }
-                            )
-                        return compact
+            status_code, data, _ = self._request_json(method="GET", path="/api/media/models")
+            if status_code == 200 and isinstance(data, dict):
+                models = data.get("models")
+                if isinstance(models, list):
+                    compact = []
+                    for model in models:
+                        model_id = model.get("id")
+                        if not isinstance(model_id, str) or not model_id.strip():
+                            continue
+                        compact.append(
+                            {
+                                "id": model_id.strip(),
+                                "name": model.get("name") or model_id.strip(),
+                                "provider": model.get("provider") or "fal",
+                                "media_type_support": model.get("media_type_support") or [],
+                                "default_for_media_type": model.get("default_for_media_type"),
+                            }
+                        )
+                    return compact
         except Exception:
             pass
 
@@ -149,30 +219,28 @@ class GatewayClient:
         Fallback: filter generic /api/models response for known video-capable ids.
         """
         try:
-            with httpx.Client(timeout=self.timeout_seconds, verify=self.verify_tls) as client:
-                response = client.get(
-                    f"{self.base_url}/api/media/models?media_type=video-generation",
-                    headers=self._headers(),
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    models = data.get("models")
-                    if isinstance(models, list):
-                        compact = []
-                        for model in models:
-                            model_id = model.get("id")
-                            if not isinstance(model_id, str) or not model_id.strip():
-                                continue
-                            compact.append(
-                                {
-                                    "id": model_id.strip(),
-                                    "name": model.get("name") or model_id.strip(),
-                                    "provider": model.get("provider") or "fal",
-                                    "media_type_support": model.get("media_type_support") or [],
-                                    "default_for_media_type": model.get("default_for_media_type"),
-                                }
-                            )
-                        return compact
+            status_code, data, _ = self._request_json(
+                method="GET",
+                path="/api/media/models?media_type=video-generation",
+            )
+            if status_code == 200 and isinstance(data, dict):
+                models = data.get("models")
+                if isinstance(models, list):
+                    compact = []
+                    for model in models:
+                        model_id = model.get("id")
+                        if not isinstance(model_id, str) or not model_id.strip():
+                            continue
+                        compact.append(
+                            {
+                                "id": model_id.strip(),
+                                "name": model.get("name") or model_id.strip(),
+                                "provider": model.get("provider") or "fal",
+                                "media_type_support": model.get("media_type_support") or [],
+                                "default_for_media_type": model.get("default_for_media_type"),
+                            }
+                        )
+                    return compact
         except Exception:
             pass
 
@@ -261,30 +329,28 @@ class GatewayClient:
         Fallback: filter generic /api/models response for known audio ids.
         """
         try:
-            with httpx.Client(timeout=self.timeout_seconds, verify=self.verify_tls) as client:
-                response = client.get(
-                    f"{self.base_url}/api/media/models?media_type=audio-generation",
-                    headers=self._headers(),
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    models = data.get("models")
-                    if isinstance(models, list):
-                        compact = []
-                        for model in models:
-                            model_id = model.get("id")
-                            if not isinstance(model_id, str) or not model_id.strip():
-                                continue
-                            compact.append(
-                                {
-                                    "id": model_id.strip(),
-                                    "name": model.get("name") or model_id.strip(),
-                                    "provider": model.get("provider") or "fal",
-                                    "media_type_support": model.get("media_type_support") or [],
-                                    "default_for_media_type": model.get("default_for_media_type"),
-                                }
-                            )
-                        return compact
+            status_code, data, _ = self._request_json(
+                method="GET",
+                path="/api/media/models?media_type=audio-generation",
+            )
+            if status_code == 200 and isinstance(data, dict):
+                models = data.get("models")
+                if isinstance(models, list):
+                    compact = []
+                    for model in models:
+                        model_id = model.get("id")
+                        if not isinstance(model_id, str) or not model_id.strip():
+                            continue
+                        compact.append(
+                            {
+                                "id": model_id.strip(),
+                                "name": model.get("name") or model_id.strip(),
+                                "provider": model.get("provider") or "fal",
+                                "media_type_support": model.get("media_type_support") or [],
+                                "default_for_media_type": model.get("default_for_media_type"),
+                            }
+                        )
+                    return compact
         except Exception:
             pass
 
@@ -333,23 +399,16 @@ class GatewayClient:
         if model:
             body["model"] = model
 
-        with httpx.Client(timeout=self.timeout_seconds, verify=self.verify_tls) as client:
-            response = client.post(
-                f"{self.base_url}/api/execute",
-                json=body,
-                headers=self._headers(),
-            )
-
-        if response.status_code >= 400:
-            detail = response.text
-            try:
-                body = response.json()
-                detail = body.get("message") or body.get("detail") or detail
-            except Exception:
-                pass
-            raise GatewayClientError(f"Gateway execute failed: {detail}")
-
-        return response.json()
+        status_code, response_json, detail = self._request_json(
+            method="POST",
+            path="/api/execute",
+            json_body=body,
+        )
+        if status_code >= 400:
+            raise GatewayClientError(f"Gateway execute failed ({status_code}): {detail}")
+        if not isinstance(response_json, dict):
+            raise GatewayClientError("Gateway execute failed: response is not valid JSON")
+        return response_json
 
     def execute_text(
         self,
@@ -376,37 +435,27 @@ class GatewayClient:
             },
             "dry_run": dry_run,
         }
-        with httpx.Client(timeout=self.timeout_seconds, verify=self.verify_tls) as client:
-            response = client.post(
-                f"{self.base_url}/api/execute",
-                json=body,
-                headers=self._headers(),
-            )
-        if response.status_code >= 400:
-            detail = response.text
-            try:
-                response_body = response.json()
-                detail = response_body.get("message") or response_body.get("detail") or detail
-            except Exception:
-                pass
-            raise GatewayClientError(f"Gateway text generation failed: {detail}")
-        return response.json()
+        status_code, response_json, detail = self._request_json(
+            method="POST",
+            path="/api/execute",
+            json_body=body,
+        )
+        if status_code >= 400:
+            raise GatewayClientError(f"Gateway text generation failed ({status_code}): {detail}")
+        if not isinstance(response_json, dict):
+            raise GatewayClientError("Gateway text generation failed: response is not valid JSON")
+        return response_json
 
     def get_status(self, job_id: str) -> dict:
-        with httpx.Client(timeout=self.timeout_seconds, verify=self.verify_tls) as client:
-            response = client.get(
-                f"{self.base_url}/api/status/{job_id}",
-                headers=self._headers(),
-            )
-        if response.status_code >= 400:
-            detail = response.text
-            try:
-                body = response.json()
-                detail = body.get("message") or body.get("detail") or detail
-            except Exception:
-                pass
-            raise GatewayClientError(f"Gateway status failed: {detail}")
-        return response.json()
+        status_code, response_json, detail = self._request_json(
+            method="GET",
+            path=f"/api/status/{job_id}",
+        )
+        if status_code >= 400:
+            raise GatewayClientError(f"Gateway status failed ({status_code}): {detail}")
+        if not isinstance(response_json, dict):
+            raise GatewayClientError("Gateway status failed: response is not valid JSON")
+        return response_json
 
     def get_result(self, job_id: str) -> dict:
         """
@@ -420,20 +469,11 @@ class GatewayClient:
             f"/api/status/{job_id}?result=true",
         )
         last_detail = "Unknown gateway result error"
-        with httpx.Client(timeout=self.timeout_seconds, verify=self.verify_tls) as client:
-            for endpoint in endpoints:
-                response = client.get(
-                    f"{self.base_url}{endpoint}",
-                    headers=self._headers(),
-                )
-                if response.status_code < 400:
-                    try:
-                        return response.json()
-                    except Exception:
-                        raise GatewayClientError("Gateway result response is not valid JSON")
-                try:
-                    body = response.json()
-                    last_detail = body.get("message") or body.get("detail") or response.text
-                except Exception:
-                    last_detail = response.text or last_detail
+        for endpoint in endpoints:
+            status_code, response_json, detail = self._request_json(method="GET", path=endpoint)
+            if status_code < 400:
+                if isinstance(response_json, dict):
+                    return response_json
+                raise GatewayClientError("Gateway result response is not valid JSON")
+            last_detail = detail or last_detail
         raise GatewayClientError(f"Gateway result failed: {last_detail}")

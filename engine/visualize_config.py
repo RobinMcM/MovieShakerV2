@@ -226,6 +226,8 @@ def get_config_status(
         base_url=settings.gateway_base_url,
         api_key=settings.gateway_internal_api_key,
         timeout_seconds=settings.gateway_timeout_seconds,
+        connect_timeout_seconds=settings.gateway_connect_timeout_seconds,
+        read_timeout_seconds=settings.gateway_read_timeout_seconds,
         verify_tls=settings.gateway_verify_tls,
     )
     connected = client.health() if settings.gateway_base_url else False

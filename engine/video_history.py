@@ -768,6 +768,8 @@ class ContinueVideoBody(BaseModel):
     duration: Optional[int] = None
     model: Optional[str] = None
     media_type: str = "image-to-video"
+    source_image_path: Optional[str] = None
+    source_image_data_url: Optional[str] = None
     model_options: Optional[dict[str, Any]] = None
     dry_run: bool = False
 
@@ -1070,14 +1072,19 @@ def continue_video(
         if existing_same:
             raise HTTPException(status_code=409, detail="Same-channel continuation already exists for this source video")
 
-    try:
-        frame = _media_handler_client().extract_last_frame(source_video_path)
-    except MediaHandlerClientError as exc:
-        raise HTTPException(status_code=502, detail=f"Frame extraction failed: {exc}")
-
-    source_image_storage_key, source_image_external_url = _to_storage_or_url(frame.get("image_url"))
-    source_image_data_url = frame.get("image_data_url")
-    continuation_source_path = source_image_storage_key or source_image_external_url
+    provided_source_path = (body.source_image_path or "").strip() or None
+    provided_source_data_url = (body.source_image_data_url or "").strip() or None
+    if provided_source_path or provided_source_data_url:
+        continuation_source_path = provided_source_path
+        source_image_data_url = provided_source_data_url
+    else:
+        try:
+            frame = _media_handler_client().extract_last_frame(source_video_path)
+        except MediaHandlerClientError as exc:
+            raise HTTPException(status_code=502, detail=f"Frame extraction failed: {exc}")
+        source_image_storage_key, source_image_external_url = _to_storage_or_url(frame.get("image_url"))
+        source_image_data_url = frame.get("image_data_url")
+        continuation_source_path = source_image_storage_key or source_image_external_url
     resolved_image_url = _resolve_image_url_for_generation(
         source_image_path=continuation_source_path,
         source_image_data_url=source_image_data_url,
@@ -1307,6 +1314,42 @@ def continue_video(
             "cost": credits_cost,
             "balance": balance,
         },
+    }
+
+
+@router.get("/{video_id}/last-frame")
+def get_last_frame(
+    video_id: str,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    row = _ensure_video_access(db, video_id, user_id)
+    source_video_path = (row.video_path or "").strip()
+    if not source_video_path:
+        raise HTTPException(status_code=400, detail="Source video has no playable path yet")
+
+    if not settings.media_handler_base_url:
+        raise HTTPException(status_code=503, detail="Media-handler base URL is not configured")
+    if not settings.media_handler_internal_api_key:
+        raise HTTPException(status_code=503, detail="Media-handler API key is not configured")
+
+    try:
+        frame = _media_handler_client().extract_last_frame(source_video_path)
+    except MediaHandlerClientError as exc:
+        raise HTTPException(status_code=502, detail=f"Frame extraction failed: {exc}")
+
+    image_url = (frame.get("image_url") or "").strip() or None
+    image_data_url = (frame.get("image_data_url") or "").strip() or None
+    if not image_url and not image_data_url:
+        raise HTTPException(status_code=502, detail="Media-handler did not return a usable frame")
+
+    return {
+        "success": True,
+        "video_id": video_id,
+        "source_video_path": source_video_path,
+        "image_url": image_url,
+        "image_data_url": image_data_url,
     }
 
 

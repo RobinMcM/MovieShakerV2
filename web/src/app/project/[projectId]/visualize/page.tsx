@@ -167,6 +167,11 @@ function VisualizeContent() {
   const [hasUserChosenSource, setHasUserChosenSource] = useState(false);
   const [selectedVideoModel, setSelectedVideoModel] = useState<string | null>(null);
   const [durationSeconds, setDurationSeconds] = useState(6);
+  const [focusedVideoId, setFocusedVideoId] = useState<string | null>(null);
+  const [focusedLastFrameUrl, setFocusedLastFrameUrl] = useState<string | null>(null);
+  const [focusedLastFrameDataUrl, setFocusedLastFrameDataUrl] = useState<string | null>(null);
+  const [isLoadingLastFrame, setIsLoadingLastFrame] = useState(false);
+  const [lastFrameError, setLastFrameError] = useState<string | null>(null);
   const [modelOptionValuesByModel, setModelOptionValuesByModel] = useState<
     Record<string, Record<string, unknown>>
   >({});
@@ -340,6 +345,53 @@ function VisualizeContent() {
     .map(Number)
     .sort((a, b) => a - b);
 
+  useEffect(() => {
+    setFocusedVideoId(null);
+    setFocusedLastFrameUrl(null);
+    setFocusedLastFrameDataUrl(null);
+    setLastFrameError(null);
+    setIsLoadingLastFrame(false);
+  }, [selectedTramLine]);
+
+  useEffect(() => {
+    if (!focusedVideoId) {
+      setFocusedLastFrameUrl(null);
+      setFocusedLastFrameDataUrl(null);
+      setLastFrameError(null);
+      setIsLoadingLastFrame(false);
+      return;
+    }
+    let cancelled = false;
+    const loadLastFrame = async () => {
+      setIsLoadingLastFrame(true);
+      setLastFrameError(null);
+      try {
+        const res = await api.get<{
+          success: boolean;
+          video_id: string;
+          image_url?: string | null;
+          image_data_url?: string | null;
+        }>(`api/video-history/${focusedVideoId}/last-frame`);
+        if (cancelled) return;
+        setFocusedLastFrameDataUrl(res.image_data_url || null);
+        setFocusedLastFrameUrl(resolveSourceImageUrl(res.image_url || null));
+      } catch (error) {
+        if (cancelled) return;
+        setFocusedLastFrameDataUrl(null);
+        setFocusedLastFrameUrl(null);
+        setLastFrameError(error instanceof Error ? error.message : "Could not extract last frame.");
+      } finally {
+        if (!cancelled) setIsLoadingLastFrame(false);
+      }
+    };
+    void loadLastFrame();
+    return () => {
+      cancelled = true;
+    };
+  }, [focusedVideoId]);
+
+  const focusedFramePreviewUrl = focusedLastFrameDataUrl || focusedLastFrameUrl;
+
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   const pollVideoUntilTerminal = async (videoId: string) => {
@@ -497,11 +549,20 @@ function VisualizeContent() {
       modelOptions: modelOptionsPayload,
     });
     try {
+      const shouldUseFocusedFrame = focusedVideoId === sourceVideoId && !!focusedFramePreviewUrl;
       await continueVideo(sourceVideoId, mode, selectedTramLine, {
         prompt,
         aspect_ratio: project?.aspect_ratio ?? null,
         duration: parseDurationFromOption(modelOptionsPayload.duration),
         model: selectedVideoModel,
+        source_image_path:
+          shouldUseFocusedFrame && focusedLastFrameUrl
+            ? normalizeSourceImagePath(focusedLastFrameUrl)
+            : null,
+        source_image_data_url:
+          shouldUseFocusedFrame && focusedLastFrameDataUrl
+            ? focusedLastFrameDataUrl
+            : null,
         model_options: modelOptionsPayload,
       });
       setToastMessage(mode === "same_channel" ? "Continuation started in same channel." : "Continuation started in a new channel.");
@@ -666,12 +727,37 @@ function VisualizeContent() {
                     </Button>
                   </div>
                 )}
-                <div className="relative aspect-video max-w-md rounded-md overflow-hidden bg-black">
-                  <img
-                    src={imageUrl}
-                    alt="Source for video"
-                    className="w-full h-full object-cover"
-                  />
+                <div className="grid gap-3 md:grid-cols-2 max-w-3xl">
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">Moodboard source</p>
+                    <div className="relative aspect-video rounded-md overflow-hidden bg-black">
+                      <img
+                        src={imageUrl}
+                        alt="Source for video"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">Focused video last frame</p>
+                    <div className="relative aspect-video rounded-md overflow-hidden bg-black border">
+                      {isLoadingLastFrame ? (
+                        <div className="w-full h-full flex items-center justify-center text-white/80">
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                        </div>
+                      ) : focusedFramePreviewUrl ? (
+                        <img
+                          src={focusedFramePreviewUrl}
+                          alt="Last frame from focused video"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-xs text-white/70 px-3 text-center">
+                          {lastFrameError || "Focus a completed video to preview its last frame."}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
                 <p className="text-sm text-muted-foreground">
                   Gateway generation supports prompt + optional moodboard source image.
@@ -907,6 +993,15 @@ function VisualizeContent() {
                                       onClick={() => setVideoToDelete({ id: video.id, path: video.video_path })}
                                     >
                                       <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                    <Button
+                                      variant={focusedVideoId === video.id ? "default" : "outline"}
+                                      size="sm"
+                                      className="h-7"
+                                      disabled={!video.video_path}
+                                      onClick={() => setFocusedVideoId(video.id)}
+                                    >
+                                      Focus
                                     </Button>
                                   </div>
                                 </div>

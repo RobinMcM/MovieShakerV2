@@ -169,6 +169,8 @@ export function useVisualize(projectId: string | null) {
         aspect_ratio?: string | null;
         duration?: number | null;
         model?: string | null;
+        source_image_path?: string | null;
+        source_image_data_url?: string | null;
         model_options?: Record<string, unknown> | null;
       }
     ) => {
@@ -179,6 +181,8 @@ export function useVisualize(projectId: string | null) {
         aspect_ratio: options?.aspect_ratio || null,
         duration: options?.duration ?? null,
         model: options?.model || null,
+        source_image_path: options?.source_image_path || null,
+        source_image_data_url: options?.source_image_data_url || null,
         model_options: options?.model_options || null,
       });
       loadVideoHistory(tramLineId);

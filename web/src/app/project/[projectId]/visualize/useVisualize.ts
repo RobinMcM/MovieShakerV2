@@ -174,7 +174,14 @@ export function useVisualize(projectId: string | null) {
         model_options?: Record<string, unknown> | null;
       }
     ) => {
-      await api.post("api/video-history/continue", {
+      const response = await api.post<{
+        success: boolean;
+        video: VideoHistoryItem;
+        gateway?: {
+          job_id?: string | null;
+          job_status?: string | null;
+        };
+      }>("api/video-history/continue", {
         source_video_id: sourceVideoId,
         mode,
         prompt: options?.prompt?.trim() || null,
@@ -186,6 +193,7 @@ export function useVisualize(projectId: string | null) {
         model_options: options?.model_options || null,
       });
       loadVideoHistory(tramLineId);
+      return response;
     },
     [loadVideoHistory]
   );

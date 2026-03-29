@@ -550,7 +550,7 @@ function VisualizeContent() {
     });
     try {
       const shouldUseFocusedFrame = focusedVideoId === sourceVideoId && !!focusedFramePreviewUrl;
-      await continueVideo(sourceVideoId, mode, selectedTramLine, {
+      const res = await continueVideo(sourceVideoId, mode, selectedTramLine, {
         prompt,
         aspect_ratio: project?.aspect_ratio ?? null,
         duration: parseDurationFromOption(modelOptionsPayload.duration),
@@ -565,9 +565,22 @@ function VisualizeContent() {
             : null,
         model_options: modelOptionsPayload,
       });
-      setToastMessage(mode === "same_channel" ? "Continuation started in same channel." : "Continuation started in a new channel.");
+      const createdVideoId = res?.video?.id;
+      const createdJobStatus = res?.gateway?.job_status ?? null;
+      if (createdJobStatus === "completed") {
+        setToastMessage("Continuation completed.");
+      } else if (createdVideoId) {
+        setToastMessage(mode === "same_channel" ? "Continuation started in same channel." : "Continuation started in a new channel.");
+        void pollVideoUntilTerminal(createdVideoId);
+      } else {
+        setToastMessage("Continuation submitted.");
+      }
       await loadVideoHistory(selectedTramLine);
-      console.log("[visualize.continue] history reloaded", { selectedTramLine });
+      console.log("[visualize.continue] history reloaded", {
+        selectedTramLine,
+        createdVideoId: createdVideoId ?? null,
+        createdJobStatus,
+      });
     } catch (e) {
       console.error("[visualize.continue] failed", {
         sourceVideoId,

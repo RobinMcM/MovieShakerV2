@@ -10,23 +10,23 @@ import {
 } from "@react-email/components";
 import * as React from "react";
 
-export interface PasswordResetConfirmationEmailProps {
+export interface WelcomeEmailProps {
   email?: string;
   heading?: string;
   bodyText?: string;
 }
 
-export function PasswordResetConfirmationEmail({
+export function WelcomeEmail({
   email,
   heading,
   bodyText,
-}: PasswordResetConfirmationEmailProps) {
-  const resolvedHeading = heading || "Password reset confirmed";
+}: WelcomeEmailProps) {
+  const resolvedHeading = heading || "Welcome to MovieShaker";
   const resolvedBody =
     bodyText ||
     (email
-      ? `The password for ${email} was successfully reset.`
-      : "Your MovieShaker password was successfully reset.");
+      ? `Welcome to MovieShaker, ${email}. Your account is ready to use.`
+      : "Welcome to MovieShaker. Your account is ready to use.");
   return (
     <Html>
       <Head />
@@ -36,7 +36,7 @@ export function PasswordResetConfirmationEmail({
           <Heading style={h1}>{resolvedHeading}</Heading>
           <Text style={text}>{resolvedBody}</Text>
           <Text style={text}>
-            If this was not you, please contact support immediately.
+            Start creating projects and generating production assets right away.
           </Text>
           <Hr style={hr} />
           <Text style={footer}>MovieShaker</Text>
@@ -88,4 +88,4 @@ const footer = {
   margin: "0",
 };
 
-export default PasswordResetConfirmationEmail;
+export default WelcomeEmail;

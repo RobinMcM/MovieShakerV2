@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from supertokens_python import init, InputAppInfo, SupertokensConfig, get_all_cors_headers
 from supertokens_python.recipe import emailpassword, session
+from supertokens_python.types import GeneralErrorResponse
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
 from supertokens_python.framework.fastapi import get_middleware
@@ -10,13 +11,17 @@ from starlette.middleware.cors import CORSMiddleware
 import uvicorn
 import logging
 from typing import Any, Optional
+from datetime import datetime
+import re
+from sqlmodel import Session as SQLSession
 
 logger = logging.getLogger(__name__)
 
 # Local imports
 from config import load_settings
-from db import init_db
+from db import init_db, engine
 from email_client import send_email_via_web
+from models import AuthConfig
 from projects import router as projects_router
 from profile import router as profile_router, verify_router
 from scripts import router as scripts_router
@@ -55,12 +60,63 @@ def _extract_email_from_form_fields(form_fields: Any) -> Optional[str]:
     return None
 
 
+def _extract_form_field(form_fields: Any, target_id: str) -> Optional[str]:
+    if not isinstance(form_fields, list):
+        return None
+    for field in form_fields:
+        field_id = field.get("id") if isinstance(field, dict) else getattr(field, "id", None)
+        field_value = field.get("value") if isinstance(field, dict) else getattr(field, "value", None)
+        if field_id == target_id and isinstance(field_value, str):
+            return field_value
+    return None
+
+
+def _load_auth_config() -> AuthConfig:
+    with SQLSession(engine) as db:
+        config = db.get(AuthConfig, 1)
+        if config:
+            return config
+        config = AuthConfig(id=1, updated_at=datetime.utcnow())
+        db.add(config)
+        db.commit()
+        db.refresh(config)
+        return config
+
+
+def _validate_password(value: str, config: AuthConfig) -> Optional[str]:
+    password = value or ""
+    if len(password) < max(6, int(config.password_min_length or 8)):
+        return f"Password must be at least {max(6, int(config.password_min_length or 8))} characters."
+    if config.password_require_uppercase and not re.search(r"[A-Z]", password):
+        return "Password must include at least one uppercase letter."
+    if config.password_require_lowercase and not re.search(r"[a-z]", password):
+        return "Password must include at least one lowercase letter."
+    if config.password_require_number and not re.search(r"\d", password):
+        return "Password must include at least one number."
+    if config.password_require_special and not re.search(r"[^A-Za-z0-9]", password):
+        return "Password must include at least one special character."
+    return None
+
+
 def _override_emailpassword_apis(original_implementation: Any) -> Any:
     original_sign_up_post = getattr(original_implementation, "sign_up_post", None)
+    original_sign_in_post = getattr(original_implementation, "sign_in_post", None)
     original_password_reset_post = getattr(original_implementation, "password_reset_post", None)
 
     if original_sign_up_post is not None:
         async def sign_up_post(*args: Any, **kwargs: Any) -> Any:
+            config = _load_auth_config()
+            if not config.email_password_enabled:
+                return GeneralErrorResponse(message="Email/password login is currently disabled by administrator.")
+            if not config.allow_sign_up:
+                return GeneralErrorResponse(message="New sign-ups are currently disabled by administrator.")
+
+            form_fields = kwargs.get("form_fields") if "form_fields" in kwargs else (args[0] if len(args) > 0 else None)
+            password = _extract_form_field(form_fields, "password") or ""
+            password_error = _validate_password(password, config)
+            if password_error:
+                return GeneralErrorResponse(message=password_error)
+
             response = await original_sign_up_post(*args, **kwargs)
             try:
                 if getattr(response, "status", None) == "OK":
@@ -73,18 +129,50 @@ def _override_emailpassword_apis(original_implementation: Any) -> Any:
                             if emails:
                                 email = str(emails[0])
                     if not email:
-                        form_fields = kwargs.get("form_fields") if "form_fields" in kwargs else (args[0] if len(args) > 0 else None)
                         email = _extract_email_from_form_fields(form_fields)
                     if email:
-                        await send_email_via_web(type="registration_confirmation", email=email)
+                        await send_email_via_web(
+                            type="registration_confirmation",
+                            email=email,
+                            subject=config.registration_subject,
+                            body=config.registration_body,
+                        )
+                        await send_email_via_web(
+                            type="welcome_email",
+                            email=email,
+                            subject=config.welcome_subject,
+                            body=config.welcome_body,
+                        )
             except Exception as err:
                 logger.warning("registration confirmation email hook failed: %s", err)
             return response
 
         original_implementation.sign_up_post = sign_up_post
 
+    if original_sign_in_post is not None:
+        async def sign_in_post(*args: Any, **kwargs: Any) -> Any:
+            config = _load_auth_config()
+            if not config.email_password_enabled:
+                return GeneralErrorResponse(message="Email/password login is currently disabled by administrator.")
+            return await original_sign_in_post(*args, **kwargs)
+
+        original_implementation.sign_in_post = sign_in_post
+
     if original_password_reset_post is not None:
         async def password_reset_post(*args: Any, **kwargs: Any) -> Any:
+            config = _load_auth_config()
+            if not config.email_password_enabled:
+                return GeneralErrorResponse(message="Password reset is currently disabled by administrator.")
+
+            form_fields = kwargs.get("form_fields") if "form_fields" in kwargs else (args[0] if len(args) > 0 else None)
+            maybe_new_password = _extract_form_field(form_fields, "newPassword")
+            if maybe_new_password is None:
+                maybe_new_password = _extract_form_field(form_fields, "password")
+            if maybe_new_password:
+                password_error = _validate_password(maybe_new_password, config)
+                if password_error:
+                    return GeneralErrorResponse(message=password_error)
+
             response = await original_password_reset_post(*args, **kwargs)
             try:
                 if getattr(response, "status", None) == "OK":
@@ -97,10 +185,14 @@ def _override_emailpassword_apis(original_implementation: Any) -> Any:
                             if emails:
                                 email = str(emails[0])
                     if not email:
-                        form_fields = kwargs.get("form_fields") if "form_fields" in kwargs else (args[0] if len(args) > 0 else None)
                         email = _extract_email_from_form_fields(form_fields)
                     if email:
-                        await send_email_via_web(type="password_reset_confirmation", email=email)
+                        await send_email_via_web(
+                            type="password_reset_confirmation",
+                            email=email,
+                            subject=config.reset_confirmation_subject,
+                            body=config.reset_confirmation_body,
+                        )
             except Exception as err:
                 logger.warning("password reset confirmation email hook failed: %s", err)
             return response

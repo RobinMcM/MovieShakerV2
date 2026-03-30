@@ -6,7 +6,7 @@ from typing import Optional, List
 from sqlmodel import Session
 
 from db import get_session
-from models import UserProfile
+from models import UserProfile, AuthConfig
 from auth_deps import require_admin
 from supertokens_python.asyncio import get_users_oldest_first
 from email_client import send_email_via_web
@@ -53,6 +53,39 @@ class BulkEmailSendResponse(BaseModel):
     sent: int
     failed: int
     failed_user_ids: List[str] = []
+
+
+class AuthConfigResponse(BaseModel):
+    email_password_enabled: bool
+    allow_sign_up: bool
+    password_min_length: int
+    password_require_uppercase: bool
+    password_require_lowercase: bool
+    password_require_number: bool
+    password_require_special: bool
+    registration_subject: str
+    registration_body: str
+    welcome_subject: str
+    welcome_body: str
+    reset_confirmation_subject: str
+    reset_confirmation_body: str
+    updated_at: datetime
+
+
+class AuthConfigUpdate(BaseModel):
+    email_password_enabled: Optional[bool] = None
+    allow_sign_up: Optional[bool] = None
+    password_min_length: Optional[int] = None
+    password_require_uppercase: Optional[bool] = None
+    password_require_lowercase: Optional[bool] = None
+    password_require_number: Optional[bool] = None
+    password_require_special: Optional[bool] = None
+    registration_subject: Optional[str] = None
+    registration_body: Optional[str] = None
+    welcome_subject: Optional[str] = None
+    welcome_body: Optional[str] = None
+    reset_confirmation_subject: Optional[str] = None
+    reset_confirmation_body: Optional[str] = None
 
 
 async def _build_bulk_email_recipients(
@@ -103,6 +136,17 @@ async def _build_bulk_email_recipients(
         )
 
     return recipients
+
+
+def _get_or_create_auth_config(db: Session) -> AuthConfig:
+    config = db.get(AuthConfig, 1)
+    if config:
+        return config
+    config = AuthConfig(id=1)
+    db.add(config)
+    db.commit()
+    db.refresh(config)
+    return config
 
 
 @router.get("/users", response_model=List[UserWithProfileResponse])
@@ -254,4 +298,79 @@ async def admin_email_bulk_send(
         sent=sent_count,
         failed=len(failed_user_ids),
         failed_user_ids=failed_user_ids,
+    )
+
+
+@router.get("/auth/config", response_model=AuthConfigResponse)
+async def admin_get_auth_config(
+    _admin: UserProfile = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    config = _get_or_create_auth_config(db)
+    return AuthConfigResponse(
+        email_password_enabled=config.email_password_enabled,
+        allow_sign_up=config.allow_sign_up,
+        password_min_length=config.password_min_length,
+        password_require_uppercase=config.password_require_uppercase,
+        password_require_lowercase=config.password_require_lowercase,
+        password_require_number=config.password_require_number,
+        password_require_special=config.password_require_special,
+        registration_subject=config.registration_subject,
+        registration_body=config.registration_body,
+        welcome_subject=config.welcome_subject,
+        welcome_body=config.welcome_body,
+        reset_confirmation_subject=config.reset_confirmation_subject,
+        reset_confirmation_body=config.reset_confirmation_body,
+        updated_at=config.updated_at,
+    )
+
+
+@router.put("/auth/config", response_model=AuthConfigResponse)
+async def admin_update_auth_config(
+    body: AuthConfigUpdate,
+    _admin: UserProfile = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    config = _get_or_create_auth_config(db)
+    data = body.model_dump(exclude_unset=True)
+
+    if "password_min_length" in data:
+        min_len = int(data["password_min_length"] or 0)
+        if min_len < 6:
+            raise HTTPException(status_code=400, detail="password_min_length must be at least 6")
+        data["password_min_length"] = min_len
+
+    for text_field in (
+        "registration_subject",
+        "registration_body",
+        "welcome_subject",
+        "welcome_body",
+        "reset_confirmation_subject",
+        "reset_confirmation_body",
+    ):
+        if text_field in data and isinstance(data[text_field], str):
+            data[text_field] = data[text_field].strip()
+
+    for key, value in data.items():
+        setattr(config, key, value)
+    config.updated_at = datetime.utcnow()
+    db.add(config)
+    db.commit()
+    db.refresh(config)
+
+    return AuthConfigResponse(
+        email_password_enabled=config.email_password_enabled,
+        allow_sign_up=config.allow_sign_up,
+        password_min_length=config.password_min_length,
+        password_require_uppercase=config.password_require_uppercase,
+        password_require_lowercase=config.password_require_lowercase,
+        password_require_number=config.password_require_number,
+        password_require_special=config.password_require_special,
+        registration_subject=config.registration_subject,
+        registration_body=config.registration_body,
+        welcome_subject=config.welcome_subject,
+        welcome_body=config.welcome_body,
+        reset_confirmation_subject=config.reset_confirmation_subject,
+        reset_confirmation_body=config.reset_confirmation_body,
+        updated_at=config.updated_at,
     )

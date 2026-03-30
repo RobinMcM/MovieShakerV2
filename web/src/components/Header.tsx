@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Film, User, LogOut, Users, Mail, Wallet } from "lucide-react";
+import { Film, User, LogOut, Users, Mail, Wallet, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useSessionContext, signOut } from "supertokens-auth-react/recipe/session";
@@ -145,6 +145,14 @@ export function Header() {
                                                     >
                                                         <Mail className="h-4 w-4" />
                                                         <span>Email Management</span>
+                                                    </Link>
+                                                    <Link
+                                                        href="/admin/auth"
+                                                        onClick={() => setUserMenuOpen(false)}
+                                                        className="flex items-center gap-2 rounded-md px-2.5 py-2.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+                                                    >
+                                                        <Shield className="h-4 w-4" />
+                                                        <span>Authentication</span>
                                                     </Link>
                                                 </>
                                             )}

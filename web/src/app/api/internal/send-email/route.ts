@@ -4,6 +4,7 @@ import { VerificationEmail } from "@/emails/VerificationEmail";
 import { NotificationEmail } from "@/emails/NotificationEmail";
 import { RegistrationConfirmationEmail } from "@/emails/RegistrationConfirmationEmail";
 import { PasswordResetConfirmationEmail } from "@/emails/PasswordResetConfirmationEmail";
+import { WelcomeEmail } from "@/emails/WelcomeEmail";
 import React from "react";
 
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
@@ -52,6 +53,9 @@ export async function POST(request: NextRequest) {
   if (type === "registration_confirmation" && payload) {
     return handleRegistrationConfirmation(payload);
   }
+  if (type === "welcome_email" && payload) {
+    return handleWelcomeEmail(payload);
+  }
   if (type === "password_reset_confirmation" && payload) {
     return handlePasswordResetConfirmation(payload);
   }
@@ -59,7 +63,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json(
     {
       error:
-        "Missing or invalid type (verification | notification | registration_confirmation | password_reset_confirmation)",
+        "Missing or invalid type (verification | notification | registration_confirmation | welcome_email | password_reset_confirmation)",
     },
     { status: 400 }
   );
@@ -138,6 +142,10 @@ async function handleNotification(body: Record<string, unknown>) {
 
 async function handleRegistrationConfirmation(body: Record<string, unknown>) {
   const email = typeof body.email === "string" ? body.email : null;
+  const subject = typeof body.subject === "string" && body.subject.trim() ? body.subject.trim() : "Registration confirmed";
+  const bodyText = typeof body.body === "string" && body.body.trim()
+    ? body.body.trim()
+    : "Your MovieShaker registration was successful.";
   if (!email) {
     return NextResponse.json(
       { error: "Registration confirmation requires email" },
@@ -152,8 +160,38 @@ async function handleRegistrationConfirmation(body: Record<string, unknown>) {
   const { data, error } = await resend.emails.send({
     from,
     to: [email],
-    subject: "Welcome to MovieShaker",
-    react: React.createElement(RegistrationConfirmationEmail, { email }),
+    subject,
+    react: React.createElement(RegistrationConfirmationEmail, { email, heading: subject, bodyText }),
+  });
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ id: data?.id });
+}
+
+async function handleWelcomeEmail(body: Record<string, unknown>) {
+  const email = typeof body.email === "string" ? body.email : null;
+  const subject = typeof body.subject === "string" && body.subject.trim() ? body.subject.trim() : "Welcome to MovieShaker";
+  const bodyText = typeof body.body === "string" && body.body.trim()
+    ? body.body.trim()
+    : "Welcome aboard. Your account is ready to use.";
+  if (!email) {
+    return NextResponse.json(
+      { error: "Welcome email requires email" },
+      { status: 400 }
+    );
+  }
+
+  const resend = getResendClient();
+  const from =
+    process.env.RESEND_FROM ?? "MovieShaker <onboarding@resend.dev>";
+
+  const { data, error } = await resend.emails.send({
+    from,
+    to: [email],
+    subject,
+    react: React.createElement(WelcomeEmail, { email, heading: subject, bodyText }),
   });
 
   if (error) {
@@ -164,6 +202,10 @@ async function handleRegistrationConfirmation(body: Record<string, unknown>) {
 
 async function handlePasswordResetConfirmation(body: Record<string, unknown>) {
   const email = typeof body.email === "string" ? body.email : null;
+  const subject = typeof body.subject === "string" && body.subject.trim() ? body.subject.trim() : "Password reset confirmed";
+  const bodyText = typeof body.body === "string" && body.body.trim()
+    ? body.body.trim()
+    : "Your password was reset successfully.";
   if (!email) {
     return NextResponse.json(
       { error: "Password reset confirmation requires email" },
@@ -178,8 +220,8 @@ async function handlePasswordResetConfirmation(body: Record<string, unknown>) {
   const { data, error } = await resend.emails.send({
     from,
     to: [email],
-    subject: "Password reset confirmed",
-    react: React.createElement(PasswordResetConfirmationEmail, { email }),
+    subject,
+    react: React.createElement(PasswordResetConfirmationEmail, { email, heading: subject, bodyText }),
   });
 
   if (error) {

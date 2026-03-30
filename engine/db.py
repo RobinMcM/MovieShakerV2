@@ -211,6 +211,7 @@ def init_db():
         GatewayUsageEvent,
         FilmInABoxItem,
         EmailVerificationToken,
+        AuthConfig,
         Notification,
         ContactSubmission,
     )

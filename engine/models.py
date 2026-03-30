@@ -28,6 +28,26 @@ class UserProfile(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class AuthConfig(SQLModel, table=True):
+    """Singleton auth + email template settings managed by admin."""
+    __tablename__ = "auth_config"
+    id: int = Field(default=1, primary_key=True)
+    email_password_enabled: bool = Field(default=True)
+    allow_sign_up: bool = Field(default=True)
+    password_min_length: int = Field(default=8)
+    password_require_uppercase: bool = Field(default=False)
+    password_require_lowercase: bool = Field(default=False)
+    password_require_number: bool = Field(default=False)
+    password_require_special: bool = Field(default=False)
+    registration_subject: str = Field(default="Registration confirmed")
+    registration_body: str = Field(default="Your MovieShaker registration was successful.")
+    welcome_subject: str = Field(default="Welcome to MovieShaker")
+    welcome_body: str = Field(default="Welcome aboard. Your account is ready to use.")
+    reset_confirmation_subject: str = Field(default="Password reset confirmed")
+    reset_confirmation_body: str = Field(default="Your password was reset successfully.")
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class EmailVerificationToken(SQLModel, table=True):
     """One-time token for verifying communication_email. Expires after use or TTL."""
     __tablename__ = "email_verification_token"

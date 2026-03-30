@@ -19,7 +19,7 @@ async def send_email_via_web(
     POST to Next.js /api/internal/send-email. Requires INTERNAL_API_KEY and WEB_INTERNAL_URL.
     For type='verification': pass verifyUrl=...
     For type='notification': pass title=..., body=..., and optionally ctaUrl=..., ctaLabel=...
-    For type='registration_confirmation' or 'password_reset_confirmation': email is required.
+    For type='registration_confirmation', 'welcome_email', or 'password_reset_confirmation': email is required.
     """
     if not INTERNAL_API_KEY:
         logger.warning("INTERNAL_API_KEY not set; skipping send_email_via_web")

@@ -12,23 +12,29 @@ import * as React from "react";
 
 export interface RegistrationConfirmationEmailProps {
   email?: string;
+  heading?: string;
+  bodyText?: string;
 }
 
 export function RegistrationConfirmationEmail({
   email,
+  heading,
+  bodyText,
 }: RegistrationConfirmationEmailProps) {
+  const resolvedHeading = heading || "Registration confirmed";
+  const resolvedBody =
+    bodyText ||
+    (email
+      ? `Your account (${email}) has been created successfully.`
+      : "Your MovieShaker account has been created successfully.");
   return (
     <Html>
       <Head />
-      <Preview>Welcome to MovieShaker</Preview>
+      <Preview>{resolvedHeading}</Preview>
       <Body style={main}>
         <Container style={container}>
-          <Heading style={h1}>Welcome to MovieShaker</Heading>
-          <Text style={text}>
-            {email
-              ? `Your account (${email}) has been created successfully.`
-              : "Your MovieShaker account has been created successfully."}
-          </Text>
+          <Heading style={h1}>{resolvedHeading}</Heading>
+          <Text style={text}>{resolvedBody}</Text>
           <Text style={text}>
             You can now sign in and start building your projects.
           </Text>

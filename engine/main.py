@@ -23,6 +23,7 @@ from config import load_settings
 from db import init_db, engine
 from email_client import send_email_via_web
 from models import AuthConfig, UserProfile, EmailVerificationToken
+from email_stats import record_email_send
 from projects import router as projects_router
 from profile import router as profile_router, verify_router
 from scripts import router as scripts_router
@@ -38,6 +39,7 @@ from compiled_videos import router as compiled_videos_router
 from visualize_config import router as visualize_config_router
 from auth_deps import require_admin
 from admin import router as admin_router
+from email_webhooks import router as email_webhooks_router
 from contact import router as contact_router
 from film_in_a_box import router as film_in_a_box_router
 
@@ -130,7 +132,17 @@ async def _send_signup_verification_email(user_id: str, email: str) -> None:
         db.commit()
 
     verify_url = f"{settings.api_base_url.rstrip('/')}/verify-email?token={token}"
-    await send_email_via_web(type="verification", email=normalized_email, verifyUrl=verify_url)
+    result = await send_email_via_web(type="verification", email=normalized_email, verifyUrl=verify_url)
+    with SQLSession(engine) as db:
+        record_email_send(
+            db,
+            email=normalized_email,
+            email_type="verification",
+            send_result=result,
+            subject="Verify your email - MovieShaker",
+            user_id=user_id,
+            metadata={"source": "signup_hook", "verify_url": verify_url},
+        )
 
 
 def _override_emailpassword_apis(original_implementation: Any) -> Any:
@@ -168,18 +180,37 @@ def _override_emailpassword_apis(original_implementation: Any) -> Any:
                     if not email:
                         email = _extract_email_from_form_fields(form_fields)
                     if email:
-                        await send_email_via_web(
+                        reg_result = await send_email_via_web(
                             type="registration_confirmation",
                             email=email,
                             subject=config.registration_subject,
                             body=config.registration_body,
                         )
-                        await send_email_via_web(
+                        welcome_result = await send_email_via_web(
                             type="welcome_email",
                             email=email,
                             subject=config.welcome_subject,
                             body=config.welcome_body,
                         )
+                        with SQLSession(engine) as db:
+                            record_email_send(
+                                db,
+                                email=email,
+                                email_type="registration_confirmation",
+                                send_result=reg_result,
+                                subject=config.registration_subject,
+                                user_id=str(user_id) if user_id else None,
+                                metadata={"source": "signup_hook"},
+                            )
+                            record_email_send(
+                                db,
+                                email=email,
+                                email_type="welcome_email",
+                                send_result=welcome_result,
+                                subject=config.welcome_subject,
+                                user_id=str(user_id) if user_id else None,
+                                metadata={"source": "signup_hook"},
+                            )
                         if user_id:
                             await _send_signup_verification_email(str(user_id), email)
             except Exception as err:
@@ -226,12 +257,21 @@ def _override_emailpassword_apis(original_implementation: Any) -> Any:
                     if not email:
                         email = _extract_email_from_form_fields(form_fields)
                     if email:
-                        await send_email_via_web(
+                        reset_result = await send_email_via_web(
                             type="password_reset_confirmation",
                             email=email,
                             subject=config.reset_confirmation_subject,
                             body=config.reset_confirmation_body,
                         )
+                        with SQLSession(engine) as db:
+                            record_email_send(
+                                db,
+                                email=email,
+                                email_type="password_reset_confirmation",
+                                send_result=reset_result,
+                                subject=config.reset_confirmation_subject,
+                                metadata={"source": "password_reset_hook"},
+                            )
             except Exception as err:
                 logger.warning("password reset confirmation email hook failed: %s", err)
             return response
@@ -344,6 +384,7 @@ app.include_router(video_history_router)
 app.include_router(compiled_videos_router)
 app.include_router(visualize_config_router)
 app.include_router(admin_router)
+app.include_router(email_webhooks_router)
 app.include_router(contact_router)
 app.include_router(film_in_a_box_router)
 

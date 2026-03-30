@@ -11,3 +11,4 @@ httpx>=0.15.0,<0.25.0
 pypdf>=4.0.0
 pdfminer.six>=20221105
 pytest>=7.0.0
+svix>=1.66.0

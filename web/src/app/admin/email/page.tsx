@@ -37,6 +37,34 @@ interface BulkSendResponse {
     failed_user_ids: string[];
 }
 
+interface EmailStatsSummary {
+    from_date?: string | null;
+    to_date?: string | null;
+    sent: number;
+    delivered: number;
+    opened: number;
+    clicked: number;
+    bounced: number;
+    complained: number;
+    failed: number;
+    total_events: number;
+}
+
+interface EmailRecentSend {
+    id: string;
+    created_at: string;
+    email: string;
+    email_type: string;
+    subject?: string | null;
+    status: string;
+    provider_message_id?: string | null;
+    error?: string | null;
+}
+
+interface EmailStatsRecentResponse {
+    sends: EmailRecentSend[];
+}
+
 function AdminEmailPage() {
     const router = useRouter();
     const [allowed, setAllowed] = useState<boolean | null>(null);
@@ -49,6 +77,11 @@ function AdminEmailPage() {
     const [requireCommunicationEmail, setRequireCommunicationEmail] = useState(false);
     const [preview, setPreview] = useState<BulkPreviewResponse | null>(null);
     const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+    const [statsLoading, setStatsLoading] = useState(false);
+    const [statsSummary, setStatsSummary] = useState<EmailStatsSummary | null>(null);
+    const [statsRecent, setStatsRecent] = useState<EmailRecentSend[]>([]);
+    const [statsFromDate, setStatsFromDate] = useState("");
+    const [statsToDate, setStatsToDate] = useState("");
 
     useEffect(() => {
         api.get<{ role?: string }>("/profile/")
@@ -63,6 +96,7 @@ function AdminEmailPage() {
     useEffect(() => {
         if (allowed === true) {
             void loadPreview(requireCommunicationEmail);
+            void loadStats();
         }
     }, [allowed, requireCommunicationEmail]);
 
@@ -105,6 +139,7 @@ function AdminEmailPage() {
                 text: `Bulk send complete: ${result.sent}/${result.targeted} sent (${result.failed} failed).`,
             });
             void loadPreview(requireCommunicationEmail);
+            void loadStats();
         } catch (err) {
             setMessage({
                 kind: "error",
@@ -112,6 +147,29 @@ function AdminEmailPage() {
             });
         } finally {
             setSending(false);
+        }
+    }
+
+    async function loadStats() {
+        try {
+            setStatsLoading(true);
+            const params = new URLSearchParams();
+            if (statsFromDate) params.set("from_date", `${statsFromDate}T00:00:00`);
+            if (statsToDate) params.set("to_date", `${statsToDate}T23:59:59`);
+            const suffix = params.toString() ? `?${params.toString()}` : "";
+            const [summary, recent] = await Promise.all([
+                api.get<EmailStatsSummary>(`/admin/email/stats/summary${suffix}`),
+                api.get<EmailStatsRecentResponse>("/admin/email/stats/recent?limit=20"),
+            ]);
+            setStatsSummary(summary);
+            setStatsRecent(recent.sends || []);
+        } catch (err) {
+            setMessage({
+                kind: "error",
+                text: err instanceof Error ? err.message : "Failed to load email statistics.",
+            });
+        } finally {
+            setStatsLoading(false);
         }
     }
 
@@ -259,6 +317,112 @@ function AdminEmailPage() {
                         ) : (
                             <p className="text-sm text-muted-foreground">
                                 No recipients currently match the active + notifications-enabled filter.
+                            </p>
+                        )}
+                    </CardContent>
+                </Card>
+
+                <Card className="mt-6">
+                    <CardHeader>
+                        <CardTitle className="text-lg">Delivery Statistics</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div className="rounded-md border p-3 text-sm">
+                                <div className="text-muted-foreground">Sent</div>
+                                <div className="text-xl font-semibold">{statsSummary?.sent ?? 0}</div>
+                            </div>
+                            <div className="rounded-md border p-3 text-sm">
+                                <div className="text-muted-foreground">Delivered</div>
+                                <div className="text-xl font-semibold">{statsSummary?.delivered ?? 0}</div>
+                            </div>
+                            <div className="rounded-md border p-3 text-sm">
+                                <div className="text-muted-foreground">Opened</div>
+                                <div className="text-xl font-semibold">{statsSummary?.opened ?? 0}</div>
+                            </div>
+                            <div className="rounded-md border p-3 text-sm">
+                                <div className="text-muted-foreground">Clicked</div>
+                                <div className="text-xl font-semibold">{statsSummary?.clicked ?? 0}</div>
+                            </div>
+                            <div className="rounded-md border p-3 text-sm">
+                                <div className="text-muted-foreground">Bounced</div>
+                                <div className="text-xl font-semibold">{statsSummary?.bounced ?? 0}</div>
+                            </div>
+                            <div className="rounded-md border p-3 text-sm">
+                                <div className="text-muted-foreground">Complained</div>
+                                <div className="text-xl font-semibold">{statsSummary?.complained ?? 0}</div>
+                            </div>
+                            <div className="rounded-md border p-3 text-sm">
+                                <div className="text-muted-foreground">Failed</div>
+                                <div className="text-xl font-semibold">{statsSummary?.failed ?? 0}</div>
+                            </div>
+                            <div className="rounded-md border p-3 text-sm">
+                                <div className="text-muted-foreground">Webhook events</div>
+                                <div className="text-xl font-semibold">{statsSummary?.total_events ?? 0}</div>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-end gap-3">
+                            <div className="space-y-1">
+                                <Label htmlFor="stats-from-date">From</Label>
+                                <Input
+                                    id="stats-from-date"
+                                    type="date"
+                                    value={statsFromDate}
+                                    onChange={(e) => setStatsFromDate(e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <Label htmlFor="stats-to-date">To</Label>
+                                <Input
+                                    id="stats-to-date"
+                                    type="date"
+                                    value={statsToDate}
+                                    onChange={(e) => setStatsToDate(e.target.value)}
+                                />
+                            </div>
+                            <Button variant="outline" onClick={() => loadStats()} disabled={statsLoading}>
+                                {statsLoading ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        Loading...
+                                    </>
+                                ) : (
+                                    "Refresh Stats"
+                                )}
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card className="mt-6">
+                    <CardHeader>
+                        <CardTitle className="text-lg">Recent Email Activity</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                        {statsRecent.length > 0 ? (
+                            statsRecent.map((row) => (
+                                <div key={row.id} className="rounded-md border p-3 text-sm space-y-1">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <span className="font-medium">{row.email}</span>
+                                        <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                                            {row.status}
+                                        </span>
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                        {new Date(row.created_at).toLocaleString()} · {row.email_type}
+                                    </div>
+                                    {row.subject && (
+                                        <div className="text-xs">{row.subject}</div>
+                                    )}
+                                    {row.error && (
+                                        <div className="text-xs text-destructive">Error: {row.error}</div>
+                                    )}
+                                </div>
+                            ))
+                        ) : (
+                            <p className="text-sm text-muted-foreground">
+                                No email activity yet.
                             </p>
                         )}
                     </CardContent>

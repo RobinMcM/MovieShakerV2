@@ -13,6 +13,7 @@ from supertokens_python.recipe.session import SessionContainer
 from sqlmodel import Session, select
 
 from email_client import send_email_via_web
+from email_stats import record_email_send
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
@@ -219,7 +220,16 @@ async def _create_and_send_verification(user_id: str, email: str, db: Session) -
     db.add(row)
     db.commit()
     verify_url = f"{API_BASE}/verify-email?token={token}"
-    await send_email_via_web(type="verification", email=email, verifyUrl=verify_url)
+    result = await send_email_via_web(type="verification", email=email, verifyUrl=verify_url)
+    record_email_send(
+        db,
+        email=email,
+        email_type="verification",
+        send_result=result,
+        subject="Verify your email - MovieShaker",
+        user_id=user_id,
+        metadata={"source": "profile_verification", "verify_url": verify_url},
+    )
 
 
 @router.put("", response_model=ProfileResponse)

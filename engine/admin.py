@@ -3,13 +3,14 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from db import get_session
-from models import UserProfile, AuthConfig
+from models import UserProfile, AuthConfig, EmailSendLog, EmailWebhookEvent
 from auth_deps import require_admin
 from supertokens_python.asyncio import get_users_oldest_first
 from email_client import send_email_via_web
+from email_stats import record_email_send
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -53,6 +54,52 @@ class BulkEmailSendResponse(BaseModel):
     sent: int
     failed: int
     failed_user_ids: List[str] = []
+
+
+class EmailStatsSummaryResponse(BaseModel):
+    from_date: Optional[datetime] = None
+    to_date: Optional[datetime] = None
+    sent: int
+    delivered: int
+    opened: int
+    clicked: int
+    bounced: int
+    complained: int
+    failed: int
+    total_events: int
+
+
+class EmailStatsPoint(BaseModel):
+    bucket: str
+    sent: int = 0
+    delivered: int = 0
+    opened: int = 0
+    clicked: int = 0
+    bounced: int = 0
+    complained: int = 0
+    failed: int = 0
+
+
+class EmailStatsTimeseriesResponse(BaseModel):
+    from_date: Optional[datetime] = None
+    to_date: Optional[datetime] = None
+    bucket: str = "day"
+    points: List[EmailStatsPoint]
+
+
+class EmailRecentSend(BaseModel):
+    id: str
+    created_at: datetime
+    email: str
+    email_type: str
+    subject: Optional[str] = None
+    status: str
+    provider_message_id: Optional[str] = None
+    error: Optional[str] = None
+
+
+class EmailStatsRecentResponse(BaseModel):
+    sends: List[EmailRecentSend]
 
 
 class AuthConfigResponse(BaseModel):
@@ -280,7 +327,7 @@ async def admin_email_bulk_send(
     sent_count = 0
 
     for recipient in recipients:
-        ok = await send_email_via_web(
+        result = await send_email_via_web(
             type="notification",
             email=recipient.email,
             title=subject,
@@ -288,7 +335,20 @@ async def admin_email_bulk_send(
             ctaUrl=body.cta_url or "",
             ctaLabel=body.cta_label or "",
         )
-        if ok:
+        record_email_send(
+            db,
+            email=recipient.email,
+            email_type="notification",
+            send_result=result,
+            subject=subject,
+            user_id=recipient.user_id,
+            metadata={
+                "source": "admin_bulk_send",
+                "cta_url": body.cta_url or "",
+                "cta_label": body.cta_label or "",
+            },
+        )
+        if result.ok:
             sent_count += 1
         else:
             failed_user_ids.append(recipient.user_id)
@@ -298,6 +358,121 @@ async def admin_email_bulk_send(
         sent=sent_count,
         failed=len(failed_user_ids),
         failed_user_ids=failed_user_ids,
+    )
+
+
+def _filter_send_rows(
+    db: Session, from_date: Optional[datetime], to_date: Optional[datetime]
+) -> list[EmailSendLog]:
+    statement = select(EmailSendLog)
+    if from_date is not None:
+        statement = statement.where(EmailSendLog.created_at >= from_date)
+    if to_date is not None:
+        statement = statement.where(EmailSendLog.created_at <= to_date)
+    statement = statement.order_by(EmailSendLog.created_at.desc())
+    return list(db.exec(statement).all())
+
+
+@router.get("/email/stats/summary", response_model=EmailStatsSummaryResponse)
+async def admin_email_stats_summary(
+    from_date: Optional[datetime] = None,
+    to_date: Optional[datetime] = None,
+    _admin: UserProfile = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    rows = _filter_send_rows(db, from_date, to_date)
+    counters = {
+        "sent": 0,
+        "delivered": 0,
+        "opened": 0,
+        "clicked": 0,
+        "bounced": 0,
+        "complained": 0,
+        "failed": 0,
+    }
+    for row in rows:
+        status = (row.status or "").lower().strip()
+        if status in counters:
+            counters[status] += 1
+        elif status.startswith("email."):
+            key = status.split(".", 1)[1]
+            if key in counters:
+                counters[key] += 1
+    event_statement = select(EmailWebhookEvent)
+    if from_date is not None:
+        event_statement = event_statement.where(EmailWebhookEvent.created_at >= from_date)
+    if to_date is not None:
+        event_statement = event_statement.where(EmailWebhookEvent.created_at <= to_date)
+    total_events = len(list(db.exec(event_statement).all()))
+    return EmailStatsSummaryResponse(
+        from_date=from_date,
+        to_date=to_date,
+        total_events=total_events,
+        **counters,
+    )
+
+
+@router.get("/email/stats/timeseries", response_model=EmailStatsTimeseriesResponse)
+async def admin_email_stats_timeseries(
+    from_date: Optional[datetime] = None,
+    to_date: Optional[datetime] = None,
+    bucket: str = "day",
+    _admin: UserProfile = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    if bucket not in {"day"}:
+        raise HTTPException(status_code=400, detail="Only bucket=day is currently supported")
+
+    rows = _filter_send_rows(db, from_date, to_date)
+    points: dict[str, EmailStatsPoint] = {}
+
+    for row in rows:
+        key = row.created_at.strftime("%Y-%m-%d")
+        if key not in points:
+            points[key] = EmailStatsPoint(bucket=key)
+        status = (row.status or "").lower().strip()
+        if status.startswith("email."):
+            status = status.split(".", 1)[1]
+        if status in {"sent", "delivered", "opened", "clicked", "bounced", "complained", "failed"}:
+            setattr(points[key], status, getattr(points[key], status) + 1)
+
+    ordered = [points[k] for k in sorted(points.keys())]
+    return EmailStatsTimeseriesResponse(
+        from_date=from_date,
+        to_date=to_date,
+        bucket="day",
+        points=ordered,
+    )
+
+
+@router.get("/email/stats/recent", response_model=EmailStatsRecentResponse)
+async def admin_email_stats_recent(
+    limit: int = 50,
+    _admin: UserProfile = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    bounded_limit = max(1, min(limit, 200))
+    rows = list(
+        db.exec(
+            select(EmailSendLog)
+            .order_by(EmailSendLog.created_at.desc())
+            .limit(bounded_limit)
+        ).all()
+    )
+    return EmailStatsRecentResponse(
+        sends=[
+            EmailRecentSend(
+                id=str(row.id),
+                created_at=row.created_at,
+                email=row.email,
+                email_type=row.email_type,
+                subject=row.subject,
+                status=row.status,
+                provider_message_id=row.provider_message_id,
+                error=row.error,
+            )
+            for row in rows
+        ]
     )
 
 

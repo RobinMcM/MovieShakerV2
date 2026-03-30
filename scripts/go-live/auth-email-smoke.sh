@@ -42,6 +42,8 @@ cat <<'EOF'
 - Sign in/sign out/session refresh works
 - Run password reset and confirm reset confirmation email
 - Open /admin/email and validate preview + send
+- Confirm Resend webhook is configured to POST to /webhooks/resend
+- After a test send, check /admin/email statistics for recent delivery events
 EOF
 
 if [[ -n "${ADMIN_EMAIL}" && -n "${ADMIN_PASSWORD}" ]]; then

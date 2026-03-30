@@ -189,6 +189,23 @@ def _migrate_characters_objects_fields():
                     logger.warning("Migration characters %s: %s", col, e)
 
 
+def _migrate_email_tracking_tables():
+    """Ensure webhook/email tracking indexes and constraints exist."""
+    with engine.connect() as conn:
+        with conn.begin():
+            statements = [
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_email_webhook_event_dedupe_key_unique ON email_webhook_event (dedupe_key)",
+                "CREATE INDEX IF NOT EXISTS ix_email_send_log_provider_message_id ON email_send_log (provider_message_id)",
+                "CREATE INDEX IF NOT EXISTS ix_email_send_log_created_at ON email_send_log (created_at)",
+                "CREATE INDEX IF NOT EXISTS ix_email_webhook_event_created_at ON email_webhook_event (created_at)",
+            ]
+            for stmt in statements:
+                try:
+                    conn.execute(text(stmt))
+                except Exception as e:
+                    logger.warning("Migration email tracking index failed (%s): %s", stmt, e)
+
+
 def init_db():
     # Ensure models are registered (import side-effect)
     from models import (  # noqa: F401
@@ -214,6 +231,8 @@ def init_db():
         AuthConfig,
         Notification,
         ContactSubmission,
+        EmailSendLog,
+        EmailWebhookEvent,
     )
     SQLModel.metadata.create_all(engine)
     _migrate_user_profile_email_verified()
@@ -226,6 +245,7 @@ def init_db():
     _migrate_scenes_scene_cost_columns()
     _migrate_characters_cast_tier()
     _migrate_characters_objects_fields()
+    _migrate_email_tracking_tables()
 
 
 def get_session():

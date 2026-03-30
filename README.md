@@ -118,6 +118,7 @@ Copy `.env.example` to `.env` at repo root, then set values for your environment
 - `DO_SPACES_ACCESS_KEY_ID`
 - `DO_SPACES_SECRET_ACCESS_KEY`
 - `RESEND_API_KEY` (web email route)
+- `RESEND_WEBHOOK_SECRET` (engine webhook signature verification)
 - `INTERNAL_API_KEY` (shared secret engine <-> web internal email route)
 
 ### Gateway variables (AI source of truth)
@@ -179,6 +180,13 @@ pytest engine/tests -q
 - Smoke checks: `scripts/go-live/auth-email-smoke.sh`
 - Failure drills: `scripts/go-live/failure-drills.sh`
 - Backup + rollback helper: `scripts/go-live/backup-rollback.sh`
+
+### Resend webhook setup
+
+- Configure Resend webhook destination to:
+  - `https://api.movieshaker.com/webhooks/resend`
+- Set `RESEND_WEBHOOK_SECRET` in engine runtime.
+- Validate webhook ingestion from Admin Email statistics page (`/admin/email`) after sending a test email.
 - For auth refresh issues, validate preflight:
 
 ```bash

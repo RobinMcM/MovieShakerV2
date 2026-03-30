@@ -12,6 +12,7 @@ from sqlmodel import Session, select
 from db import get_session
 from models import UserProfile, Notification
 from email_client import send_email_via_web
+from email_stats import record_email_send
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
 
@@ -103,7 +104,7 @@ async def send_notification_email(
     db.commit()
     db.refresh(notification)
 
-    ok = await send_email_via_web(
+    result = await send_email_via_web(
         type="notification",
         email=email,
         title=title,
@@ -111,6 +112,20 @@ async def send_notification_email(
         ctaUrl=cta_url or "",
         ctaLabel=cta_label or "",
     )
-    if not ok:
+    record_email_send(
+        db,
+        email=email,
+        email_type="notification",
+        send_result=result,
+        subject=title,
+        user_id=user_id,
+        metadata={
+            "source": "notifications_module",
+            "notification_id": str(notification.id),
+            "cta_url": cta_url or "",
+            "cta_label": cta_label or "",
+        },
+    )
+    if not result.ok:
         logger.warning("send_notification_email: web send failed for user_id=%s", user_id)
     return notification.id

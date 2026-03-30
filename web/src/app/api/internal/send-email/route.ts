@@ -104,7 +104,7 @@ async function handleVerification(body: Record<string, unknown>) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ id: data?.id });
+  return NextResponse.json({ id: data?.id, provider_message_id: data?.id });
 }
 
 async function handleNotification(body: Record<string, unknown>) {
@@ -143,7 +143,7 @@ async function handleNotification(body: Record<string, unknown>) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ id: data?.id });
+  return NextResponse.json({ id: data?.id, provider_message_id: data?.id });
 }
 
 async function handleRegistrationConfirmation(body: Record<string, unknown>) {
@@ -173,7 +173,7 @@ async function handleRegistrationConfirmation(body: Record<string, unknown>) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ id: data?.id });
+  return NextResponse.json({ id: data?.id, provider_message_id: data?.id });
 }
 
 async function handleWelcomeEmail(body: Record<string, unknown>) {
@@ -203,7 +203,7 @@ async function handleWelcomeEmail(body: Record<string, unknown>) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ id: data?.id });
+  return NextResponse.json({ id: data?.id, provider_message_id: data?.id });
 }
 
 async function handlePasswordResetConfirmation(body: Record<string, unknown>) {
@@ -233,5 +233,5 @@ async function handlePasswordResetConfirmation(body: Record<string, unknown>) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ id: data?.id });
+  return NextResponse.json({ id: data?.id, provider_message_id: data?.id });
 }

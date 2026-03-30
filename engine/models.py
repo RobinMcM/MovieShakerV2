@@ -48,6 +48,37 @@ class AuthConfig(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class EmailSendLog(SQLModel, table=True):
+    """Outbound email log correlated with provider message IDs."""
+    __tablename__ = "email_send_log"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: Optional[str] = Field(default=None, index=True)
+    email: str = Field(index=True)
+    email_type: str = Field(index=True)  # notification | verification | registration_confirmation | etc
+    subject: Optional[str] = Field(default=None)
+    provider: str = Field(default="resend", index=True)
+    provider_message_id: Optional[str] = Field(default=None, index=True)
+    status: str = Field(default="queued", index=True)  # queued | sent | failed | delivered | opened | ...
+    error: Optional[str] = Field(default=None)
+    metadata_json: Optional[str] = Field(default=None)  # JSON payload snapshot
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class EmailWebhookEvent(SQLModel, table=True):
+    """Webhook event ledger from provider callbacks (idempotent via dedupe_key)."""
+    __tablename__ = "email_webhook_event"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    provider: str = Field(default="resend", index=True)
+    provider_message_id: Optional[str] = Field(default=None, index=True)
+    event_type: str = Field(index=True)
+    dedupe_key: str = Field(index=True, unique=True)
+    event_timestamp: Optional[datetime] = Field(default=None, index=True)
+    signature_valid: bool = Field(default=False, index=True)
+    payload_json: str = Field()
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
 class EmailVerificationToken(SQLModel, table=True):
     """One-time token for verifying communication_email. Expires after use or TTL."""
     __tablename__ = "email_verification_token"

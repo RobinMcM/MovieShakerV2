@@ -10,11 +10,15 @@ This runbook operationalizes the April 1 launch for a controlled 10-user pilot.
   - `INTERNAL_API_KEY` (same in engine + web)
   - `RESEND_API_KEY`
   - `RESEND_FROM` (verified sender domain)
+  - `RESEND_WEBHOOK_SECRET`
   - `GATEWAY_BASE_URL`, `GATEWAY_VERIFY_TLS=true`
   - `MEDIA_HANDLER_BASE_URL`, `MEDIA_HANDLER_VERIFY_TLS=true`
 - Confirm only `80/443` are publicly exposed.
 - Run smoke script:
   - `./scripts/go-live/auth-email-smoke.sh`
+- Verify webhook path:
+  - `https://api.movieshaker.com/webhooks/resend` is reachable
+  - Resend dashboard webhook test returns success
 
 ## 2) Failure Drills (T-12h)
 
@@ -58,6 +62,9 @@ Daily:
   - auth hook warnings
 - Review web logs:
   - `401/500/503` for `/api/internal/send-email`
+- Review webhook ingestion:
+  - signature failures on `/webhooks/resend`
+  - event throughput vs send throughput mismatch
 - Check Resend dashboard:
   - delivery, bounces, complaints
 - Check SuperTokens health and auth latency.

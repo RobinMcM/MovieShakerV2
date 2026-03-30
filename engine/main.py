@@ -11,8 +11,9 @@ from starlette.middleware.cors import CORSMiddleware
 import uvicorn
 import logging
 from typing import Any, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
+import secrets
 from sqlmodel import Session as SQLSession
 
 logger = logging.getLogger(__name__)
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 from config import load_settings
 from db import init_db, engine
 from email_client import send_email_via_web
-from models import AuthConfig
+from models import AuthConfig, UserProfile, EmailVerificationToken
 from projects import router as projects_router
 from profile import router as profile_router, verify_router
 from scripts import router as scripts_router
@@ -98,6 +99,40 @@ def _validate_password(value: str, config: AuthConfig) -> Optional[str]:
     return None
 
 
+async def _send_signup_verification_email(user_id: str, email: str) -> None:
+    normalized_email = (email or "").strip().lower()
+    if not normalized_email:
+        return
+
+    with SQLSession(engine) as db:
+        profile = db.get(UserProfile, user_id)
+        if not profile:
+            profile = UserProfile(user_id=user_id, communication_email=normalized_email)
+            db.add(profile)
+        else:
+            if not profile.communication_email:
+                profile.communication_email = normalized_email
+            if profile.communication_email and profile.communication_email.lower() == normalized_email:
+                profile.email_verified_at = None
+            profile.updated_at = datetime.utcnow()
+            db.add(profile)
+
+        token = secrets.token_urlsafe(32)
+        expires_at = datetime.utcnow() + timedelta(hours=24)
+        db.add(
+            EmailVerificationToken(
+                user_id=user_id,
+                email=normalized_email,
+                token=token,
+                expires_at=expires_at,
+            )
+        )
+        db.commit()
+
+    verify_url = f"{settings.api_base_url.rstrip('/')}/verify-email?token={token}"
+    await send_email_via_web(type="verification", email=normalized_email, verifyUrl=verify_url)
+
+
 def _override_emailpassword_apis(original_implementation: Any) -> Any:
     original_sign_up_post = getattr(original_implementation, "sign_up_post", None)
     original_sign_in_post = getattr(original_implementation, "sign_in_post", None)
@@ -121,9 +156,11 @@ def _override_emailpassword_apis(original_implementation: Any) -> Any:
             try:
                 if getattr(response, "status", None) == "OK":
                     email = None
+                    user_id = None
                     user = getattr(response, "user", None)
                     if user is not None:
                         email = getattr(user, "email", None)
+                        user_id = getattr(user, "id", None) or getattr(user, "user_id", None)
                         if not email:
                             emails = getattr(user, "emails", None) or []
                             if emails:
@@ -143,6 +180,8 @@ def _override_emailpassword_apis(original_implementation: Any) -> Any:
                             subject=config.welcome_subject,
                             body=config.welcome_body,
                         )
+                        if user_id:
+                            await _send_signup_verification_email(str(user_id), email)
             except Exception as err:
                 logger.warning("registration confirmation email hook failed: %s", err)
             return response

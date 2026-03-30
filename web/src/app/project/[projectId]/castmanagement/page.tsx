@@ -129,10 +129,10 @@ function CastManagementPageInner() {
 
         <div className="mb-4">
           <Link
-            href={`/project/${projectId}`}
+            href={`/project/${projectId}/scheduling`}
             className="text-primary hover:underline text-sm"
           >
-            ← Back to project
+            ← Back to Scheduling
           </Link>
         </div>
 

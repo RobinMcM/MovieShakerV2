@@ -291,8 +291,8 @@ function ScriptManagementPage() {
                 <AppHeader />
                 <main className="flex-1 container mx-auto px-4 py-8">
                     <p className="text-muted-foreground">{error ?? "Script not found."}</p>
-                    <Link href={`/project/${projectId}`} className="text-primary underline mt-4 inline-block">
-                        Back to Project
+                    <Link href={`/project/${projectId}/scheduling`} className="text-primary underline mt-4 inline-block">
+                        Back to Scheduling
                     </Link>
                 </main>
                 <Footer />
@@ -306,10 +306,10 @@ function ScriptManagementPage() {
             <main className="flex-1 container mx-auto px-4 py-8">
                 <div className="max-w-4xl mx-auto space-y-6">
                     <Link
-                        href={`/project/${projectId}`}
+                        href={`/project/${projectId}/scheduling`}
                         className="text-primary underline hover:no-underline text-sm inline-block"
                     >
-                        Back to Project
+                        Back to Scheduling
                     </Link>
 
                     {message && (

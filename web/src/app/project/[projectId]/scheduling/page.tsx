@@ -186,10 +186,10 @@ function SchedulingPageInner() {
 
         <div className="mb-4">
           <Link
-            href={`/project/${projectId}`}
+            href={`/project/${projectId}/scheduling`}
             className="text-primary hover:underline text-sm"
           >
-            ← Back to project
+            Scheduling Home
           </Link>
         </div>
 
@@ -254,12 +254,12 @@ function SchedulingPageInner() {
                   <CalendarClock className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
                   <p className="text-muted-foreground">No scenes found.</p>
                   <p className="text-sm text-muted-foreground mt-2">
-                    Upload and set a current script on the{" "}
+                    Upload and set a current script from{" "}
                     <Link
-                      href={`/project/${projectId}`}
+                      href={`/project/${projectId}/scheduling`}
                       className="text-primary underline"
                     >
-                      project page
+                      scheduling
                     </Link>{" "}
                     to see the schedule here.
                   </p>

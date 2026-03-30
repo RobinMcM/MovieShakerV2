@@ -435,10 +435,10 @@ function SceneCostsPageInner() {
       <main className="flex-1 container py-6">
         <div className="flex items-center gap-4 mb-6">
           <Link
-            href={`/project/${projectId}`}
+            href={`/project/${projectId}/scheduling`}
             className="text-sm text-muted-foreground hover:text-foreground"
           >
-            ← Back to project
+            ← Back to Scheduling
           </Link>
           <h1 className="text-xl font-semibold truncate flex-1">
             Scene Costs: {project.name}

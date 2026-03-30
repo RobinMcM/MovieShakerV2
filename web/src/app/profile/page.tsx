@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
 import { AppHeader } from "@/components/Header";
@@ -113,7 +114,6 @@ function ProfilePage() {
     const [resending, setResending] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [verifiedBanner, setVerifiedBanner] = useState<"success" | "error" | null>(null);
-    const [purchaseAmount, setPurchaseAmount] = useState("11");
     const [gatewayModels, setGatewayModels] = useState<Array<{ id: string; name?: string; provider?: string }>>([]);
     const [soundMusicModels, setSoundMusicModels] = useState<ProfileModelOption[]>([]);
     const [fiabTextModels, setFiabTextModels] = useState<Array<{
@@ -270,15 +270,6 @@ function ProfilePage() {
             ...soundMusicModels,
         ];
     }, [formData.model_sound_music, soundMusicModels]);
-
-    function handleBuyCreditsPlaceholder() {
-        const amount = Number.parseInt(purchaseAmount, 10);
-        if (!Number.isFinite(amount) || amount <= 10) {
-            setError("Minimum credit purchase is greater than 10 credits.");
-            return;
-        }
-        setError("Buy credits is coming soon.");
-    }
 
     async function handleSaveModelSettings() {
         try {
@@ -503,22 +494,10 @@ function ProfilePage() {
                             </div>
                         )}
 
-                        <div className="pt-2 border-t space-y-2">
-                            <Label htmlFor="purchaseAmount">Buy credits (placeholder)</Label>
-                            <div className="flex flex-col sm:flex-row gap-2">
-                                <Input
-                                    id="purchaseAmount"
-                                    type="number"
-                                    min={11}
-                                    value={purchaseAmount}
-                                    onChange={(e) => setPurchaseAmount(e.target.value)}
-                                    placeholder="Enter credits to buy"
-                                />
-                                <Button type="button" variant="outline" onClick={handleBuyCreditsPlaceholder} className="w-full sm:w-auto">
-                                    Buy credits
-                                </Button>
-                            </div>
-                            <p className="text-xs text-muted-foreground">Minimum purchase is greater than 10 credits.</p>
+                        <div className="pt-2 border-t">
+                            <Button asChild type="button" variant="outline" className="w-full sm:w-auto">
+                                <Link href="/credits">Manage Credits</Link>
+                            </Button>
                         </div>
                     </CardContent>
                 </Card>

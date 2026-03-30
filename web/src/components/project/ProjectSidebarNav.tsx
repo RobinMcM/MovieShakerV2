@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDown, ChevronRight, FileText, FolderKanban } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, FolderKanban, Home } from "lucide-react";
 import { PROJECT_EXTERNAL_NAV, PROJECT_TOOL_NAV } from "@/app/project/[projectId]/projectNav";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +38,16 @@ export function ProjectSidebarNav({
         <div className="flex items-center gap-2 px-2 mb-4">
           <FolderKanban className="h-5 w-5 text-primary" />
           <h2 className="text-sm font-semibold">Project Navigation</h2>
+        </div>
+
+        <div className="space-y-1 mb-3">
+          <Link
+            href="/"
+            className="flex items-center gap-2 rounded-md px-2.5 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+          >
+            <Home className="h-4 w-4" />
+            <span>Home</span>
+          </Link>
         </div>
 
         <nav className="space-y-1">

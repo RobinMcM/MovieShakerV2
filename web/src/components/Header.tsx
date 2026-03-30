@@ -2,14 +2,15 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Film, User, LogOut, Users, Mail } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { Film, User, LogOut, Users, Mail, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useSessionContext, signOut } from "supertokens-auth-react/recipe/session";
 import { ModeToggle } from "@/components/mode-toggle";
 import { useAuthReady } from "@/contexts/AuthReadyContext";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 /** Guest header when auth is not ready (no SuperTokens wrapper). No session hooks. */
 export function HeaderGuest() {
@@ -48,6 +49,7 @@ interface ProfileRole {
 export function Header() {
     const session = useSessionContext();
     const router = useRouter();
+    const pathname = usePathname();
     const [profile, setProfile] = useState<ProfileRole | null>(null);
     const [userMenuOpen, setUserMenuOpen] = useState(false);
 
@@ -71,11 +73,12 @@ export function Header() {
     }
 
     const isAdmin = profile?.role === "admin";
+    const isProjectRoute = pathname?.startsWith("/project/");
 
     return (
         <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
             <div className="container mx-auto px-4 py-3 sm:py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-                <Link href="/" className="flex items-center gap-2">
+                <Link href="/" className={cn("flex items-center gap-2", isProjectRoute && "hidden sm:flex")}>
                     <Film className="h-6 w-6 text-primary" />
                     <span className="text-lg sm:text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                         MovieShaker
@@ -86,6 +89,17 @@ export function Header() {
                         <>
                             <Link href="/projects">
                                 <Button variant="ghost" size="sm">Projects</Button>
+                            </Link>
+                            <Link href="/credits" className="shrink-0">
+                                <div className="rounded-md border bg-muted/40 hover:bg-muted px-2.5 py-1.5 transition-colors">
+                                    <div className="flex items-center gap-1.5">
+                                        <Wallet className="h-3.5 w-3.5 text-primary" />
+                                        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Credits</span>
+                                    </div>
+                                    <div className="text-sm font-semibold leading-tight">
+                                        {typeof profile?.ai_credits === "number" ? profile.ai_credits : 0}
+                                    </div>
+                                </div>
                             </Link>
                             <Button
                                 variant="ghost"
@@ -103,9 +117,6 @@ export function Header() {
                                     <div className="h-full overflow-y-auto p-4 space-y-5">
                                         <div className="flex items-center justify-between">
                                             <h2 className="text-base font-semibold">User Menu</h2>
-                                            <span className="text-xs font-semibold px-2 py-1 rounded bg-muted text-muted-foreground">
-                                                Credits: {typeof profile?.ai_credits === "number" ? profile.ai_credits : 0}
-                                            </span>
                                         </div>
 
                                         <div className="space-y-2">

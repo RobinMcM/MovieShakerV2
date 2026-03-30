@@ -51,7 +51,6 @@ import { useVisualize } from "./useVisualize";
 import type {
   VideoHistoryItem,
   CompiledVideo,
-  Provider,
   ModelGenerationOptionDescriptor,
 } from "./types";
 import { API_URL, api, storageImageUrl } from "@/lib/api";
@@ -151,7 +150,6 @@ function VisualizeContent() {
   } = useVisualize(projectId);
 
   const [selectedTramLine, setSelectedTramLine] = useState<string | null>(null);
-  const [selectedProvider, setSelectedProvider] = useState<Provider>("gateway");
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -333,8 +331,6 @@ function VisualizeContent() {
     resolveSourceImageUrl(currentLine?.scene_visual);
 
   const gatewayConnected = apiConfig?.gatewayConnected ?? false;
-  const hasGatewayKey = apiConfig?.hasGatewayKey ?? false;
-  const availableProviders: Provider[] = ["gateway"];
 
   const channelGroups = videoHistory.reduce<Record<number, VideoHistoryItem[]>>((acc, v) => {
     const ch = v.Channel ?? 0;
@@ -723,56 +719,18 @@ function VisualizeContent() {
           </div>
         )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>API Provider and Shot</CardTitle>
-            <CardDescription>Choose AI provider and which shot to work with</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <label className="text-sm font-medium mb-2 block">API Provider</label>
-              <Select
-                value={selectedProvider}
-                onValueChange={(v) => setSelectedProvider(v as Provider)}
-                disabled={availableProviders.length === 0}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select provider..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableProviders.map((id) => (
-                    <SelectItem key={id} value={id}>
-                      Gateway
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-sm text-muted-foreground mt-2">
-                Source of truth: Gateway
-                {!hasGatewayKey ? " (missing internal key)" : gatewayConnected ? " (connected)" : " (not reachable)"}
-              </p>
-              {(lastCallCost !== null || lastCallBalance !== null) && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  {lastCallCost !== null ? `Last call cost: ${lastCallCost} credit${lastCallCost === 1 ? "" : "s"}` : ""}
-                  {lastCallCost !== null && lastCallBalance !== null ? " · " : ""}
-                  {lastCallBalance !== null ? `Balance: ${lastCallBalance}` : ""}
-                </p>
-              )}
-            </div>
-            {tramLines.length > 0 ? (
-              <div>
-                <label className="text-sm font-medium mb-2 block">Select Shot</label>
-                <TramLineSelect
-                  tramLines={tramLines}
-                  selectedTramLineId={selectedTramLine}
-                  onSelect={setSelectedTramLine}
-                />
-              </div>
-            ) : (
-              <p className="text-muted-foreground">No shots available. Create tram lines in Shot List.</p>
-            )}
-          </CardContent>
-        </Card>
+        <div className="space-y-2">
+          <label className="text-sm font-medium mb-2 block">Select Shot</label>
+          {tramLines.length > 0 ? (
+            <TramLineSelect
+              tramLines={tramLines}
+              selectedTramLineId={selectedTramLine}
+              onSelect={setSelectedTramLine}
+            />
+          ) : (
+            <p className="text-muted-foreground">No shots available. Create tram lines in Shot List.</p>
+          )}
+        </div>
 
         <Card>
           <CardHeader>
@@ -780,6 +738,13 @@ function VisualizeContent() {
             <CardDescription>Generate video through the gateway model router</CardDescription>
           </CardHeader>
           <CardContent>
+            {(lastCallCost !== null || lastCallBalance !== null) && (
+              <p className="text-xs text-muted-foreground mb-3">
+                {lastCallCost !== null ? `Last call cost: ${lastCallCost} credit${lastCallCost === 1 ? "" : "s"}` : ""}
+                {lastCallCost !== null && lastCallBalance !== null ? " · " : ""}
+                {lastCallBalance !== null ? `Balance: ${lastCallBalance}` : ""}
+              </p>
+            )}
             {!imageUrl ? (
               <div className="p-4 bg-muted rounded-md text-center text-muted-foreground">
                 Select a shot and add an image from the Mood Board, or use the Visualize button from the Mood Board

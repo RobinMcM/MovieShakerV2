@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
 import { AppHeader } from "@/components/Header";
@@ -264,9 +263,6 @@ function ScriptManagementPage() {
                 <AppHeader />
                 <main className="flex-1 container mx-auto px-4 py-8">
                     <p className="text-muted-foreground">Invalid project or script.</p>
-                    <Link href="/projects" className="text-primary underline mt-4 inline-block">
-                        Back to Projects
-                    </Link>
                 </main>
                 <Footer />
             </div>
@@ -291,9 +287,6 @@ function ScriptManagementPage() {
                 <AppHeader />
                 <main className="flex-1 container mx-auto px-4 py-8">
                     <p className="text-muted-foreground">{error ?? "Script not found."}</p>
-                    <Link href={`/project/${projectId}/scheduling`} className="text-primary underline mt-4 inline-block">
-                        Back to Scheduling
-                    </Link>
                 </main>
                 <Footer />
             </div>
@@ -305,13 +298,6 @@ function ScriptManagementPage() {
             <AppHeader />
             <main className="flex-1 container mx-auto px-4 py-8">
                 <div className="max-w-4xl mx-auto space-y-6">
-                    <Link
-                        href={`/project/${projectId}/scheduling`}
-                        className="text-primary underline hover:no-underline text-sm inline-block"
-                    >
-                        Back to Scheduling
-                    </Link>
-
                     {message && (
                         <div
                             className={`p-3 rounded-md text-sm ${

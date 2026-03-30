@@ -1,12 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Send } from "lucide-react";
+import { Send } from "lucide-react";
 import { api } from "@/lib/api";
 
 const COOLDOWN_MS = 60_000;
@@ -69,7 +68,6 @@ export default function ContactPage() {
     return (
         <div className="min-h-screen bg-background">
             <div className="container mx-auto px-4 py-8 max-w-2xl">
-                <Link href="/"><Button variant="ghost" className="gap-2 mb-8"><ArrowLeft className="h-4 w-4" />Back</Button></Link>
                 <div className="text-center space-y-2 mb-8">
                     <h1 className="text-4xl font-bold text-foreground">Contact Us</h1>
                     <p className="text-muted-foreground">Have a question or want to work with us? Send us a message and we&apos;ll respond as soon as possible.</p>

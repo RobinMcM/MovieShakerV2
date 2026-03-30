@@ -1,10 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
-import { Loader2, Clapperboard, Save, ArrowLeft, FileText, Video, User } from "lucide-react";
+import { Loader2, Clapperboard, Save, FileText, Video, User } from "lucide-react";
 
 import { AppHeader } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -295,7 +294,6 @@ function FilmInABoxPage() {
         }
     };
 
-    const backHref = projectId ? `/project/${projectId}` : "/projects";
     const gatewaySummary = useMemo(() => {
         if (!configStatus) return "Gateway status unavailable";
         const modelCount = Array.isArray(configStatus.models) ? configStatus.models.length : 0;
@@ -310,17 +308,9 @@ function FilmInABoxPage() {
             <AppHeader />
 
             <main className="flex-1 container mx-auto px-4 py-8 space-y-6">
-                <div className="flex items-center justify-between gap-3">
-                    <Link href={backHref}>
-                        <Button variant="outline" size="sm">
-                            <ArrowLeft className="h-4 w-4 mr-2" />
-                            Back
-                        </Button>
-                    </Link>
-                    <div className="text-right">
-                        <h1 className="text-2xl font-bold">a Film in a Box</h1>
-                        <p className="text-sm text-muted-foreground">AI-Powered Production Planning Suite</p>
-                    </div>
+                <div className="text-right">
+                    <h1 className="text-2xl font-bold">a Film in a Box</h1>
+                    <p className="text-sm text-muted-foreground">AI-Powered Production Planning Suite</p>
                 </div>
 
                 <Card>

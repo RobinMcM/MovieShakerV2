@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
 import { AppHeader } from "@/components/Header";
@@ -60,7 +60,6 @@ function getSceneNumber(tramLine: TramLineWithScene): string | number {
 
 function MoodBoardContent() {
   const params = useParams();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const projectId = (params?.projectId as string) ?? null;
   const tramLineParam = searchParams?.get("tramLine");
@@ -228,27 +227,6 @@ function MoodBoardContent() {
     <div className="min-h-screen bg-background">
       <AppHeader />
       <main className="w-full px-4 py-6 sm:px-6 sm:py-8">
-        <div className="flex items-center gap-4 mb-6">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              if (typeof window !== "undefined" && window.history.length > 1) {
-                router.back();
-                return;
-              }
-              if (projectId) {
-                router.push(`/project/${projectId}`);
-                return;
-              }
-              router.push("/");
-            }}
-            className="text-muted-foreground hover:text-foreground"
-          >
-            <ChevronLeft className="h-4 w-4 mr-1" />
-            Back
-          </Button>
-        </div>
         <div className="flex flex-col items-center min-h-[60vh] space-y-6 w-full">
           <div className="flex flex-col items-center w-full p-4 sm:p-6 lg:p-8 border-2 border-dashed border-muted rounded-xl bg-muted/10 space-y-6">
             <p className="text-lg font-medium">Select a Tram Line to begin</p>

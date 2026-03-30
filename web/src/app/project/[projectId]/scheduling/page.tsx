@@ -124,12 +124,6 @@ function SchedulingPageInner() {
         <AppHeader />
         <main className="flex-1 container mx-auto px-4 py-8">
           <p className="text-muted-foreground">Project not found.</p>
-          <Link
-            href="/projects"
-            className="text-primary underline mt-4 inline-block"
-          >
-            Back to Projects
-          </Link>
         </main>
         <Footer />
       </div>
@@ -183,15 +177,6 @@ function SchedulingPageInner() {
             </div>
           </div>
         )}
-
-        <div className="mb-4">
-          <Link
-            href={`/project/${projectId}/scheduling`}
-            className="text-primary hover:underline text-sm"
-          >
-            Scheduling Home
-          </Link>
-        </div>
 
         <div className="max-w-6xl mx-auto space-y-6">
           <div className="flex items-center gap-2 flex-wrap">

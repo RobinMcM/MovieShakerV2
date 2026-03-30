@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
-import { ArrowLeft, Settings } from "lucide-react";
+import { Settings } from "lucide-react";
 
 import { AppHeader } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -13,19 +12,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 function ProjectAdministrationPlaceholderPage() {
   const searchParams = useSearchParams();
   const projectId = searchParams.get("project");
-  const backHref = projectId ? `/project/${projectId}` : "/projects";
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <AppHeader />
       <main className="flex-1 container mx-auto px-4 py-8 space-y-6">
-        <Link href={backHref}>
-          <Button variant="outline" size="sm">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
-          </Button>
-        </Link>
-
         <Card className="max-w-3xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

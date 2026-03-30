@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 import { AppHeader } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -82,8 +81,6 @@ function SubmitFundingPage() {
     }
   }
 
-  const backHref = projectId ? `/project/${projectId}` : "/projects";
-
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col bg-background">
@@ -104,9 +101,6 @@ function SubmitFundingPage() {
           <p className="text-muted-foreground">
             {!projectId ? "No project selected." : "Project not found."}
           </p>
-          <Link href="/projects" className="text-primary underline inline-block">
-            Back to Projects
-          </Link>
         </main>
         <Footer />
       </div>
@@ -117,13 +111,6 @@ function SubmitFundingPage() {
     <div className="min-h-screen flex flex-col bg-background">
       <AppHeader />
       <main className="flex-1 container mx-auto px-4 py-8 space-y-6">
-        <Link href={backHref}>
-          <Button variant="outline" size="sm">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
-          </Button>
-        </Link>
-
         {message && (
           <div
             className={`p-3 rounded-md text-sm ${

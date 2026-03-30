@@ -433,16 +433,8 @@ function SceneCostsPageInner() {
     <div className="min-h-screen flex flex-col bg-background">
       <AppHeader />
       <main className="flex-1 container px-4 py-6">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mb-6">
-          <Link
-            href={`/project/${projectId}/scheduling`}
-            className="text-sm text-muted-foreground hover:text-foreground"
-          >
-            ← Back to Scheduling
-          </Link>
-          <h1 className="text-xl font-semibold sm:truncate sm:flex-1">
-            Scene Costs: {project.name}
-          </h1>
+        <div className="mb-6">
+          <h1 className="text-xl font-semibold">Scene Costs: {project.name}</h1>
         </div>
 
         {toastMessage && (

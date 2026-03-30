@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Camera, Film, Layout, Lightbulb } from "lucide-react";
+import { Camera, Film, Layout, Lightbulb } from "lucide-react";
 import shotListPlanning from "@/assets/shot-list-planning.jpg";
 
 export default function ShotListInfoPage() {
@@ -8,7 +8,6 @@ export default function ShotListInfoPage() {
         <div className="min-h-screen bg-background">
             <section className="relative py-20">
                 <div className="container mx-auto px-4">
-                    <Link href="/"><Button variant="ghost" className="gap-2 mb-8"><ArrowLeft className="h-4 w-4" />Back</Button></Link>
                     <div className="grid md:grid-cols-2 gap-12 items-center">
                         <div>
                             <h1 className="text-5xl font-bold mb-6 bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">Shot List Management</h1>

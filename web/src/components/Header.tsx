@@ -84,6 +84,9 @@ export function Header() {
                 <div className="w-full sm:w-auto flex items-center justify-end gap-2 sm:gap-3">
                     {hasSession ? (
                         <>
+                            <Link href="/projects">
+                                <Button variant="ghost" size="sm">Projects</Button>
+                            </Link>
                             <Button
                                 variant="ghost"
                                 size="icon"
@@ -106,14 +109,6 @@ export function Header() {
                                         </div>
 
                                         <div className="space-y-2">
-                                            <Link
-                                                href="/projects"
-                                                onClick={() => setUserMenuOpen(false)}
-                                                className="flex items-center gap-2 rounded-md px-2.5 py-2.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
-                                            >
-                                                <Film className="h-4 w-4" />
-                                                <span>Projects</span>
-                                            </Link>
                                             <Link
                                                 href="/profile"
                                                 onClick={() => setUserMenuOpen(false)}

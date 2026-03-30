@@ -115,12 +115,6 @@ function BudgetingPageInner() {
         <AppHeader />
         <main className="flex-1 container mx-auto px-4 py-8">
           <p className="text-muted-foreground">Project not found.</p>
-          <Link
-            href="/projects"
-            className="text-primary underline mt-4 inline-block"
-          >
-            Back to Projects
-          </Link>
         </main>
         <Footer />
       </div>
@@ -157,15 +151,6 @@ function BudgetingPageInner() {
             </div>
           </div>
         )}
-
-        <div className="mb-4">
-          <Link
-            href={`/project/${projectId}/scheduling`}
-            className="text-primary hover:underline text-sm"
-          >
-            ← Back to Scheduling
-          </Link>
-        </div>
 
         <div className="mb-6 flex items-center gap-2">
           <div className="flex items-center gap-2">

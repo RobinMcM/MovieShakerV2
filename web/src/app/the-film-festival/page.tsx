@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
 import {
@@ -11,7 +10,6 @@ import {
   Megaphone,
   Ticket,
   Save,
-  ArrowLeft,
   Printer,
 } from "lucide-react";
 
@@ -336,19 +334,11 @@ function TheFilmFestivalPage() {
     }
   }
 
-  const backHref = projectId ? `/project/${projectId}` : "/projects";
-
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <AppHeader />
       <main className="flex-1 container mx-auto px-4 py-8 space-y-8">
-        <div className="flex items-center justify-between gap-3">
-          <Link href={backHref}>
-            <Button variant="outline" size="sm">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
-            </Button>
-          </Link>
+        <div className="flex items-center justify-end gap-3">
           <h1 className="text-2xl font-bold text-center">The Film Festival</h1>
           <Button
             variant="outline"

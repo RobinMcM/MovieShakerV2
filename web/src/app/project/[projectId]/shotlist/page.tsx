@@ -330,9 +330,6 @@ function ShotListContent() {
       <main className="container mx-auto px-4 py-8">
         <div className="max-w-3xl mx-auto space-y-6">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" asChild>
-              <Link href={`/project/${projectId}/scheduling`}>Back</Link>
-            </Button>
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <Camera className="h-6 w-6 text-primary" />
               Shot List

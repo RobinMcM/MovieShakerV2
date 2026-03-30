@@ -99,14 +99,32 @@ class SceneCharacterResponse(BaseModel):
     notes: Optional[str] = None
 
 
+class PublicActorRoleCharacter(BaseModel):
+    name: str
+    character_image_url: Optional[str] = None
+
+
+class PublicActorRoleScene(BaseModel):
+    id: str
+    scene_number: Optional[str] = None
+    heading: str
+    description: str
+    page_number: str
+
+
+class PublicActorRoleScriptElement(BaseModel):
+    type: str
+    text: str
+    character: Optional[str] = None
+
+
 class PublicActorRoleResponse(BaseModel):
-    project_id: str
-    project_name: str
-    script_id: str
-    script_name: str
-    character_id: str
-    character_name: str
-    casting_notes: Optional[str] = None
+    character: PublicActorRoleCharacter
+    project: str
+    script: str
+    script_json_url: Optional[str] = None
+    scenes: List[PublicActorRoleScene]
+    script_elements: List[PublicActorRoleScriptElement]
 
 
 def _ensure_project_member(db: Session, project_id: str, user_id: str) -> None:
@@ -197,14 +215,67 @@ def get_public_actor_role(
     if bool(getattr(character, "hide_from_view", False)):
         raise HTTPException(status_code=404, detail="Not found")
 
+    links_stmt = select(SceneCharacter).where(SceneCharacter.character_id == character.id)
+    scene_links = list(db.exec(links_stmt).all())
+    scene_ids = [link.scene_id for link in scene_links]
+
+    scenes_stmt = (
+        select(Scene)
+        .where(Scene.script_id == script.id)
+        .order_by(Scene.scene_number.asc(), Scene.id.asc())
+    )
+    if scene_ids:
+        scenes_stmt = scenes_stmt.where(Scene.id.in_(scene_ids))
+    scenes = list(db.exec(scenes_stmt).all())
+
+    # Fallback: if mappings are missing, expose script scenes to keep rehearsal functional.
+    if not scenes:
+        fallback_stmt = (
+            select(Scene)
+            .where(Scene.script_id == script.id)
+            .order_by(Scene.scene_number.asc(), Scene.id.asc())
+        )
+        scenes = list(db.exec(fallback_stmt).all())
+
+    script_elements: List[PublicActorRoleScriptElement] = []
+    parsed = _read_script_json(script)
+    if parsed:
+        raw_elements, _metadata = parsed
+        for el in raw_elements:
+            if not isinstance(el, dict):
+                continue
+            text = str(el.get("text") or "").strip()
+            if not text:
+                continue
+            el_type = str(el.get("type") or "action").strip().lower()
+            role_character = el.get("character")
+            script_elements.append(
+                PublicActorRoleScriptElement(
+                    type=el_type,
+                    text=text,
+                    character=str(role_character).strip() if isinstance(role_character, str) else None,
+                )
+            )
+
     return PublicActorRoleResponse(
-        project_id=str(project.id),
-        project_name=project.name,
-        script_id=str(script.id),
-        script_name=script.name,
-        character_id=str(character.id),
-        character_name=character.name,
-        casting_notes=character.casting_notes,
+        character=PublicActorRoleCharacter(
+            name=character.name,
+            character_image_url=getattr(character, "character_image_url", None),
+        ),
+        project=project.name,
+        script=script.name,
+        script_json_url=None,
+        scenes=[
+            PublicActorRoleScene(
+                id=str(scene.id),
+                scene_number=str(scene.scene_number) if scene.scene_number is not None else None,
+                heading=scene.heading or "Untitled Scene",
+                description=getattr(scene, "scene_details", None) or "",
+                page_number=scene.page_number or "",
+            )
+            for scene in scenes
+        ],
+        script_elements=script_elements,
     )
 
 

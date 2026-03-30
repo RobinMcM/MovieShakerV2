@@ -34,3 +34,17 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## PWA Roadmap
+
+### Stage 1 (Current)
+
+- Installable PWA baseline: `manifest.webmanifest` + app icons + metadata wiring.
+- Mobile-friendly baseline polish focused on shared app chrome.
+- Offline/service-worker caching intentionally deferred.
+
+### Stage 2 (Next)
+
+- Rebuild project route structure around a persistent side-menu shell.
+- Introduce `project/[projectId]/layout.tsx` for shared navigation and faster in-app transitions.
+- Centralize project tool navigation config and active-state behavior.

@@ -11,7 +11,6 @@ import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
 
 interface ProjectData {
@@ -154,12 +153,24 @@ function SubmitFundingPage() {
                   Project: {project.name}
                 </p>
               </div>
-              <Switch
+              <Button
                 id="funding-toggle"
-                checked={Boolean(project.submit_for_funding)}
-                onCheckedChange={handleToggle}
+                type="button"
+                variant={project.submit_for_funding ? "default" : "outline"}
+                onClick={() => handleToggle(!Boolean(project.submit_for_funding))}
                 disabled={updating || !supportsFundingToggle}
-              />
+              >
+                {updating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Updating...
+                  </>
+                ) : project.submit_for_funding ? (
+                  "Enabled"
+                ) : (
+                  "Disabled"
+                )}
+              </Button>
             </div>
 
             {!supportsFundingToggle && (

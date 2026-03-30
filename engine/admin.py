@@ -1,4 +1,4 @@
-"""Admin-only routes: User Management (list users with profile, update role/tier/blocked)."""
+"""Admin-only routes: User Management + Email Management."""
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -9,6 +9,7 @@ from db import get_session
 from models import UserProfile
 from auth_deps import require_admin
 from supertokens_python.asyncio import get_users_oldest_first
+from email_client import send_email_via_web
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -27,6 +28,81 @@ class AdminUserUpdate(BaseModel):
     role: Optional[str] = None
     producer_tier: Optional[str] = None
     blocked: Optional[bool] = None
+
+
+class BulkEmailRecipient(BaseModel):
+    user_id: str
+    email: str
+
+
+class BulkEmailPreviewResponse(BaseModel):
+    targeted: int
+    recipients: List[BulkEmailRecipient]
+
+
+class BulkEmailSendRequest(BaseModel):
+    subject: str
+    body: str
+    cta_url: Optional[str] = None
+    cta_label: Optional[str] = None
+    require_communication_email: bool = False
+
+
+class BulkEmailSendResponse(BaseModel):
+    targeted: int
+    sent: int
+    failed: int
+    failed_user_ids: List[str] = []
+
+
+async def _build_bulk_email_recipients(
+    db: Session, require_communication_email: bool = False
+) -> List[BulkEmailRecipient]:
+    users_response = await get_users_oldest_first("public")
+    recipients: list[BulkEmailRecipient] = []
+
+    for u in users_response.users:
+        user_id = getattr(u, "user_id", None) or getattr(u, "id", None)
+        if not user_id:
+            continue
+
+        profile = db.get(UserProfile, str(user_id))
+        if profile and profile.blocked:
+            continue
+
+        notifications_opt_in = (
+            profile.notifications_opt_in if profile is not None else True
+        )
+        if not notifications_opt_in:
+            continue
+
+        communication_email = (
+            (profile.communication_email or "").strip()
+            if profile and profile.communication_email
+            else ""
+        )
+        auth_email = ""
+        emails = getattr(u, "emails", None) or []
+        if emails:
+            auth_email = str(emails[0]).strip()
+        else:
+            maybe_email = getattr(u, "email", None)
+            if maybe_email:
+                auth_email = str(maybe_email).strip()
+
+        recipient_email = (
+            communication_email
+            if require_communication_email
+            else (communication_email or auth_email)
+        )
+        if not recipient_email:
+            continue
+
+        recipients.append(
+            BulkEmailRecipient(user_id=str(user_id), email=recipient_email)
+        )
+
+    return recipients
 
 
 @router.get("/users", response_model=List[UserWithProfileResponse])
@@ -124,4 +200,58 @@ async def admin_update_user(
         role=profile.role,
         producer_tier=profile.producer_tier,
         blocked=profile.blocked,
+    )
+
+
+@router.get("/email/bulk/preview", response_model=BulkEmailPreviewResponse)
+async def admin_email_bulk_preview(
+    require_communication_email: bool = False,
+    _admin: UserProfile = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    recipients = await _build_bulk_email_recipients(
+        db, require_communication_email=require_communication_email
+    )
+    return BulkEmailPreviewResponse(
+        targeted=len(recipients),
+        recipients=recipients[:25],  # preview sample only
+    )
+
+
+@router.post("/email/bulk-send", response_model=BulkEmailSendResponse)
+async def admin_email_bulk_send(
+    body: BulkEmailSendRequest,
+    _admin: UserProfile = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    subject = body.subject.strip()
+    message_body = body.body.strip()
+    if not subject or not message_body:
+        raise HTTPException(status_code=400, detail="subject and body are required")
+
+    recipients = await _build_bulk_email_recipients(
+        db, require_communication_email=body.require_communication_email
+    )
+    failed_user_ids: list[str] = []
+    sent_count = 0
+
+    for recipient in recipients:
+        ok = await send_email_via_web(
+            type="notification",
+            email=recipient.email,
+            title=subject,
+            body=message_body,
+            ctaUrl=body.cta_url or "",
+            ctaLabel=body.cta_label or "",
+        )
+        if ok:
+            sent_count += 1
+        else:
+            failed_user_ids.append(recipient.user_id)
+
+    return BulkEmailSendResponse(
+        targeted=len(recipients),
+        sent=sent_count,
+        failed=len(failed_user_ids),
+        failed_user_ids=failed_user_ids,
     )

@@ -9,12 +9,14 @@ from supertokens_python.asyncio import get_users_oldest_first
 from starlette.middleware.cors import CORSMiddleware
 import uvicorn
 import logging
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
 # Local imports
 from config import load_settings
 from db import init_db
+from email_client import send_email_via_web
 from projects import router as projects_router
 from profile import router as profile_router, verify_router
 from scripts import router as scripts_router
@@ -35,6 +37,78 @@ from film_in_a_box import router as film_in_a_box_router
 
 settings = load_settings()
 
+
+def _extract_email_from_form_fields(form_fields: Any) -> Optional[str]:
+    if not isinstance(form_fields, list):
+        return None
+    for field in form_fields:
+        field_id = None
+        field_value = None
+        if isinstance(field, dict):
+            field_id = field.get("id")
+            field_value = field.get("value")
+        else:
+            field_id = getattr(field, "id", None)
+            field_value = getattr(field, "value", None)
+        if field_id == "email" and isinstance(field_value, str) and field_value.strip():
+            return field_value.strip()
+    return None
+
+
+def _override_emailpassword_apis(original_implementation: Any) -> Any:
+    original_sign_up_post = getattr(original_implementation, "sign_up_post", None)
+    original_password_reset_post = getattr(original_implementation, "password_reset_post", None)
+
+    if original_sign_up_post is not None:
+        async def sign_up_post(*args: Any, **kwargs: Any) -> Any:
+            response = await original_sign_up_post(*args, **kwargs)
+            try:
+                if getattr(response, "status", None) == "OK":
+                    email = None
+                    user = getattr(response, "user", None)
+                    if user is not None:
+                        email = getattr(user, "email", None)
+                        if not email:
+                            emails = getattr(user, "emails", None) or []
+                            if emails:
+                                email = str(emails[0])
+                    if not email:
+                        form_fields = kwargs.get("form_fields") if "form_fields" in kwargs else (args[0] if len(args) > 0 else None)
+                        email = _extract_email_from_form_fields(form_fields)
+                    if email:
+                        await send_email_via_web(type="registration_confirmation", email=email)
+            except Exception as err:
+                logger.warning("registration confirmation email hook failed: %s", err)
+            return response
+
+        original_implementation.sign_up_post = sign_up_post
+
+    if original_password_reset_post is not None:
+        async def password_reset_post(*args: Any, **kwargs: Any) -> Any:
+            response = await original_password_reset_post(*args, **kwargs)
+            try:
+                if getattr(response, "status", None) == "OK":
+                    email = None
+                    user = getattr(response, "user", None)
+                    if user is not None:
+                        email = getattr(user, "email", None)
+                        if not email:
+                            emails = getattr(user, "emails", None) or []
+                            if emails:
+                                email = str(emails[0])
+                    if not email:
+                        form_fields = kwargs.get("form_fields") if "form_fields" in kwargs else (args[0] if len(args) > 0 else None)
+                        email = _extract_email_from_form_fields(form_fields)
+                    if email:
+                        await send_email_via_web(type="password_reset_confirmation", email=email)
+            except Exception as err:
+                logger.warning("password reset confirmation email hook failed: %s", err)
+            return response
+
+        original_implementation.password_reset_post = password_reset_post
+
+    return original_implementation
+
 init(
     app_info=InputAppInfo(
         app_name="MovieShaker Engine",
@@ -49,7 +123,11 @@ init(
     ),
     framework='fastapi',
     recipe_list=[
-        emailpassword.init(),
+        emailpassword.init(
+            override=emailpassword.InputOverrideConfig(
+                apis=_override_emailpassword_apis
+            )
+        ),
         session.init(),
     ]
 )

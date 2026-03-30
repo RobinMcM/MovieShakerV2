@@ -27,6 +27,7 @@ interface Profile {
     role?: string;
     producer_tier?: string;
     blocked?: boolean;
+    notifications_opt_in?: boolean;
     ai_credits?: number;
     model_fiab_text?: string | null;
     model_visualize_video?: string | null;
@@ -137,6 +138,7 @@ function ProfilePage() {
         address: "",
         model_fiab_text: "",
         model_sound_music: "",
+        notifications_opt_in: true,
     });
 
     useEffect(() => {
@@ -164,6 +166,7 @@ function ProfilePage() {
                 address: data.address ?? "",
                 model_fiab_text: data.model_fiab_text ?? "",
                 model_sound_music: data.model_sound_music ?? "",
+                notifications_opt_in: data.notifications_opt_in ?? true,
             });
             setError(null);
         } catch (err) {
@@ -460,6 +463,30 @@ function ProfilePage() {
                                     rows={3}
                                     className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-y"
                                 />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Email notifications</Label>
+                                <Select
+                                    value={formData.notifications_opt_in ? "enabled" : "disabled"}
+                                    onValueChange={(value) =>
+                                        setFormData((prev) => ({
+                                            ...prev,
+                                            notifications_opt_in: value === "enabled",
+                                        }))
+                                    }
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="enabled">Enabled</SelectItem>
+                                        <SelectItem value="disabled">Disabled</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    Enabled by default. Admin bulk announcements only go to users with notifications enabled.
+                                </p>
                             </div>
 
                             <Button type="submit" disabled={saving}>

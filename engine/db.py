@@ -21,6 +21,7 @@ def _migrate_user_profile_roles():
                 ("role", "VARCHAR NOT NULL DEFAULT 'producer'"),
                 ("producer_tier", "VARCHAR NOT NULL DEFAULT 'standard'"),
                 ("blocked", "BOOLEAN NOT NULL DEFAULT FALSE"),
+                ("notifications_opt_in", "BOOLEAN NOT NULL DEFAULT TRUE"),
                 ("ai_credits", "INTEGER NOT NULL DEFAULT 50"),
                 ("model_fiab_text", "VARCHAR"),
                 ("model_visualize_video", "VARCHAR"),

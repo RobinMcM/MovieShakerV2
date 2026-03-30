@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { VerificationEmail } from "@/emails/VerificationEmail";
 import { NotificationEmail } from "@/emails/NotificationEmail";
+import { RegistrationConfirmationEmail } from "@/emails/RegistrationConfirmationEmail";
+import { PasswordResetConfirmationEmail } from "@/emails/PasswordResetConfirmationEmail";
 import React from "react";
 
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
@@ -47,9 +49,18 @@ export async function POST(request: NextRequest) {
   if (type === "notification" && payload) {
     return handleNotification(payload);
   }
+  if (type === "registration_confirmation" && payload) {
+    return handleRegistrationConfirmation(payload);
+  }
+  if (type === "password_reset_confirmation" && payload) {
+    return handlePasswordResetConfirmation(payload);
+  }
 
   return NextResponse.json(
-    { error: "Missing or invalid type (verification | notification)" },
+    {
+      error:
+        "Missing or invalid type (verification | notification | registration_confirmation | password_reset_confirmation)",
+    },
     { status: 400 }
   );
 }
@@ -117,6 +128,58 @@ async function handleNotification(body: Record<string, unknown>) {
       ctaUrl,
       ctaLabel,
     }),
+  });
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ id: data?.id });
+}
+
+async function handleRegistrationConfirmation(body: Record<string, unknown>) {
+  const email = typeof body.email === "string" ? body.email : null;
+  if (!email) {
+    return NextResponse.json(
+      { error: "Registration confirmation requires email" },
+      { status: 400 }
+    );
+  }
+
+  const resend = getResendClient();
+  const from =
+    process.env.RESEND_FROM ?? "MovieShaker <onboarding@resend.dev>";
+
+  const { data, error } = await resend.emails.send({
+    from,
+    to: [email],
+    subject: "Welcome to MovieShaker",
+    react: React.createElement(RegistrationConfirmationEmail, { email }),
+  });
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ id: data?.id });
+}
+
+async function handlePasswordResetConfirmation(body: Record<string, unknown>) {
+  const email = typeof body.email === "string" ? body.email : null;
+  if (!email) {
+    return NextResponse.json(
+      { error: "Password reset confirmation requires email" },
+      { status: 400 }
+    );
+  }
+
+  const resend = getResendClient();
+  const from =
+    process.env.RESEND_FROM ?? "MovieShaker <onboarding@resend.dev>";
+
+  const { data, error } = await resend.emails.send({
+    from,
+    to: [email],
+    subject: "Password reset confirmed",
+    react: React.createElement(PasswordResetConfirmationEmail, { email }),
   });
 
   if (error) {

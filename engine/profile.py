@@ -40,6 +40,7 @@ class ProfileResponse(BaseModel):
     role: str = "producer"
     producer_tier: str = "standard"
     blocked: bool = False
+    notifications_opt_in: bool = True
     ai_credits: int = 50
     model_fiab_text: Optional[str] = None
     model_visualize_video: Optional[str] = None
@@ -58,6 +59,7 @@ class ProfileUpdate(BaseModel):
     username: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
+    notifications_opt_in: Optional[bool] = None
     model_fiab_text: Optional[str] = None
     model_visualize_video: Optional[str] = None
     model_object_image: Optional[str] = None
@@ -127,6 +129,7 @@ async def get_profile(
         role=profile.role,
         producer_tier=profile.producer_tier,
         blocked=profile.blocked,
+        notifications_opt_in=profile.notifications_opt_in,
         ai_credits=profile.ai_credits,
         model_fiab_text=profile.model_fiab_text,
         model_visualize_video=profile.model_visualize_video,
@@ -190,6 +193,7 @@ async def send_verification_email(
         role=profile.role,
         producer_tier=profile.producer_tier,
         blocked=profile.blocked,
+        notifications_opt_in=profile.notifications_opt_in,
         ai_credits=profile.ai_credits,
         model_fiab_text=profile.model_fiab_text,
         model_visualize_video=profile.model_visualize_video,
@@ -274,6 +278,7 @@ async def update_profile(
         role=profile.role,
         producer_tier=profile.producer_tier,
         blocked=profile.blocked,
+        notifications_opt_in=profile.notifications_opt_in,
         ai_credits=profile.ai_credits,
         model_fiab_text=profile.model_fiab_text,
         model_visualize_video=profile.model_visualize_video,

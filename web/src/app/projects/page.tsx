@@ -192,7 +192,7 @@ function ProjectsPage() {
             <AppHeader />
             <main className="flex-1 container mx-auto px-4 py-8">
 
-                <div className="flex justify-between items-center mb-8">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8">
                     <div>
                         <h1 className="text-3xl font-bold text-primary">My Projects</h1>
                         <p className="text-muted-foreground mt-1">
@@ -211,14 +211,14 @@ function ProjectsPage() {
                         setIsDialogOpen(open);
                         if (!open) resetForm();
                     }}>
-                        <div className="flex items-center gap-2">
-                            <Button size="lg" variant="outline" asChild>
+                        <div className="flex flex-col sm:flex-row w-full sm:w-auto items-stretch sm:items-center gap-2">
+                            <Button size="lg" variant="outline" className="w-full sm:w-auto" asChild>
                                 <Link href="/film-in-a-box">
                                     <Clapperboard className="mr-2 h-4 w-4" /> a Film in a Box
                                 </Link>
                             </Button>
                             <DialogTrigger asChild>
-                                <Button size="lg">
+                                <Button size="lg" className="w-full sm:w-auto">
                                     <Plus className="mr-2 h-4 w-4" /> New Project
                                 </Button>
                             </DialogTrigger>
@@ -369,9 +369,9 @@ function ProjectsPage() {
                         <Film className="h-10 w-10 text-muted-foreground mx-auto mb-4" />
                         <h3 className="text-lg font-medium">No projects yet</h3>
                         <p className="text-muted-foreground mb-6">Start your first production today.</p>
-                        <div className="flex justify-center gap-2">
-                            <Button onClick={() => setIsDialogOpen(true)} variant="outline">Create Project</Button>
-                            <Button variant="outline" asChild>
+                        <div className="flex flex-col sm:flex-row justify-center gap-2">
+                            <Button onClick={() => setIsDialogOpen(true)} variant="outline" className="w-full sm:w-auto">Create Project</Button>
+                            <Button variant="outline" className="w-full sm:w-auto" asChild>
                                 <Link href="/film-in-a-box">a Film in a Box</Link>
                             </Button>
                         </div>
@@ -386,11 +386,11 @@ function ProjectsPage() {
                                     <div className="flex justify-between items-start">
                                         <CardTitle className="line-clamp-1 text-xl">{project.name}</CardTitle>
                                         {project.role === "owner" && (
-                                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.preventDefault()}>
-                                                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleEditClick(project); }}>
+                                            <div className="flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity" onClick={(e) => e.preventDefault()}>
+                                                <Button size="icon" variant="ghost" className="h-10 w-10" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleEditClick(project); }}>
                                                     <Pencil className="h-4 w-4" />
                                                 </Button>
-                                                <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDelete(project.id, e); }}>
+                                                <Button size="icon" variant="ghost" className="h-10 w-10 text-destructive hover:text-destructive" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDelete(project.id, e); }}>
                                                     <Trash2 className="h-4 w-4" />
                                                 </Button>
                                             </div>

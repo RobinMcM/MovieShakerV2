@@ -404,7 +404,7 @@ function TheFilmFestivalPage() {
 
           <div className="lg:col-span-3">
             <Tabs defaultValue="positioning" className="w-full">
-              <TabsList className="grid grid-cols-4 w-full">
+              <TabsList className="grid grid-cols-2 sm:grid-cols-4 w-full h-auto gap-1">
                 <TabsTrigger value="positioning">
                   <Target className="h-4 w-4 mr-1" />
                   Positioning

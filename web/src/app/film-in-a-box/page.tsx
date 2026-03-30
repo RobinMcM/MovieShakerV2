@@ -502,7 +502,7 @@ function FilmInABoxPage() {
 
                                 {!loading && docResult && (
                                     <Tabs defaultValue="script" className="w-full">
-                                        <TabsList className="grid w-full grid-cols-3 mb-4">
+                                        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 mb-4 h-auto gap-1">
                                             <TabsTrigger value="script">Script</TabsTrigger>
                                             <TabsTrigger value="outline">Creative Outline</TabsTrigger>
                                             <TabsTrigger value="production">Production Plan</TabsTrigger>
@@ -518,7 +518,7 @@ function FilmInABoxPage() {
                                                 </CardHeader>
                                                 <CardContent>
                                                     {Array.isArray(docResult.script) ? (
-                                                        <div className="border rounded-md overflow-hidden">
+                                                        <div className="border rounded-md overflow-x-auto">
                                                             <table className="w-full text-sm">
                                                                 <thead className="bg-muted">
                                                                     <tr>

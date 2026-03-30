@@ -327,7 +327,7 @@ function ScriptManagementPage() {
                     {scriptCounts && (
                         <Card>
                             <CardContent className="py-6">
-                                <div className="grid grid-cols-3 gap-6 text-center">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 text-center">
                                     <div>
                                         <p className="text-2xl font-bold text-primary">{loadedScenes.length}</p>
                                         <p className="text-sm text-muted-foreground mt-1">Total Scenes</p>
@@ -434,7 +434,7 @@ function ScriptManagementPage() {
                                             <span className="font-semibold">PDF Viewer</span>
                                         </AccordionTrigger>
                                         <AccordionContent>
-                                            <div className="w-full h-[800px] border rounded-lg overflow-hidden bg-muted">
+                                            <div className="w-full min-h-[240px] h-[min(70vh,800px)] sm:h-[800px] border rounded-lg overflow-hidden bg-muted">
                                                 <iframe
                                                     src={`${pdfUrl}#toolbar=1&navpanes=1&scrollbar=1`}
                                                     className="w-full h-full"

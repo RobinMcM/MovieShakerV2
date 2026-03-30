@@ -259,23 +259,23 @@ function BudgetingPageInner() {
         </Card>
 
         <Tabs defaultValue="template" className="w-full">
-          <div className="flex justify-center mb-6">
-            <TabsList className="h-12 rounded-full bg-secondary p-1 border border-border/50 shadow-inner">
+          <div className="mb-6 overflow-x-auto">
+            <TabsList className="h-12 min-w-max rounded-full bg-secondary p-1 border border-border/50 shadow-inner">
               <TabsTrigger
                 value="template"
-                className="rounded-full px-8 py-2.5 text-sm font-semibold transition-all data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-md data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:bg-background/40 data-[state=inactive]:hover:text-foreground"
+                className="rounded-full px-4 sm:px-8 py-2.5 text-sm font-semibold transition-all data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-md data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:bg-background/40 data-[state=inactive]:hover:text-foreground"
               >
                 Budget
               </TabsTrigger>
               <TabsTrigger
                 value="timeline"
-                className="rounded-full px-8 py-2.5 text-sm font-semibold transition-all data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-md data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:bg-background/40 data-[state=inactive]:hover:text-foreground"
+                className="rounded-full px-4 sm:px-8 py-2.5 text-sm font-semibold transition-all data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-md data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:bg-background/40 data-[state=inactive]:hover:text-foreground"
               >
                 Timeline
               </TabsTrigger>
               <TabsTrigger
                 value="marketing"
-                className="rounded-full px-8 py-2.5 text-sm font-semibold transition-all data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-md data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:bg-background/40 data-[state=inactive]:hover:text-foreground"
+                className="rounded-full px-4 sm:px-8 py-2.5 text-sm font-semibold transition-all data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-md data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:bg-background/40 data-[state=inactive]:hover:text-foreground"
               >
                 Marketing
               </TabsTrigger>
@@ -357,6 +357,9 @@ function BudgetingPageInner() {
             {timelineItems.length > 0 ? (
               <Card>
                 <CardContent className="pt-6 overflow-x-auto">
+                  <p className="text-xs text-muted-foreground mb-2 md:hidden">
+                    Scroll horizontally to view the full timeline matrix.
+                  </p>
                   <div className="min-w-[800px]">
                     <table className="w-full border-collapse">
                       <thead>

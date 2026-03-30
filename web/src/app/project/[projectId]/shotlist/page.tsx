@@ -341,7 +341,7 @@ function ShotListContent() {
 
           <Card>
             <CardContent className="py-6">
-              <div className="grid grid-cols-3 gap-6 text-center">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 text-center">
                 <div>
                   <p className="text-2xl font-bold text-primary">{totalScenes}</p>
                   <p className="text-sm text-muted-foreground mt-1">Total Scenes</p>
@@ -534,7 +534,7 @@ function ShotListContent() {
                               <div className="relative min-h-[200px]">
                                 <div
                                   data-drawing-container
-                                  className={`absolute left-0 top-0 w-24 border-r transition-all ${
+                                  className={`absolute left-0 top-0 w-16 sm:w-24 border-r transition-all ${
                                     isDrawingMode
                                       ? "bg-muted/10 border-primary/30"
                                       : "bg-transparent border-transparent pointer-events-none"
@@ -586,7 +586,7 @@ function ShotListContent() {
                                   )}
                                 </div>
                                 <div
-                                  className="font-mono text-sm leading-relaxed p-8 pl-32 relative z-[1] select-none"
+                                  className="font-mono text-sm leading-relaxed p-4 sm:p-8 pl-20 sm:pl-32 relative z-[1] select-none"
                                   style={{
                                     userSelect: isDrawingMode ? "none" : "auto",
                                     pointerEvents: "none",
@@ -661,9 +661,9 @@ function ShotListContent() {
                         {tramLines.map((line) => (
                           <div
                             key={line.id}
-                            className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/5"
+                            className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/5"
                           >
-                            <div className="flex items-center gap-2 min-w-[60px]">
+                            <div className="flex items-center gap-2 min-w-0 sm:min-w-[60px]">
                               <div
                                 className="w-3 h-3 rounded-full ring-2 ring-offset-2 ring-offset-background"
                                 style={{ backgroundColor: line.color }}
@@ -675,7 +675,7 @@ function ShotListContent() {
                                 {line.lineNumber}
                               </span>
                             </div>
-                            <div className="min-w-[140px]">
+                            <div className="w-full sm:w-auto min-w-0 sm:min-w-[140px]">
                               <Select
                                 value={line.shotType ?? ""}
                                 onValueChange={(value) =>

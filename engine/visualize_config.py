@@ -398,9 +398,14 @@ def stitch_videos(
             detail="Stitch completed without a persisted output video",
         )
 
+    stitch_response = stitch_result if isinstance(stitch_result, dict) else {"success": True}
+    if isinstance(stitch_response, dict) and "output_bytes" in stitch_response:
+        # Keep raw bytes internal-only; JSON responses must remain UTF-8 serializable.
+        stitch_response = {k: v for k, v in stitch_response.items() if k != "output_bytes"}
+
     return {
         "success": True,
-        "stitch": stitch_result,
+        "stitch": stitch_response,
         "compiledVideo": {
             "id": str(created_compiled.id),
             "compiled_video_path": created_compiled.compiled_video_path,

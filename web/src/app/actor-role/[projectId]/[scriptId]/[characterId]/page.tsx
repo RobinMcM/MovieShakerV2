@@ -167,6 +167,7 @@ export default async function PublicActorRolePage({
 }) {
   const resolvedParams = await params;
   const result = await loadActorRole(resolvedParams);
+  const roleData = result.status === "ok" && result.data ? result.data : null;
 
   return (
     <div className="min-h-dvh bg-gradient-to-b from-background to-muted/20">
@@ -190,7 +191,7 @@ export default async function PublicActorRolePage({
         <AddToHomeHint />
 
         <div className="space-y-4">
-          {result.status === "ok" && result.data ? (
+          {roleData ? (
             <>
               <Card className="rounded-2xl shadow-sm">
                 <CardHeader className="space-y-3">
@@ -198,17 +199,17 @@ export default async function PublicActorRolePage({
                     <Badge variant="secondary">Actor Rehearsal</Badge>
                   </div>
                   <CardTitle className="text-2xl text-center">
-                    {result.data.character.name}
+                    {roleData.character.name}
                   </CardTitle>
                   <p className="text-center text-sm text-muted-foreground">
-                    {result.data.project} - {result.data.script}
+                    {roleData.project} - {roleData.script}
                   </p>
                 </CardHeader>
-                {result.data.character.character_image_url ? (
+                {roleData.character.character_image_url ? (
                   <CardContent className="flex justify-center pb-6">
                     <img
-                      src={result.data.character.character_image_url}
-                      alt={result.data.character.name}
+                      src={roleData.character.character_image_url}
+                      alt={roleData.character.name}
                       className="rounded-full w-24 h-24 object-cover border-4 border-primary/10"
                     />
                   </CardContent>
@@ -216,9 +217,9 @@ export default async function PublicActorRolePage({
               </Card>
 
               <Accordion type="single" collapsible className="w-full space-y-2">
-                {result.data.scenes.map((scene) => {
+                {roleData.scenes.map((scene) => {
                   const sceneContent = getSceneContent(
-                    result.data.script_elements || [],
+                    roleData.script_elements || [],
                     scene.heading
                   );
                   return (
@@ -247,7 +248,7 @@ export default async function PublicActorRolePage({
                               const isCharacter = type === "character";
                               const isDialogue = type === "dialogue";
                               const isParenthetical = type === "parenthetical";
-                              const actorName = result.data.character.name.toLowerCase();
+                              const actorName = roleData.character.name.toLowerCase();
                               const isMe =
                                 (el.character && el.character.toLowerCase().includes(actorName)) ||
                                 (isCharacter && el.text.toLowerCase().includes(actorName));

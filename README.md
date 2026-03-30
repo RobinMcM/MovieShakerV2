@@ -56,6 +56,21 @@ Local endpoints:
 - SuperTokens: `http://localhost:3567`
 - Health check: `http://localhost:8000/health`
 
+## Production pilot launch (April 1 path)
+
+Use the production compose file for pilot launch hardening:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Key differences from local dev compose:
+
+- no `next dev` runtime
+- internal services are not published publicly
+- explicit production env wiring for auth email pipeline
+- pinned SuperTokens image default (`9.3`)
+
 ## Run frontend only
 
 Use this when working only on UI and routing:
@@ -151,9 +166,19 @@ pytest engine/tests -q
 ## Production notes
 
 - Keep `API_BASE_URL` and `WEBSITE_DOMAIN` set explicitly in production.
+- Set `APP_ENV=production` in engine runtime.
+- Keep `WEB_INTERNAL_URL` + `INTERNAL_API_KEY` configured for engine -> web internal email route.
+- Set explicit `RESEND_FROM` in production (do not rely on sandbox fallback).
 - CORS defaults include key production domains; localhost dev origins are only included outside production unless explicitly added via `CORS_ORIGINS`.
 - SuperTokens dashboard recipe is disabled in the backend service.
 - Resend is required for auth email delivery in shared-auth deployments (`RESEND_API_KEY`, `RESEND_FROM`).
+
+### Go-live runbook scripts
+
+- Pilot runbook: `scripts/go-live/RUNBOOK.md`
+- Smoke checks: `scripts/go-live/auth-email-smoke.sh`
+- Failure drills: `scripts/go-live/failure-drills.sh`
+- Backup + rollback helper: `scripts/go-live/backup-rollback.sh`
 - For auth refresh issues, validate preflight:
 
 ```bash

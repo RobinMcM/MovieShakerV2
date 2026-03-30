@@ -31,6 +31,12 @@ export async function POST(request: NextRequest) {
   if (!INTERNAL_API_KEY || key !== INTERNAL_API_KEY) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  if (process.env.NODE_ENV === "production" && !process.env.RESEND_FROM) {
+    return NextResponse.json(
+      { error: "Email sending not configured (RESEND_FROM)" },
+      { status: 503 }
+    );
+  }
 
   let body: unknown;
   try {

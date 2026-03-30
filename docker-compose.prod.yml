@@ -1,0 +1,127 @@
+services:
+  supertokens:
+    image: ${SUPERTOKENS_IMAGE:-supertokens/supertokens-postgresql:9.3}
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRESQL_CONNECTION_URI: "${SUPERTOKENS_DATABASE_URL:-postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/supertokens}"
+    networks:
+      - indie_network
+    restart: unless-stopped
+    healthcheck:
+      test: >
+        bash -c 'exec 3<> /dev/tcp/127.0.0.1/3567 && echo -e "GET /hello HTTP/1.1\r\nhost: 127.0.0.1\r\nConnection: close\r\n\r\n" >&3 && cat <&3 | grep "Hello"'
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  valkey:
+    image: valkey/valkey:7-alpine
+    networks:
+      - indie_network
+    restart: unless-stopped
+
+  engine:
+    build:
+      context: ./engine
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+      supertokens:
+        condition: service_healthy
+      valkey:
+        condition: service_started
+      web:
+        condition: service_started
+    environment:
+      - APP_ENV=production
+      - SUPERTOKENS_CONNECTION_URI=http://supertokens:3567
+      - API_BASE_URL=${API_BASE_URL}
+      - WEBSITE_DOMAIN=${WEBSITE_DOMAIN}
+      - WEB_HOST=${WEBSITE_DOMAIN}
+      - CORS_ORIGINS=${CORS_ORIGINS:-}
+      - DATABASE_URL=${DATABASE_URL}
+      - VALKEY_URL=redis://valkey:6379/0
+      - WEB_INTERNAL_URL=${WEB_INTERNAL_URL:-http://web:3000}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      - DO_SPACES_ENDPOINT=${DO_SPACES_ENDPOINT:-}
+      - DO_SPACES_REGION=${DO_SPACES_REGION:-}
+      - DO_SPACES_BUCKET=${DO_SPACES_BUCKET:-}
+      - DO_SPACES_ACCESS_KEY_ID=${DO_SPACES_ACCESS_KEY_ID:-}
+      - DO_SPACES_SECRET_ACCESS_KEY=${DO_SPACES_SECRET_ACCESS_KEY:-}
+      - GATEWAY_BASE_URL=${GATEWAY_BASE_URL}
+      - GATEWAY_INTERNAL_API_KEY=${GATEWAY_INTERNAL_API_KEY}
+      - GATEWAY_TIMEOUT_SECONDS=${GATEWAY_TIMEOUT_SECONDS:-45}
+      - GATEWAY_VERIFY_TLS=${GATEWAY_VERIFY_TLS:-true}
+      - MEDIA_HANDLER_BASE_URL=${MEDIA_HANDLER_BASE_URL}
+      - MEDIA_HANDLER_INTERNAL_API_KEY=${MEDIA_HANDLER_INTERNAL_API_KEY}
+      - MEDIA_HANDLER_TIMEOUT_SECONDS=${MEDIA_HANDLER_TIMEOUT_SECONDS:-60}
+      - MEDIA_HANDLER_VERIFY_TLS=${MEDIA_HANDLER_VERIFY_TLS:-true}
+    networks:
+      - indie_network
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:alpine
+    depends_on:
+      engine:
+        condition: service_started
+      web:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+    networks:
+      - indie_network
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+      - NEXT_PUBLIC_AUTH_API_URL=${NEXT_PUBLIC_AUTH_API_URL:-}
+      - NEXT_PUBLIC_WEBSITE_DOMAIN=${NEXT_PUBLIC_WEBSITE_DOMAIN}
+      - NEXT_PUBLIC_AUTH_BASE_URL=${NEXT_PUBLIC_AUTH_BASE_URL:-https://auth.rapidmvp.io}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - RESEND_FROM=${RESEND_FROM}
+    expose:
+      - "3000"
+    networks:
+      - indie_network
+    restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-movieshaker}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    networks:
+      - indie_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-movieshaker}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  indie_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  caddy_data:

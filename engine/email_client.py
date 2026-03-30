@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 
 WEB_INTERNAL_URL = os.getenv("WEB_INTERNAL_URL", "http://localhost:3000").rstrip("/")
 INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "")
+APP_ENV = (os.getenv("APP_ENV") or os.getenv("ENVIRONMENT") or "development").lower()
 
 
 async def send_email_via_web(
@@ -24,6 +25,8 @@ async def send_email_via_web(
     if not INTERNAL_API_KEY:
         logger.warning("INTERNAL_API_KEY not set; skipping send_email_via_web")
         return False
+    if APP_ENV == "production" and "localhost" in WEB_INTERNAL_URL:
+        logger.warning("WEB_INTERNAL_URL points to localhost in production; email delivery is likely misconfigured")
     url = f"{WEB_INTERNAL_URL}/api/internal/send-email"
     headers = {"Content-Type": "application/json", "x-internal-api-key": INTERNAL_API_KEY}
     body = {"type": type, "email": email, **payload}

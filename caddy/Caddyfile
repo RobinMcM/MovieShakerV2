@@ -34,3 +34,8 @@ auth.rapidmvp.io {
 
     respond 404
 }
+
+# movieshaker.com -> web:3000 (Next.js app)
+movieshaker.com, www.movieshaker.com {
+    reverse_proxy web:3000
+}

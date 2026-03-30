@@ -76,25 +76,25 @@ export const PROJECT_EXTERNAL_NAV: ProjectNavItem[] = [
   {
     id: "film-festival",
     label: "The Film Festival",
-    href: (projectId) => `/the-film-festival?project=${projectId}`,
+    href: (projectId) => `/project/${projectId}/the-film-festival`,
     icon: Ticket,
   },
   {
     id: "submit-funding",
     label: "Submit for Funding",
-    href: (projectId) => `/submit-funding?project=${projectId}`,
+    href: (projectId) => `/project/${projectId}/submit-funding`,
     icon: CreditCard,
   },
   {
     id: "project-admin",
     label: "Administration",
-    href: (projectId) => `/projectadministration?project=${projectId}`,
+    href: (projectId) => `/project/${projectId}/projectadministration`,
     icon: Settings,
   },
   {
     id: "film-in-a-box",
     label: "Film in a Box",
-    href: (projectId) => `/film-in-a-box?project=${projectId}`,
+    href: (projectId) => `/project/${projectId}/film-in-a-box`,
     icon: Clapperboard,
   },
 ];

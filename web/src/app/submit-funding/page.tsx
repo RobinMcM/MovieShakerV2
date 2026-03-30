@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
 import { Loader2 } from "lucide-react";
 
@@ -21,8 +21,11 @@ interface ProjectData {
 }
 
 function SubmitFundingPage() {
+  const params = useParams<{ projectId?: string | string[] }>();
   const searchParams = useSearchParams();
-  const projectId = searchParams.get("project");
+  const projectIdFromPath =
+    typeof params.projectId === "string" ? params.projectId : params.projectId?.[0] ?? null;
+  const projectId = searchParams.get("project") ?? projectIdFromPath;
 
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);

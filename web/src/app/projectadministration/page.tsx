@@ -1,6 +1,6 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
 import { Settings } from "lucide-react";
 
@@ -10,8 +10,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 function ProjectAdministrationPlaceholderPage() {
+  const params = useParams<{ projectId?: string | string[] }>();
   const searchParams = useSearchParams();
-  const projectId = searchParams.get("project");
+  const projectIdFromPath =
+    typeof params.projectId === "string" ? params.projectId : params.projectId?.[0] ?? null;
+  const projectId = searchParams.get("project") ?? projectIdFromPath;
 
   return (
     <div className="min-h-screen flex flex-col bg-background">

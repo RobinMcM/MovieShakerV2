@@ -17,7 +17,7 @@ from sqlmodel import Session, select, update
 from pydantic import BaseModel
 
 from db import get_session
-from models import Character, ProjectMember, Scene, SceneCharacter, Script
+from models import Character, Project, ProjectMember, Scene, SceneCharacter, Script
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
 from cache import (
@@ -99,6 +99,16 @@ class SceneCharacterResponse(BaseModel):
     notes: Optional[str] = None
 
 
+class PublicActorRoleResponse(BaseModel):
+    project_id: str
+    project_name: str
+    script_id: str
+    script_name: str
+    character_id: str
+    character_name: str
+    casting_notes: Optional[str] = None
+
+
 def _ensure_project_member(db: Session, project_id: str, user_id: str) -> None:
     member = db.exec(
         select(ProjectMember).where(
@@ -136,6 +146,13 @@ def _script_to_response(s: Script) -> ScriptResponse:
     )
 
 
+def _safe_uuid(value: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Not found") from exc
+
+
 # GET /scripts/{script_id}
 @router.get("/scripts/{script_id}")
 def get_script(
@@ -147,6 +164,48 @@ def get_script(
     script = _get_script_and_ensure_access(db, script_id, user_id)
     data = _script_to_response(script)
     return {"success": True, "data": data.model_dump()}
+
+
+# GET /public/actor-role/{project_id}/{script_id}/{character_id}
+@router.get(
+    "/public/actor-role/{project_id}/{script_id}/{character_id}",
+    response_model=PublicActorRoleResponse,
+)
+def get_public_actor_role(
+    project_id: str,
+    script_id: str,
+    character_id: str,
+    db: Session = Depends(get_session),
+):
+    project_uuid = _safe_uuid(project_id)
+    script_uuid = _safe_uuid(script_id)
+    character_uuid = _safe_uuid(character_id)
+
+    project = db.get(Project, project_uuid)
+    script = db.get(Script, script_uuid)
+    character = db.get(Character, character_uuid)
+
+    # Return a generic 404 for any mismatch to avoid leaking entity existence.
+    if not project or not script or not character:
+        raise HTTPException(status_code=404, detail="Not found")
+    if script.project_id != project.id:
+        raise HTTPException(status_code=404, detail="Not found")
+    if character.script_id != script.id:
+        raise HTTPException(status_code=404, detail="Not found")
+    if (character.type or "character").lower() != "character":
+        raise HTTPException(status_code=404, detail="Not found")
+    if bool(getattr(character, "hide_from_view", False)):
+        raise HTTPException(status_code=404, detail="Not found")
+
+    return PublicActorRoleResponse(
+        project_id=str(project.id),
+        project_name=project.name,
+        script_id=str(script.id),
+        script_name=script.name,
+        character_id=str(character.id),
+        character_name=character.name,
+        casting_notes=character.casting_notes,
+    )
 
 
 # GET /projects/{project_id}/scripts

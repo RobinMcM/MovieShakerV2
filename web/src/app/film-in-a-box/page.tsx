@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
 import { Loader2, Clapperboard, Save, FileText, Video, User } from "lucide-react";
 
@@ -75,8 +75,11 @@ interface ProfileDefaults {
 function FilmInABoxPage() {
     const modelOverride = (process.env.NEXT_PUBLIC_FILM_IN_A_BOX_MODEL || "").trim();
     const router = useRouter();
+    const params = useParams<{ projectId?: string | string[] }>();
     const searchParams = useSearchParams();
-    const projectId = searchParams.get("project");
+    const projectIdFromPath =
+        typeof params.projectId === "string" ? params.projectId : params.projectId?.[0] ?? null;
+    const projectId = searchParams.get("project") ?? projectIdFromPath;
 
     const [title, setTitle] = useState("");
     const [prompt, setPrompt] = useState("");

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Film, User, LogOut, Users, Mail, Wallet, Shield } from "lucide-react";
+import { Film, User, LogOut, Users, Mail, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useSessionContext, signOut } from "supertokens-auth-react/recipe/session";
@@ -93,11 +93,10 @@ export function Header() {
                             <Link href="/credits" className="shrink-0">
                                 <div className="rounded-md border bg-muted/40 hover:bg-muted px-2.5 py-1.5 transition-colors">
                                     <div className="flex items-center gap-1.5">
-                                        <Wallet className="h-3.5 w-3.5 text-primary" />
                                         <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Credits</span>
-                                    </div>
-                                    <div className="text-sm font-semibold leading-tight">
-                                        {typeof profile?.ai_credits === "number" ? profile.ai_credits : 0}
+                                        <span className="inline-flex items-center rounded-full bg-primary/15 text-primary text-[11px] font-semibold px-2 py-0.5">
+                                            {typeof profile?.ai_credits === "number" ? profile.ai_credits : 0}
+                                        </span>
                                     </div>
                                 </div>
                             </Link>

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
 import { useState, useEffect } from "react";
@@ -21,8 +20,6 @@ import {
   Loader2,
   Users,
   Calendar,
-  UserPlus,
-  UserCircle,
   ExternalLink,
 } from "lucide-react";
 import { useCastManagement } from "./useCastManagement";
@@ -58,11 +55,6 @@ function CastManagementPageInner() {
       updateCastingLocation(trimmed);
     }
   };
-
-  const totalApplicants = characters.reduce(
-    (sum, c) => sum + c.applications.length,
-    0
-  );
 
   if (loading) {
     return (
@@ -124,7 +116,7 @@ function CastManagementPageInner() {
         <div className="mb-6 flex items-center gap-2">
           <Users className="h-6 w-6 text-primary" />
           <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-            Cast Management
+            Cast & Crew
           </h1>
         </div>
 
@@ -151,10 +143,10 @@ function CastManagementPageInner() {
                   <CardContent className="pt-6">
                     <div className="flex flex-col items-center text-center gap-2">
                       <Users className="h-8 w-8 text-primary" />
-                      <h3 className="font-semibold">Applicants</h3>
-                      <p className="text-3xl font-bold">{totalApplicants}</p>
+                      <h3 className="font-semibold">Script Characters</h3>
+                      <p className="text-3xl font-bold">{characters.length}</p>
                       <p className="text-xs text-muted-foreground">
-                        Total submissions
+                        Imported from script
                       </p>
                     </div>
                   </CardContent>
@@ -162,36 +154,23 @@ function CastManagementPageInner() {
                 <Card>
                   <CardContent className="pt-6">
                     <div className="flex flex-col items-center text-center gap-2">
-                      <UserPlus className="h-8 w-8 text-primary" />
-                      <h3 className="font-semibold">Roles to Cast</h3>
+                      <Calendar className="h-8 w-8 text-primary" />
+                      <h3 className="font-semibold">Active Script</h3>
                       <p className="text-3xl font-bold">{characters.length}</p>
                       <p className="text-xs text-muted-foreground">
-                        Open positions
+                        Character entries
                       </p>
                     </div>
                   </CardContent>
                 </Card>
               </div>
-
-              {projectId && (
-                <div className="mt-6 flex justify-center">
-                  <Button variant="outline" asChild className="gap-2">
-                    <Link
-                      href={`/rolestocast?project=${projectId}${scriptId ? `&script=${scriptId}` : ""}`}
-                    >
-                      <UserCircle className="h-4 w-4" />
-                      Characters
-                    </Link>
-                  </Button>
-                </div>
-              )}
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
               <div className="space-y-4">
-                <CardTitle>Roles & Applications</CardTitle>
+                <CardTitle>Script Roles</CardTitle>
                 <div className="flex gap-2 items-end">
                   <div className="flex-1">
                     <Label
@@ -246,12 +225,6 @@ function CastManagementPageInner() {
                           <span className="font-semibold">
                             {character.name}
                           </span>
-                          <span className="text-sm text-muted-foreground">
-                            {character.applications.length}{" "}
-                            {character.applications.length === 1
-                              ? "application"
-                              : "applications"}
-                          </span>
                         </div>
                       </AccordionTrigger>
                       <AccordionContent>
@@ -298,79 +271,11 @@ function CastManagementPageInner() {
                           </div>
 
                           <div className="border-t pt-4">
-                            <h4 className="font-semibold mb-3">Applications</h4>
-                            {character.applications.length === 0 ? (
-                              <p className="text-sm text-muted-foreground py-4">
-                                No applications yet for this role
-                              </p>
-                            ) : (
-                              <div className="space-y-3">
-                                {character.applications.map((application) => (
-                                  <div
-                                    key={application.id}
-                                    className="border rounded-lg p-4 hover:bg-accent/50 transition-colors"
-                                  >
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div className="flex items-start gap-3">
-                                        <div className="h-10 w-10 flex-shrink-0 rounded-full overflow-hidden bg-muted flex items-center justify-center text-sm font-medium">
-                                          {application.profiles?.avatar_url ? (
-                                            <img
-                                              src={application.profiles.avatar_url}
-                                              alt=""
-                                              className="h-full w-full object-cover"
-                                            />
-                                          ) : (
-                                            (application.profiles?.name ||
-                                              application.applicant_name ||
-                                              application.applicant_email)
-                                              .split(" ")
-                                              .map((n) => n[0])
-                                              .join("")
-                                              .toUpperCase()
-                                              .slice(0, 2)
-                                          )}
-                                        </div>
-                                        <div>
-                                          <h4 className="font-medium flex items-center gap-2">
-                                            <span>
-                                              {application.applicant_name}
-                                              {application.pronoun && (
-                                                <span className="text-muted-foreground font-normal">
-                                                  {" "}
-                                                  ({application.pronoun})
-                                                </span>
-                                              )}
-                                              {application.playing_age && (
-                                                <span className="text-muted-foreground font-normal">
-                                                  {" "}
-                                                  - Age:{" "}
-                                                  {application.playing_age}
-                                                </span>
-                                              )}
-                                            </span>
-                                          </h4>
-                                          {application.notes && (
-                                            <p className="text-sm mt-2">
-                                              {application.notes}
-                                            </p>
-                                          )}
-                                        </div>
-                                      </div>
-                                      <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                                        <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary">
-                                          {application.status}
-                                        </span>
-                                        <span className="text-xs text-muted-foreground">
-                                          {new Date(
-                                            application.created_at
-                                          ).toLocaleDateString()}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
+                            <h4 className="font-semibold mb-2">Casting Workflow</h4>
+                            <p className="text-sm text-muted-foreground">
+                              External cast and crew sourcing is temporarily disabled in this view.
+                              Script-linked role notes and shareable role links remain active.
+                            </p>
                           </div>
                         </div>
                       </AccordionContent>

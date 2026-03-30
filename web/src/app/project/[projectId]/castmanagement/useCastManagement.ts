@@ -6,7 +6,6 @@ import type {
   Project,
   ScriptListItem,
   Character,
-  Application,
   CharacterResponseItem,
 } from "./types";
 
@@ -34,11 +33,6 @@ interface ScriptsResponse {
 interface CharactersResponse {
   success?: boolean;
   data?: CharacterResponseItem[];
-}
-
-interface ApplicationsResponse {
-  success?: boolean;
-  applications?: Application[];
 }
 
 export function useCastManagement(projectId: string | null) {
@@ -101,28 +95,13 @@ export function useCastManagement(projectId: string | null) {
         const rawData = (charRes as { data?: CharacterResponseItem[] }).data;
         const charList = Array.isArray(rawData) ? rawData : [];
 
-        const charactersWithApplications: Character[] = await Promise.all(
-          charList.map(async (c) => {
-            let applications: Application[] = [];
-            try {
-              const appRes = await api.get<ApplicationsResponse>(
-                `/api/auditions/characters/${c.id}/applications`
-              );
-              const apps = (appRes as { applications?: Application[] }).applications;
-              applications = Array.isArray(apps) ? apps : [];
-            } catch {
-              applications = [];
-            }
-            return {
-              id: c.id,
-              name: c.name,
-              casting_notes: null,
-              applications,
-            };
-          })
-        );
+        const normalizedCharacters: Character[] = charList.map((c) => ({
+          id: c.id,
+          name: c.name,
+          casting_notes: null,
+        }));
 
-        setCharacters(charactersWithApplications);
+        setCharacters(normalizedCharacters);
       } catch {
         setCurrentScript(null);
         setCharacters([]);
@@ -177,23 +156,6 @@ export function useCastManagement(projectId: string | null) {
     [projectId, showToast]
   );
 
-  const updateApplication = useCallback(
-    async (
-      applicationId: string,
-      data: { status?: string; notes?: string }
-    ) => {
-      if (!projectId) return;
-      try {
-        await api.patch(`/api/auditions/applications/${applicationId}`, data);
-        await refresh();
-        showToast("Saved", "Application updated");
-      } catch {
-        showToast("Error", "Failed to update application", "destructive");
-      }
-    },
-    [projectId, refresh, showToast]
-  );
-
   useEffect(() => {
     if (!projectId) {
       setProject(null);
@@ -217,6 +179,5 @@ export function useCastManagement(projectId: string | null) {
     refresh,
     updateCastingNotes,
     updateCastingLocation,
-    updateApplication,
   };
 }

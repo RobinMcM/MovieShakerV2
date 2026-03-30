@@ -42,7 +42,7 @@ export const PROJECT_TOOL_NAV: ProjectNavItem[] = [
   },
   {
     id: "castmanagement",
-    label: "Cast Management",
+    label: "Cast & Crew",
     href: (projectId) => `/project/${projectId}/castmanagement`,
     icon: Users,
   },

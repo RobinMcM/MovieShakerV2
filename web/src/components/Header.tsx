@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Film, User, LogOut, Users, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useSessionContext, signOut } from "supertokens-auth-react/recipe/session";
 import { ModeToggle } from "@/components/mode-toggle";
 import { useAuthReady } from "@/contexts/AuthReadyContext";
@@ -48,6 +49,7 @@ export function Header() {
     const session = useSessionContext();
     const router = useRouter();
     const [profile, setProfile] = useState<ProfileRole | null>(null);
+    const [userMenuOpen, setUserMenuOpen] = useState(false);
 
     const hasSession =
         !session.loading &&
@@ -63,6 +65,7 @@ export function Header() {
     }, [hasSession]);
 
     async function onLogout() {
+        setUserMenuOpen(false);
         await signOut();
         router.push("/");
     }
@@ -78,46 +81,101 @@ export function Header() {
                         MovieShaker
                     </span>
                 </Link>
-                <div className="w-full sm:w-auto flex flex-wrap items-center justify-end gap-2 sm:gap-3">
-                    <ModeToggle />
+                <div className="w-full sm:w-auto flex items-center justify-end gap-2 sm:gap-3">
                     {hasSession ? (
                         <>
-                            <Link href="/projects">
-                                <Button variant="ghost" size="sm">Projects</Button>
-                            </Link>
-                            <span className="text-xs font-semibold px-2 py-1 rounded bg-muted text-muted-foreground">
-                                Credits: {typeof profile?.ai_credits === "number" ? profile.ai_credits : 0}
-                            </span>
-                            {isAdmin && (
-                                <>
-                                    <Link href="/admin/users">
-                                        <Button variant="ghost" size="sm" title="User Management">
-                                            <Users className="h-4 w-4 sm:mr-1" />
-                                            <span className="hidden sm:inline">User Management</span>
-                                        </Button>
-                                    </Link>
-                                    <Link href="/admin/email">
-                                        <Button variant="ghost" size="sm" title="Email Management">
-                                            <Mail className="h-4 w-4 sm:mr-1" />
-                                            <span className="hidden sm:inline">Email Management</span>
-                                        </Button>
-                                    </Link>
-                                </>
-                            )}
-                            <Link href="/profile">
-                                <Button variant="ghost" size="icon" title="Profile">
-                                    <User className="h-5 w-5" />
-                                </Button>
-                            </Link>
-                            <Button variant="outline" size="sm" onClick={onLogout} title="Sign Out">
-                                <LogOut className="h-4 w-4 sm:mr-2" />
-                                <span className="hidden sm:inline">Sign Out</span>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Open user menu"
+                                onClick={() => setUserMenuOpen((prev) => !prev)}
+                                aria-expanded={userMenuOpen}
+                                aria-label={userMenuOpen ? "Close user menu" : "Open user menu"}
+                            >
+                                <User className="h-5 w-5" />
                             </Button>
+                            <Dialog open={userMenuOpen} onOpenChange={setUserMenuOpen}>
+                                <DialogContent className="top-0 right-0 left-auto bottom-0 h-screen max-h-screen w-[86vw] max-w-[340px] rounded-none border-l p-0">
+                                    <DialogTitle className="sr-only">User Menu</DialogTitle>
+                                    <div className="h-full overflow-y-auto p-4 space-y-5">
+                                        <div className="flex items-center justify-between">
+                                            <h2 className="text-base font-semibold">User Menu</h2>
+                                            <span className="text-xs font-semibold px-2 py-1 rounded bg-muted text-muted-foreground">
+                                                Credits: {typeof profile?.ai_credits === "number" ? profile.ai_credits : 0}
+                                            </span>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <Link
+                                                href="/projects"
+                                                onClick={() => setUserMenuOpen(false)}
+                                                className="flex items-center gap-2 rounded-md px-2.5 py-2.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+                                            >
+                                                <Film className="h-4 w-4" />
+                                                <span>Projects</span>
+                                            </Link>
+                                            <Link
+                                                href="/profile"
+                                                onClick={() => setUserMenuOpen(false)}
+                                                className="flex items-center gap-2 rounded-md px-2.5 py-2.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+                                            >
+                                                <User className="h-4 w-4" />
+                                                <span>Profile</span>
+                                            </Link>
+                                            {isAdmin && (
+                                                <>
+                                                    <Link
+                                                        href="/admin/users"
+                                                        onClick={() => setUserMenuOpen(false)}
+                                                        className="flex items-center gap-2 rounded-md px-2.5 py-2.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+                                                    >
+                                                        <Users className="h-4 w-4" />
+                                                        <span>User Management</span>
+                                                    </Link>
+                                                    <Link
+                                                        href="/admin/email"
+                                                        onClick={() => setUserMenuOpen(false)}
+                                                        className="flex items-center gap-2 rounded-md px-2.5 py-2.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+                                                    >
+                                                        <Mail className="h-4 w-4" />
+                                                        <span>Email Management</span>
+                                                    </Link>
+                                                </>
+                                            )}
+                                        </div>
+
+                                        <div className="pt-3 border-t">
+                                            <div className="px-2.5 py-1 text-xs uppercase tracking-wide text-muted-foreground">
+                                                Preferences
+                                            </div>
+                                            <div className="px-2.5 py-2">
+                                                <ModeToggle />
+                                            </div>
+                                        </div>
+
+                                        <div className="pt-3 border-t">
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={onLogout}
+                                                className="w-full justify-start"
+                                                title="Sign Out"
+                                            >
+                                                <LogOut className="h-4 w-4 mr-2" />
+                                                <span>Sign Out</span>
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </DialogContent>
+                            </Dialog>
                         </>
                     ) : (
-                        <Link href="/auth">
-                            <Button variant="outline" size="sm">Sign In</Button>
-                        </Link>
+                        <>
+                            <ModeToggle />
+                            <Link href="/auth">
+                                <Button variant="outline" size="sm">Sign In</Button>
+                            </Link>
+                        </>
                     )}
                 </div>
             </div>

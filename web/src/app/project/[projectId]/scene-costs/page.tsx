@@ -72,10 +72,10 @@ function SceneCostBar({
       }`}
       onClick={() => onSelect(scene.sceneId)}
     >
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2 min-w-0">
           <Film className="w-4 h-4 text-muted-foreground" />
-          <span className="font-medium text-sm truncate max-w-[200px]">
+          <span className="font-medium text-sm truncate max-w-[170px] sm:max-w-[220px]">
             {scene.heading || `Scene ${scene.pageNumber || "?"}`}
           </span>
           {scene.eighths != null && (
@@ -84,7 +84,7 @@ function SceneCostBar({
             </Badge>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-semibold">{formatCurrency(scene.finalCost)}</span>
           <Badge className={`${statusColorClass} text-white text-xs`}>
             {scene.status === "under" && <TrendingDown className="w-3 h-3 mr-1" />}
@@ -130,7 +130,7 @@ function SummaryCard({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <p className="text-sm text-muted-foreground">Total Budget</p>
             <p className="text-xl font-bold">{formatCurrency(config.totalBudget)}</p>
@@ -160,7 +160,7 @@ function SummaryCard({
           </div>
         </div>
         <div className="border-t my-4" />
-        <div className="grid grid-cols-3 gap-4 text-center">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
           <div>
             <div className="flex items-center justify-center gap-2">
               <div className="w-3 h-3 rounded-full bg-green-500" />
@@ -432,15 +432,15 @@ function SceneCostsPageInner() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <AppHeader />
-      <main className="flex-1 container py-6">
-        <div className="flex items-center gap-4 mb-6">
+      <main className="flex-1 container px-4 py-6">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mb-6">
           <Link
             href={`/project/${projectId}/scheduling`}
             className="text-sm text-muted-foreground hover:text-foreground"
           >
             ← Back to Scheduling
           </Link>
-          <h1 className="text-xl font-semibold truncate flex-1">
+          <h1 className="text-xl font-semibold sm:truncate sm:flex-1">
             Scene Costs: {project.name}
           </h1>
         </div>
@@ -509,7 +509,7 @@ function SceneCostsPageInner() {
                     </SelectContent>
                   </Select>
                 </div>
-                <Button onClick={onApplyConfig} disabled={calculating}>
+                <Button onClick={onApplyConfig} disabled={calculating} className="w-full sm:w-auto">
                   <RefreshCw
                     className={`w-4 h-4 mr-2 ${calculating ? "animate-spin" : ""}`}
                   />
@@ -541,7 +541,7 @@ function SceneCostsPageInner() {
 
           {sceneCosts.length > 0 ? (
             <>
-              <div className="grid md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="md:col-span-2 space-y-2">
                   <h3 className="font-semibold text-lg flex items-center gap-2">
                     <Film className="w-5 h-5" />

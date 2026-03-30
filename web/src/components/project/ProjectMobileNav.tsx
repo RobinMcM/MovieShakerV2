@@ -48,8 +48,9 @@ export function ProjectMobileNav({
         size="icon"
         variant="outline"
         className="md:hidden fixed top-4 left-4 z-[60] h-10 w-10 rounded-full shadow-lg"
-        onClick={() => setOpen(true)}
-        aria-label="Open project navigation menu"
+        onClick={() => setOpen((prev) => !prev)}
+        aria-expanded={open}
+        aria-label={open ? "Close project navigation menu" : "Open project navigation menu"}
       >
         <Menu className="h-5 w-5" />
       </Button>

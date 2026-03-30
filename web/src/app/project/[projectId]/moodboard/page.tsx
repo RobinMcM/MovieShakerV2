@@ -227,7 +227,7 @@ function MoodBoardContent() {
   return (
     <div className="min-h-screen bg-background">
       <AppHeader />
-      <main className="w-full px-8 py-8">
+      <main className="w-full px-4 py-6 sm:px-6 sm:py-8">
         <div className="flex items-center gap-4 mb-6">
           <Button
             variant="ghost"
@@ -250,7 +250,7 @@ function MoodBoardContent() {
           </Button>
         </div>
         <div className="flex flex-col items-center min-h-[60vh] space-y-6 w-full">
-          <div className="flex flex-col items-center w-full p-8 border-2 border-dashed border-muted rounded-xl bg-muted/10 space-y-6">
+          <div className="flex flex-col items-center w-full p-4 sm:p-6 lg:p-8 border-2 border-dashed border-muted rounded-xl bg-muted/10 space-y-6">
             <p className="text-lg font-medium">Select a Tram Line to begin</p>
             <div className="w-full max-w-md">
               <TramLineSelect
@@ -265,7 +265,7 @@ function MoodBoardContent() {
                 <div className="relative bg-gradient-to-br from-slate-900 to-slate-800 rounded-t-lg border-2 border-slate-700 shadow-xl overflow-hidden">
                   <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-r from-yellow-400 via-slate-900 to-yellow-400 opacity-20" />
                   <div className="pt-10 pb-4 px-6">
-                    <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                       <div>
                         <div className="text-yellow-400 font-bold text-xs uppercase tracking-wider mb-1">Film</div>
                         <div className="text-white font-mono">{project?.title ?? project?.name ?? "Untitled"}</div>
@@ -374,11 +374,11 @@ function MoodBoardContent() {
                   <CardHeader>
                     <div className="flex items-center justify-between flex-wrap gap-2">
                       <CardTitle className="text-base text-muted-foreground">Ideas & Notes</CardTitle>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center justify-end gap-2">
                         <Button variant="outline" size="sm" onClick={handlePreviousCanvas} disabled={currentCanvasIndex === 0 && !isNewCanvas}>
                           <ChevronLeft className="h-4 w-4" />
                         </Button>
-                        <span className="text-sm font-medium min-w-[80px] text-center">
+                        <span className="text-sm font-medium min-w-[80px] text-center w-full sm:w-auto">
                           Moodboard {displayCanvasNumber}
                           {totalCanvases > 0 ? ` / ${isNewCanvas ? totalCanvases + 1 : totalCanvases}` : ""}
                         </span>
@@ -388,7 +388,7 @@ function MoodBoardContent() {
                         <Button variant="default" size="sm" onClick={handleNewCanvas} disabled={isNewCanvas}>
                           <Plus className="h-4 w-4" /> Add
                         </Button>
-                        <div className="w-px h-6 bg-border mx-1" />
+                        <div className="hidden sm:block w-px h-6 bg-border mx-1" />
                         <Button variant="default" size="sm" className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white border-0" onClick={handleVisualize} disabled={!selectedTramLineId}>
                           <Sparkles className="h-4 w-4 mr-2" /> Visualize
                         </Button>
@@ -490,7 +490,7 @@ function MoodBoardContent() {
                                     e.stopPropagation();
                                     canvasRef.current?.addImage(objImgSrc, true);
                                   }}
-                                  className="absolute -top-2 -right-2 p-1 bg-primary text-primary-foreground rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110 z-10"
+                                  className="absolute -top-2 -right-2 p-1 bg-primary text-primary-foreground rounded-full shadow-md opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity hover:scale-110 z-10"
                                   title="Fill Canvas"
                                 >
                                   <Maximize className="h-3 w-3" />

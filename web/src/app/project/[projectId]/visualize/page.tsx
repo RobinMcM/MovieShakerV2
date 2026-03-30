@@ -788,7 +788,7 @@ function VisualizeContent() {
             ) : (
               <div className="space-y-4">
                 {sourceSnapshots.length > 0 && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button
                       variant="outline"
                       size="sm"
@@ -800,7 +800,7 @@ function VisualizeContent() {
                     >
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
-                    <span className="text-sm font-medium min-w-[120px] text-center">
+                    <span className="text-sm font-medium min-w-[120px] text-center w-full sm:w-auto">
                       Moodboard {selectedSourceIndex + 1} / {sourceSnapshots.length}
                     </span>
                     <Button
@@ -973,7 +973,11 @@ function VisualizeContent() {
                     placeholder={currentLine?.action_text || "Describe the cinematic shot..."}
                     className="min-h-[100px]"
                   />
-                  <Button onClick={handleGenerateVideo} disabled={isGenerating || !gatewayConnected}>
+                  <Button
+                    onClick={handleGenerateVideo}
+                    disabled={isGenerating || !gatewayConnected}
+                    className="w-full sm:w-auto"
+                  >
                     {isGenerating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
                     Generate Video
                   </Button>
@@ -1006,7 +1010,7 @@ function VisualizeContent() {
                           Channel {channelNum} ({videos.length} video{videos.length !== 1 ? "s" : ""})
                         </AccordionTrigger>
                         <AccordionContent>
-                          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pt-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 pt-4">
                             {videos.map((video) => (
                               <div key={video.id} className="space-y-2">
                                 <div className="relative aspect-video rounded-md overflow-hidden bg-black border">
@@ -1048,7 +1052,7 @@ function VisualizeContent() {
                                     />
                                   </button>
                                 </div>
-                                <div className="flex items-center justify-between text-xs text-muted-foreground gap-1">
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-xs text-muted-foreground gap-2">
                                   <span>Take {video.take_number ?? "?"} · Ch {video.Channel ?? "?"}</span>
                                   <div className="flex items-center gap-1">
                                     {!videoHistory.some(
@@ -1059,7 +1063,7 @@ function VisualizeContent() {
                                       <Button
                                         variant="ghost"
                                         size="sm"
-                                        className="h-7 w-7 p-0"
+                                        className="h-8 w-8 p-0"
                                         disabled={!video.video_path}
                                         title="Continue in same channel"
                                         onClick={() => handleContinueFromVideo(video.id, "same_channel")}
@@ -1070,7 +1074,7 @@ function VisualizeContent() {
                                     <Button
                                       variant="ghost"
                                       size="sm"
-                                      className="h-7 w-7 p-0"
+                                      className="h-8 w-8 p-0"
                                       disabled={!video.video_path}
                                       title="Continue in new channel"
                                       onClick={() => handleContinueFromVideo(video.id, "new_channel")}
@@ -1080,7 +1084,7 @@ function VisualizeContent() {
                                     <Button
                                       variant="ghost"
                                       size="sm"
-                                      className="h-7 text-destructive"
+                                      className="h-8 px-2 text-destructive"
                                       onClick={() => setVideoToDelete({ id: video.id, path: video.video_path })}
                                     >
                                       <Trash2 className="h-3 w-3" />
@@ -1088,7 +1092,7 @@ function VisualizeContent() {
                                     <Button
                                       variant={focusedVideoId === video.id ? "default" : "outline"}
                                       size="sm"
-                                      className="h-7"
+                                      className="h-8"
                                       disabled={!video.video_path}
                                       onClick={() => setFocusedVideoId(video.id)}
                                     >
@@ -1173,7 +1177,7 @@ function VisualizeContent() {
         )}
 
         {toastMessage && (
-          <div className="fixed bottom-4 right-4 px-4 py-2 rounded-md border bg-muted">
+          <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-auto px-4 py-2 rounded-md border bg-muted">
             <p className="text-sm">{toastMessage}</p>
           </div>
         )}

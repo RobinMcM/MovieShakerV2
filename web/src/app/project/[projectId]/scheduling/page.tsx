@@ -194,7 +194,7 @@ function SchedulingPageInner() {
         </div>
 
         <div className="max-w-6xl mx-auto space-y-6">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Calendar className="h-6 w-6 text-primary" />
             <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
               Schedule
@@ -272,17 +272,17 @@ function SchedulingPageInner() {
                   }
                   className="w-full"
                 >
-                  <div className="flex justify-center mb-6">
-                    <TabsList className="h-12 rounded-full bg-secondary p-1 border border-border/50 shadow-inner">
+                  <div className="mb-6 overflow-x-auto">
+                    <TabsList className="h-12 min-w-max rounded-full bg-secondary p-1 border border-border/50 shadow-inner">
                       <TabsTrigger
                         value="list"
-                        className="rounded-full px-8 py-2.5 text-sm font-semibold transition-all data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-md data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:bg-background/40 data-[state=inactive]:hover:text-foreground"
+                        className="rounded-full px-4 sm:px-8 py-2.5 text-sm font-semibold transition-all data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-md data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:bg-background/40 data-[state=inactive]:hover:text-foreground"
                       >
                         Script Supervision
                       </TabsTrigger>
                       <TabsTrigger
                         value="schedule"
-                        className="rounded-full px-8 py-2.5 text-sm font-semibold transition-all data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-md data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:bg-background/40 data-[state=inactive]:hover:text-foreground"
+                        className="rounded-full px-4 sm:px-8 py-2.5 text-sm font-semibold transition-all data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-md data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:bg-background/40 data-[state=inactive]:hover:text-foreground"
                       >
                         Schedule
                       </TabsTrigger>
@@ -305,7 +305,7 @@ function SchedulingPageInner() {
                             <X className="h-4 w-4" />
                           </Button>
                         </div>
-                        <div className="flex items-center gap-2 flex-1 max-w-md">
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1 max-w-md">
                           <Label
                             htmlFor="group-location"
                             className="sr-only"
@@ -324,7 +324,7 @@ function SchedulingPageInner() {
                           <Button
                             onClick={handleBulkGroup}
                             size="sm"
-                            className="h-9 gap-2"
+                            className="h-9 gap-2 w-full sm:w-auto"
                           >
                             <Check className="h-4 w-4" />
                             Group

@@ -317,8 +317,8 @@ function ProfilePage() {
     return (
         <div className="min-h-screen bg-background flex flex-col font-sans">
             <AppHeader />
-            <main className="flex-1 container mx-auto px-4 py-8 max-w-2xl">
-                <div className="flex items-center gap-2 mb-6">
+            <main className="flex-1 container mx-auto px-4 py-8 max-w-3xl">
+                <div className="flex items-center gap-2 mb-6 flex-wrap">
                     <User className="h-8 w-8 text-primary" />
                     <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                         Profile
@@ -505,7 +505,7 @@ function ProfilePage() {
 
                         <div className="pt-2 border-t space-y-2">
                             <Label htmlFor="purchaseAmount">Buy credits (placeholder)</Label>
-                            <div className="flex gap-2">
+                            <div className="flex flex-col sm:flex-row gap-2">
                                 <Input
                                     id="purchaseAmount"
                                     type="number"
@@ -514,7 +514,7 @@ function ProfilePage() {
                                     onChange={(e) => setPurchaseAmount(e.target.value)}
                                     placeholder="Enter credits to buy"
                                 />
-                                <Button type="button" variant="outline" onClick={handleBuyCreditsPlaceholder}>
+                                <Button type="button" variant="outline" onClick={handleBuyCreditsPlaceholder} className="w-full sm:w-auto">
                                     Buy credits
                                 </Button>
                             </div>

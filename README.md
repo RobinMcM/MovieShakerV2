@@ -172,6 +172,11 @@ curl -i -X OPTIONS "https://api.movieshaker.com/auth/session/refresh" \
   - verify `AUTH_BASE_URL` / `NEXT_PUBLIC_AUTH_BASE_URL` point to `https://auth.rapidmvp.io`
   - verify callback and `return_to` URLs are allowlisted
   - run the validation checklist in `DEPLOYMENT_RULES.md`
+- **Media-handler stitch/frame command mismatch**:
+  - when changing `media-handler/stitch.sh` or FFmpeg command builders, rebuild the `media-handler` worker image
+  - when changing `media-handler/ffmpeg-api/app/main.py` or schemas, rebuild/recreate the `ffmpeg-api` service
+  - deploy both together (`docker build -t media-handler .` then `docker compose up -d --force-recreate --no-deps ffmpeg-api`)
+  - verify `/api/instructions` lists the updated endpoints/commands and run one live stitch/frame request before sign-off
 - **Stuck git operations in Cursor**:
   - stop queued git jobs in the IDE terminal queue
   - retry commit/push

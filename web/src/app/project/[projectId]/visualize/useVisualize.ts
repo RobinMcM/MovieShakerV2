@@ -62,45 +62,54 @@ export function useVisualize(projectId: string | null) {
   const loadVideoHistory = useCallback(async (tramLineId: string | null) => {
     if (!tramLineId) {
       setVideoHistory([]);
-      return;
+      return [] as VideoHistoryItem[];
     }
     try {
       const res = await api.get<{ success: boolean; videos: VideoHistoryItem[] }>(
         `api/video-history/${tramLineId}`
       );
-      setVideoHistory((res as { videos?: VideoHistoryItem[] }).videos ?? []);
+      const videos = (res as { videos?: VideoHistoryItem[] }).videos ?? [];
+      setVideoHistory(videos);
+      return videos;
     } catch {
       setVideoHistory([]);
+      return [] as VideoHistoryItem[];
     }
   }, []);
 
   const loadCompiledVideos = useCallback(async (tramLineId: string | null) => {
     if (!tramLineId) {
       setCompiledVideos([]);
-      return;
+      return [] as CompiledVideo[];
     }
     try {
       const res = await api.get<{ success: boolean; compiledVideos: CompiledVideo[] }>(
         `api/compiled-videos/${tramLineId}`
       );
-      setCompiledVideos((res as { compiledVideos?: CompiledVideo[] }).compiledVideos ?? []);
+      const compiled = (res as { compiledVideos?: CompiledVideo[] }).compiledVideos ?? [];
+      setCompiledVideos(compiled);
+      return compiled;
     } catch {
       setCompiledVideos([]);
+      return [] as CompiledVideo[];
     }
   }, []);
 
   const loadSourceCompositions = useCallback(async (tramLineId: string | null) => {
     if (!tramLineId) {
       setSourceCompositions([]);
-      return;
+      return [] as CanvasComposition[];
     }
     try {
       const res = await api.get<{ success: boolean; compositions: CanvasComposition[] }>(
         `api/moodboard/${tramLineId}/compositions`
       );
-      setSourceCompositions((res as { compositions?: CanvasComposition[] }).compositions ?? []);
+      const compositions = (res as { compositions?: CanvasComposition[] }).compositions ?? [];
+      setSourceCompositions(compositions);
+      return compositions;
     } catch {
       setSourceCompositions([]);
+      return [] as CanvasComposition[];
     }
   }, []);
 
@@ -123,14 +132,14 @@ export function useVisualize(projectId: string | null) {
 
   const refetchVideoHistory = useCallback(
     (tramLineId: string | null) => {
-      loadVideoHistory(tramLineId);
+      return loadVideoHistory(tramLineId);
     },
     [loadVideoHistory]
   );
 
   const refetchCompiledVideos = useCallback(
     (tramLineId: string | null) => {
-      loadCompiledVideos(tramLineId);
+      return loadCompiledVideos(tramLineId);
     },
     [loadCompiledVideos]
   );
@@ -138,7 +147,7 @@ export function useVisualize(projectId: string | null) {
   const toggleVideoPrint = useCallback(
     async (videoId: string, isPrint: boolean, tramLineId: string) => {
       await api.patch(`api/video-history/${videoId}/print`, { is_print: isPrint });
-      loadVideoHistory(tramLineId);
+      await loadVideoHistory(tramLineId);
     },
     [loadVideoHistory]
   );
@@ -146,7 +155,7 @@ export function useVisualize(projectId: string | null) {
   const deleteVideo = useCallback(
     async (videoId: string, tramLineId: string) => {
       await api.delete(`api/video-history/${videoId}`);
-      loadVideoHistory(tramLineId);
+      await loadVideoHistory(tramLineId);
     },
     [loadVideoHistory]
   );
@@ -154,7 +163,7 @@ export function useVisualize(projectId: string | null) {
   const deleteCompiledVideo = useCallback(
     async (compiledId: string, tramLineId: string) => {
       await api.delete(`api/compiled-videos/${compiledId}`);
-      loadCompiledVideos(tramLineId);
+      await loadCompiledVideos(tramLineId);
     },
     [loadCompiledVideos]
   );
@@ -163,7 +172,7 @@ export function useVisualize(projectId: string | null) {
     async (
       sourceVideoId: string,
       mode: "same_channel" | "new_channel",
-      tramLineId: string,
+      _tramLineId: string,
       options?: {
         prompt?: string;
         aspect_ratio?: string | null;
@@ -192,10 +201,9 @@ export function useVisualize(projectId: string | null) {
         source_image_data_url: options?.source_image_data_url || null,
         model_options: options?.model_options || null,
       });
-      loadVideoHistory(tramLineId);
       return response;
     },
-    [loadVideoHistory]
+    []
   );
 
   const toggleMovieShakerTVPrint = useCallback(
@@ -203,7 +211,7 @@ export function useVisualize(projectId: string | null) {
       await api.patch(`api/compiled-videos/${compiledId}/status`, {
         youtube_upload_status: showOnTV ? "submitted_to_movieshaker_tv" : null,
       });
-      loadCompiledVideos(tramLineId);
+      await loadCompiledVideos(tramLineId);
     },
     [loadCompiledVideos]
   );

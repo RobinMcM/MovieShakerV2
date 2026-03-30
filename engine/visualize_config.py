@@ -7,6 +7,8 @@ Visualize API config and stitch placeholder.
 import re
 import json
 import uuid
+from datetime import datetime
+from io import BytesIO
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -33,6 +35,7 @@ from models import (
     Script,
     TramLine,
 )
+from storage import save_moodboard_video
 
 router = APIRouter(tags=["visualize-config"])
 settings = load_settings()
@@ -351,6 +354,27 @@ def stitch_videos(
                 output_path = value.strip()
                 break
 
+    streamed_output = None
+    if isinstance(stitch_result, dict):
+        maybe_bytes = stitch_result.get("output_bytes")
+        if isinstance(maybe_bytes, (bytes, bytearray)) and len(maybe_bytes) > 0:
+            streamed_output = bytes(maybe_bytes)
+
+    if output_path is None and streamed_output is not None:
+        filename = f"compiled-{uuid.uuid4()}.mp4"
+        try:
+            output_path = save_moodboard_video(
+                user_id=user_id,
+                project_id=str(project_id),
+                scene_id=str(line.scene_id),
+                tram_line_id=str(line.id),
+                filename=filename,
+                content=BytesIO(streamed_output),
+                size=len(streamed_output),
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Stitch output persistence failed: {exc}")
+
     created_compiled = None
     if output_path:
         channel_number = sorted_source_rows[0].channel
@@ -361,6 +385,7 @@ def stitch_videos(
             compiled_video_path=output_path,
             source_video_ids=json.dumps(body.video_ids),
             status="completed",
+            completed_at=datetime.utcnow(),
             channel_number=channel_number,
         )
         db.add(created_compiled)
@@ -368,6 +393,10 @@ def stitch_videos(
         db.refresh(created_compiled)
     else:
         db.rollback()
+        raise HTTPException(
+            status_code=502,
+            detail="Stitch completed without a persisted output video",
+        )
 
     return {
         "success": True,

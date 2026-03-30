@@ -1,4 +1,5 @@
 import base64
+from urllib.parse import urlparse
 from typing import Any, Optional
 
 import httpx
@@ -63,6 +64,37 @@ class MediaHandlerClient:
                 return value.strip()
         return None
 
+    @staticmethod
+    def _to_spaces_key(value: str) -> str:
+        """
+        Convert a DB video path or API storage URL into a Spaces key.
+        """
+        raw = (value or "").strip()
+        if not raw:
+            raise MediaHandlerClientError("Empty video path is not allowed for stitching")
+        if raw.startswith("data:"):
+            raise MediaHandlerClientError("Data URLs are not supported for stitching")
+
+        marker = "/api/storage/"
+        marker_idx = raw.find(marker)
+        if marker_idx >= 0:
+            key = raw[marker_idx + len(marker):].split("?")[0].strip()
+            if key:
+                return key
+            raise MediaHandlerClientError("Invalid /api/storage URL for stitching")
+
+        lowered = raw.lower()
+        if lowered.startswith("http://") or lowered.startswith("https://"):
+            parsed = urlparse(raw)
+            key_from_path = (parsed.path or "").lstrip("/")
+            if key_from_path and not key_from_path.endswith("/"):
+                return key_from_path
+            raise MediaHandlerClientError(
+                "Only storage keys or /api/storage URLs can be stitched"
+            )
+
+        return raw
+
     def extract_last_frame(self, video_url: str) -> dict[str, Optional[str]]:
         """
         Attempt to extract the final frame from a source video URL.
@@ -108,13 +140,31 @@ class MediaHandlerClient:
     def stitch_videos(self, video_urls: list[str], aspect_ratio: str = "16:9") -> dict[str, Any]:
         if len(video_urls) < 2:
             raise MediaHandlerClientError("At least two videos are required for stitching")
+        spaces_inputs = [{"spaces_key": self._to_spaces_key(item)} for item in video_urls]
         payload = {
-            "video_urls": video_urls,
-            "aspect_ratio": aspect_ratio,
+            "inputs": spaces_inputs,
         }
         response = self._post_json("/api/ffmpeg/concat_spaces", payload)
         if not response.content:
             return {"success": True}
+
+        content_type = (response.headers.get("content-type") or "").lower()
+        if "application/json" in content_type:
+            try:
+                data = response.json()
+                if isinstance(data, dict):
+                    return data
+            except Exception:
+                pass
+            return {"success": True}
+
+        if content_type.startswith("video/"):
+            return {
+                "success": True,
+                "content_type": content_type,
+                "output_bytes": response.content,
+            }
+
         try:
             data = response.json()
             if isinstance(data, dict):

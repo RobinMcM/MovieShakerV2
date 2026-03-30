@@ -156,6 +156,7 @@ function VisualizeContent() {
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [pollingVideoId, setPollingVideoId] = useState<string | null>(null);
+  const [stitchingChannel, setStitchingChannel] = useState<number | null>(null);
   const [videoToDelete, setVideoToDelete] = useState<{ id: string; path: string } | null>(null);
   const [compiledToDelete, setCompiledToDelete] = useState<{ id: string; path: string } | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -345,6 +346,31 @@ function VisualizeContent() {
     .map(Number)
     .sort((a, b) => a - b);
 
+  const compiledByChannel = useMemo(() => {
+    const byChannel = new Map<number, CompiledVideo>();
+    for (const row of compiledVideos) {
+      const channel = row.channel_number;
+      if (typeof channel !== "number") continue;
+      const existing = byChannel.get(channel);
+      if (!existing) {
+        byChannel.set(channel, row);
+        continue;
+      }
+      const rowScore = row.status === "completed" && row.compiled_video_path ? 1 : 0;
+      const existingScore = existing.status === "completed" && existing.compiled_video_path ? 1 : 0;
+      if (rowScore !== existingScore) {
+        if (rowScore > existingScore) byChannel.set(channel, row);
+        continue;
+      }
+      const rowCreated = Date.parse(row.created_at || "");
+      const existingCreated = Date.parse(existing.created_at || "");
+      if (Number.isFinite(rowCreated) && (!Number.isFinite(existingCreated) || rowCreated > existingCreated)) {
+        byChannel.set(channel, row);
+      }
+    }
+    return byChannel;
+  }, [compiledVideos]);
+
   useEffect(() => {
     setFocusedVideoId(null);
     setFocusedLastFrameUrl(null);
@@ -394,6 +420,21 @@ function VisualizeContent() {
 
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+  const refreshSelectedLineData = useCallback(
+    async ({ includeSourceCompositions = false }: { includeSourceCompositions?: boolean } = {}) => {
+      if (!selectedTramLine) {
+        return { videos: [] as VideoHistoryItem[], compiled: [] as CompiledVideo[] };
+      }
+      const [videos, compiled] = await Promise.all([
+        loadVideoHistory(selectedTramLine),
+        loadCompiledVideos(selectedTramLine),
+        includeSourceCompositions ? loadSourceCompositions(selectedTramLine) : Promise.resolve([]),
+      ]);
+      return { videos: videos || [], compiled: compiled || [] };
+    },
+    [selectedTramLine, loadVideoHistory, loadCompiledVideos, loadSourceCompositions]
+  );
+
   const pollVideoUntilTerminal = async (videoId: string) => {
     setPollingVideoId(videoId);
     const maxAttempts = 120;
@@ -415,9 +456,7 @@ function VisualizeContent() {
         });
         const status = statusRes.status;
         if (status === "completed" || Boolean(statusRes.video?.video_path)) {
-          if (selectedTramLine) {
-            await loadVideoHistory(selectedTramLine);
-          }
+          await refreshSelectedLineData();
           setToastMessage("Video generation completed.");
           setPollingVideoId(null);
           return;
@@ -425,9 +464,7 @@ function VisualizeContent() {
         if (status === "failed") {
           setToastMessage(statusRes.error || "Video generation failed.");
           setPollingVideoId(null);
-          if (selectedTramLine) {
-            await loadVideoHistory(selectedTramLine);
-          }
+          await refreshSelectedLineData();
           return;
         }
       } catch (error) {
@@ -439,6 +476,21 @@ function VisualizeContent() {
     setPollingVideoId(null);
     console.warn("[visualize.poll] timeout", { videoId, maxAttempts });
     setToastMessage("Generation is still processing. Refresh in a few moments.");
+  };
+
+  const pollCompiledUntilAvailable = async (channelNumber: number) => {
+    const maxAttempts = 40;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const { compiled } = await refreshSelectedLineData();
+      const channelCompiled = compiled
+        .filter((item) => item.channel_number === channelNumber)
+        .sort((a, b) => Date.parse(b.created_at || "") - Date.parse(a.created_at || ""))[0];
+      if (channelCompiled?.compiled_video_path) {
+        return channelCompiled;
+      }
+      await sleep(1500);
+    }
+    return null;
   };
 
   const handleGenerateVideo = async () => {
@@ -505,7 +557,7 @@ function VisualizeContent() {
         aspect_ratio_used: res.gateway?.aspect_ratio_used ?? null,
         model_options_used: res.gateway?.model_options_used ?? null,
       });
-      await loadVideoHistory(selectedTramLine);
+      await refreshSelectedLineData();
       console.log("[visualize.generate-video] history reloaded", {
         selectedTramLine,
         createdVideoId: res.video?.id ?? null,
@@ -575,7 +627,7 @@ function VisualizeContent() {
       } else {
         setToastMessage("Continuation submitted.");
       }
-      await loadVideoHistory(selectedTramLine);
+      await refreshSelectedLineData();
       console.log("[visualize.continue] history reloaded", {
         selectedTramLine,
         createdVideoId: createdVideoId ?? null,
@@ -593,24 +645,50 @@ function VisualizeContent() {
   };
 
   const handleStitch = async (channelNumber: number) => {
+    if (!selectedTramLine || !projectId) {
+      setToastMessage("Select a shot before stitching.");
+      return;
+    }
     const printed = videoHistory
       .filter((v) => v.is_print && v.Channel === channelNumber)
       .sort((a, b) => (a.take_number ?? 0) - (b.take_number ?? 0));
+    setToastMessage("Validating stitch selection...");
     if (printed.length < 2) {
       setToastMessage("Need at least 2 print-marked videos to stitch");
       return;
     }
+    setStitchingChannel(channelNumber);
     try {
-      await api.post("api/video/stitch", {
+      setToastMessage(`Stitch accepted for Channel ${channelNumber}. Compiling final cut...`);
+      const response = await api.post<{
+        success: boolean;
+        compiledVideo?: CompiledVideo | null;
+      }>("api/video/stitch", {
         video_ids: printed.map((v) => v.id),
         project_id: projectId,
         tram_line_id: selectedTramLine,
         aspect_ratio: "16:9",
       });
-      setToastMessage("Stitch started.");
-      if (selectedTramLine) loadCompiledVideos(selectedTramLine);
+      const { compiled } = await refreshSelectedLineData();
+      const immediate =
+        response?.compiledVideo?.compiled_video_path ||
+        compiled.some(
+          (item) => item.channel_number === channelNumber && Boolean(item.compiled_video_path)
+        );
+      if (immediate) {
+        setToastMessage(`Final cut ready for Channel ${channelNumber}.`);
+        return;
+      }
+      const compiledRow = await pollCompiledUntilAvailable(channelNumber);
+      if (compiledRow?.compiled_video_path) {
+        setToastMessage(`Final cut ready for Channel ${channelNumber}.`);
+      } else {
+        setToastMessage("Stitch accepted but final cut is still processing. Refresh in a few moments.");
+      }
     } catch (e) {
-      setToastMessage("Stitch service is not connected yet. Connect your stitch server to this endpoint.");
+      setToastMessage(e instanceof Error ? e.message : "Stitch failed.");
+    } finally {
+      setStitchingChannel(null);
     }
   };
 
@@ -921,7 +999,7 @@ function VisualizeContent() {
                   {sortedChannels.map((channelNum) => {
                     const videos = channelGroups[channelNum];
                     const printCount = videos.filter((v) => v.is_print).length;
-                    const channelCompiled = compiledVideos.find((c) => c.channel_number === channelNum);
+                    const channelCompiled = compiledByChannel.get(channelNum) || null;
                     return (
                       <AccordionItem key={channelNum} value={`ch-${channelNum}`}>
                         <AccordionTrigger>
@@ -1068,10 +1146,19 @@ function VisualizeContent() {
                               <button
                                 type="button"
                                 onClick={() => handleStitch(channelNum)}
+                                disabled={stitchingChannel === channelNum}
                                 className="aspect-video rounded-md border-2 border-dashed border-primary flex flex-col items-center justify-center gap-2 text-primary hover:bg-primary/5"
                               >
-                                <Film className="h-8 w-8" />
-                                <span className="text-sm font-medium">Stitch {printCount} videos</span>
+                                {stitchingChannel === channelNum ? (
+                                  <Loader2 className="h-8 w-8 animate-spin" />
+                                ) : (
+                                  <Film className="h-8 w-8" />
+                                )}
+                                <span className="text-sm font-medium">
+                                  {stitchingChannel === channelNum
+                                    ? "Compiling final cut..."
+                                    : `Stitch ${printCount} videos`}
+                                </span>
                               </button>
                             ) : null}
                           </div>

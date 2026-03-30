@@ -7,6 +7,8 @@ alwaysApply: true
 
 - After making code or config changes, stage with:
   git add -A -- ':!engine/storage' ':!**/*.lock' ':!**/*.pdf' ':!**/*.mp4' ':!**/*.mov'
-- Do NOT run git commit or git push unless the user explicitly asks.
+- Never run `git push` from the agent. The user always pushes from Cursor Git UI.
+- Default to no commit from the agent. Preferred flow is: agent stages changes, user reviews/commits in Cursor Git UI.
+- If user asks to "prepare git", stage files only and report what is staged.
 - Never stage anything inside engine/storage/ — this is runtime user data, not source code.
 - Never stage binary media files (video, images uploaded by users).

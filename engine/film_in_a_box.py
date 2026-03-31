@@ -26,7 +26,13 @@ from models import (
     Script,
     UserProfile,
 )
-from storage import relative_file_path, save_script_file
+from storage import (
+    relative_file_path,
+    save_script_file,
+    script_json_path,
+    get_script_file_stream,
+    uses_spaces,
+)
 
 
 router = APIRouter(prefix="/api/film-in-a-box", tags=["film-in-a-box"])
@@ -39,6 +45,13 @@ class GenerateBody(BaseModel):
     prompt: str
     type: str  # FILM | DOC
     previousContent: Optional[Any] = None
+    model: Optional[str] = None
+
+
+class FestivalAnalyzeBody(BaseModel):
+    projectId: str
+    title: Optional[str] = None
+    projectDescription: Optional[str] = None
     model: Optional[str] = None
 
 
@@ -55,6 +68,123 @@ class CreateProjectBody(BaseModel):
     type: str  # FILM | DOC
     content: Any
     prompt: Optional[str] = None
+
+
+def _extract_writer_from_script_json(script_json: dict[str, Any]) -> str:
+    metadata = script_json.get("metadata")
+    if isinstance(metadata, dict):
+        for key in ("author", "writer", "written_by"):
+            value = metadata.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return ""
+
+
+def _extract_script_excerpt(script_json: dict[str, Any], max_chars: int = 5000) -> str:
+    elements = script_json.get("elements")
+    if not isinstance(elements, list):
+        return ""
+    lines: list[str] = []
+    total = 0
+    for element in elements:
+        if not isinstance(element, dict):
+            continue
+        line_type = str(element.get("type") or "").strip().lower()
+        text = str(element.get("text") or "").strip()
+        if not text:
+            continue
+        prefix = f"[{line_type}] " if line_type else ""
+        line = f"{prefix}{text}"
+        next_total = total + len(line) + 1
+        if next_total > max_chars:
+            break
+        lines.append(line)
+        total = next_total
+    return "\n".join(lines)
+
+
+def _load_script_json_for_script(script: Script) -> dict[str, Any] | None:
+    key = relative_file_path(script.user_id, str(script.project_id), str(script.id), "script.json")
+    raw: bytes | None = None
+    if uses_spaces():
+        stream_result = get_script_file_stream(key)
+        if stream_result:
+            raw = stream_result[0]
+    else:
+        path = script_json_path(script.user_id, str(script.project_id), str(script.id))
+        if path.exists():
+            raw = path.read_bytes()
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw.decode("utf-8"))
+        return parsed if isinstance(parsed, dict) else None
+    except Exception:
+        return None
+
+
+def _build_festival_prompt(
+    *,
+    title: str,
+    project_description: str,
+    writer_hint: str,
+    format_hint: str,
+    scene_headings: list[str],
+    characters: list[str],
+    script_excerpt: str,
+) -> str:
+    scenes_text = "\n".join(f"- {heading}" for heading in scene_headings[:20]) or "(none)"
+    characters_text = ", ".join(characters[:30]) or "(none)"
+    script_block = script_excerpt.strip() if script_excerpt.strip() else "(script text unavailable)"
+    return (
+        "You are helping fill a film festival strategy form.\n"
+        "Return ONLY strict JSON with this exact shape:\n"
+        "{\n"
+        '  "writer": string,\n'
+        '  "format": string,\n'
+        '  "genreTone": string,\n'
+        '  "whyNow": string,\n'
+        '  "comps": string,\n'
+        '  "targetAudience": string\n'
+        "}\n"
+        "Rules:\n"
+        "- writer: infer from script metadata/byline if available. If unknown, return empty string.\n"
+        "- format: classify clearly (e.g., Short Film, Feature Film, Documentary, Series Episode).\n"
+        "- genreTone: concise genre + tone label.\n"
+        "- whyNow: 2-4 sentences on timeliness and relevance.\n"
+        "- comps: 2-5 realistic comparable films/series and why briefly.\n"
+        "- targetAudience: specific audience segments and viewing behavior.\n"
+        "- Do not include markdown, code fences, or extra keys.\n\n"
+        f"Project title: {title}\n"
+        f"Project description: {project_description or '(none)'}\n"
+        f"Writer hint from script: {writer_hint or '(unknown)'}\n"
+        f"Format hint from script metadata: {format_hint or '(unknown)'}\n"
+        f"Character list: {characters_text}\n"
+        "Scene headings:\n"
+        f"{scenes_text}\n\n"
+        "Script excerpt:\n"
+        f"{script_block}\n"
+    )
+
+
+def _normalize_festival_result(candidate: Any) -> dict[str, str]:
+    if not isinstance(candidate, dict):
+        return {
+            "writer": "",
+            "format": "",
+            "genreTone": "",
+            "whyNow": "",
+            "comps": "",
+            "targetAudience": "",
+        }
+    return {
+        "writer": str(candidate.get("writer") or "").strip(),
+        "format": str(candidate.get("format") or "").strip(),
+        "genreTone": str(candidate.get("genreTone") or "").strip(),
+        "whyNow": str(candidate.get("whyNow") or "").strip(),
+        "comps": str(candidate.get("comps") or "").strip(),
+        "targetAudience": str(candidate.get("targetAudience") or "").strip(),
+    }
 
 
 def _ensure_project_member(db: Session, project_id: str, user_id: str) -> None:
@@ -456,6 +586,90 @@ def generate(
             if json_candidate is None:
                 json_candidate = gateway_response.get("data") if isinstance(gateway_response.get("data"), dict) else None
         normalized = _normalize_doc_result(json_candidate if json_candidate is not None else raw_text)
+        credits_cost = extract_credit_cost(gateway_response)
+        balance = apply_credit_cost(db, user_id, credits_cost)
+        db.commit()
+        return {"result": normalized, "credits": {"cost": credits_cost, "balance": balance}}
+    except GatewayClientError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@router.post("/festival-analyze")
+def festival_analyze(
+    body: FestivalAnalyzeBody,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    profile = ensure_user_can_generate(db, user_id)
+    if not body.projectId.strip():
+        raise HTTPException(status_code=400, detail="projectId is required")
+    if not settings.gateway_base_url:
+        raise HTTPException(status_code=503, detail="Gateway base URL is not configured")
+    if not settings.gateway_internal_api_key:
+        raise HTTPException(status_code=503, detail="Gateway API key is not configured")
+
+    _ensure_project_member(db, body.projectId, user_id)
+    project_uuid = uuid.UUID(body.projectId)
+    project = db.get(Project, project_uuid)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    script = db.exec(
+        select(Script)
+        .where(Script.project_id == project_uuid)
+        .order_by(Script.is_current.desc(), Script.uploaded_at.desc())
+    ).first()
+    if not script:
+        raise HTTPException(status_code=400, detail="No script found for this project. Upload a script first.")
+
+    script_json = _load_script_json_for_script(script) or {}
+    writer_hint = _extract_writer_from_script_json(script_json)
+    format_hint = project.film_type or ""
+    scene_rows = list(
+        db.exec(
+            select(Scene)
+            .where(Scene.script_id == script.id)
+            .order_by(Scene.scene_number.asc(), Scene.id.asc())
+        ).all()
+    )
+    scene_headings = [str(scene.heading or "").strip() for scene in scene_rows if str(scene.heading or "").strip()]
+    character_rows = list(
+        db.exec(
+            select(Character)
+            .where(Character.script_id == script.id)
+            .order_by(Character.name.asc())
+        ).all()
+    )
+    characters = [str(character.name or "").strip() for character in character_rows if str(character.name or "").strip()]
+    script_excerpt = _extract_script_excerpt(script_json)
+
+    selected_model = (body.model or profile.model_fiab_text or settings.film_in_a_box_model).strip()
+    if not selected_model:
+        raise HTTPException(status_code=400, detail="Model is required")
+
+    prompt = _build_festival_prompt(
+        title=(body.title or project.name or "Untitled project").strip() or "Untitled project",
+        project_description=(body.projectDescription or project.description or "").strip(),
+        writer_hint=writer_hint,
+        format_hint=format_hint.strip(),
+        scene_headings=scene_headings,
+        characters=characters,
+        script_excerpt=script_excerpt,
+    )
+
+    try:
+        gateway_response = _gateway_client().execute_text(
+            model=selected_model,
+            messages=_build_gateway_messages(prompt, want_json=True),
+        )
+        raw_text = _extract_text_from_gateway(gateway_response)
+        json_candidate = _extract_json_block(raw_text)
+        if json_candidate is None and isinstance(gateway_response, dict):
+            json_candidate = gateway_response.get("result") if isinstance(gateway_response.get("result"), dict) else None
+            if json_candidate is None:
+                json_candidate = gateway_response.get("data") if isinstance(gateway_response.get("data"), dict) else None
+        normalized = _normalize_festival_result(json_candidate if json_candidate is not None else raw_text)
         credits_cost = extract_credit_cost(gateway_response)
         balance = apply_credit_cost(db, user_id, credits_cost)
         db.commit()

@@ -85,6 +85,15 @@ interface DocResult {
   script?: string | Array<{ VIDEO?: string; AUDIO?: string; video?: string; audio?: string }>;
 }
 
+interface FestivalAnalysisResult {
+  writer: string;
+  format: string;
+  genreTone: string;
+  whyNow: string;
+  comps: string;
+  targetAudience: string;
+}
+
 const INITIAL_DATA: PlanData = {
   format: "",
   genre: "",
@@ -248,31 +257,33 @@ function TheFilmFestivalPage() {
       setMessage({ kind: "error", text: "AI gateway is not connected. Please try again shortly." });
       return;
     }
+    if (!projectId) {
+      setMessage({ kind: "error", text: "Missing project context. Open this page from a project." });
+      return;
+    }
     try {
       setAnalyzing(true);
       setMessage(null);
-      const res = await generateDoc(
-        [
-          "Create positioning notes for this film project.",
-          projectDescription ? `Project context: ${projectDescription}` : "",
-          "Focus on core identity, market fit, audience, and concise messaging.",
-        ]
-          .filter(Boolean)
-          .join("\n")
+      const response = await api.post<{ result: FestivalAnalysisResult }>(
+        "/api/film-in-a-box/festival-analyze",
+        {
+          projectId,
+          title: title.trim() || "Untitled project",
+          projectDescription: projectDescription.trim(),
+        },
+        90000
       );
-      const chapterSynopsis = (res.chapters || [])
-        .slice(0, 2)
-        .map((c) => c.summary)
-        .filter(Boolean)
-        .join(" ");
+      const res = response.result;
       setFormData((prev) => ({
         ...prev,
-        logline: res.logline || prev.logline,
-        whyNow: res.thematicStatement || prev.whyNow,
-        visualTone: res.visualStyle || prev.visualTone,
-        synopsis: chapterSynopsis || prev.synopsis,
+        writer: res.writer || prev.writer,
+        format: res.format || prev.format,
+        genre: res.genreTone || prev.genre,
+        whyNow: res.whyNow || prev.whyNow,
+        comps: res.comps || prev.comps,
+        targetAudience: res.targetAudience || prev.targetAudience,
       }));
-      setMessage({ kind: "success", text: "Positioning fields updated from AI analysis." });
+      setMessage({ kind: "success", text: "Film festival positioning fields updated from script analysis." });
     } catch (err) {
       setMessage({
         kind: "error",

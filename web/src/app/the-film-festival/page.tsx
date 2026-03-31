@@ -94,6 +94,32 @@ interface FestivalAnalysisResult {
   targetAudience: string;
 }
 
+interface FundingAnalysisResult {
+  budgetMvp: string;
+  budgetTarget: string;
+  budgetStretch: string;
+  sourceGrants: string;
+  sourcePrivate: string;
+  sourceCrowd: string;
+  sourceInKind: string;
+}
+
+interface MarketingAnalysisResult {
+  logline: string;
+  synopsis: string;
+  visualTone: string;
+  contentPlan: string;
+  channels: string;
+  pressOutlets: string;
+}
+
+interface FestivalStrategyResult {
+  tier1: string;
+  tier2: string;
+  tier3: string;
+  distribution: string;
+}
+
 const INITIAL_DATA: PlanData = {
   format: "",
   genre: "",
@@ -299,22 +325,36 @@ function TheFilmFestivalPage() {
       setMessage({ kind: "error", text: "AI gateway is not connected. Please try again shortly." });
       return;
     }
+    if (!projectId) {
+      setMessage({ kind: "error", text: "Missing project context. Open this page from a project." });
+      return;
+    }
     try {
       setGeneratingFunding(true);
       setMessage(null);
-      const text = await generateText(
-        [
-          "Provide a practical indie film funding plan.",
-          `Project title: ${title || "Untitled project"}`,
-          `Logline: ${formData.logline || "N/A"}`,
-          "Include budget tiers and funding source ideas.",
-        ].join("\n")
+      const response = await api.post<{ result: FundingAnalysisResult }>(
+        "/api/film-in-a-box/funding-analyze",
+        {
+          projectId,
+          title: title.trim() || "Untitled project",
+          logline: formData.logline.trim(),
+          genre: formData.genre.trim(),
+          projectDescription: projectDescription.trim(),
+        },
+        90000
       );
+      const res = response.result;
       setFormData((prev) => ({
         ...prev,
-        sourceGrants: text || prev.sourceGrants,
+        budgetMvp: res.budgetMvp || prev.budgetMvp,
+        budgetTarget: res.budgetTarget || prev.budgetTarget,
+        budgetStretch: res.budgetStretch || prev.budgetStretch,
+        sourceGrants: res.sourceGrants || prev.sourceGrants,
+        sourcePrivate: res.sourcePrivate || prev.sourcePrivate,
+        sourceCrowd: res.sourceCrowd || prev.sourceCrowd,
+        sourceInKind: res.sourceInKind || prev.sourceInKind,
       }));
-      setMessage({ kind: "success", text: "Funding guidance generated." });
+      setMessage({ kind: "success", text: "Funding fields updated from script analysis." });
     } catch (err) {
       setMessage({
         kind: "error",
@@ -330,25 +370,35 @@ function TheFilmFestivalPage() {
       setMessage({ kind: "error", text: "AI gateway is not connected. Please try again shortly." });
       return;
     }
+    if (!projectId) {
+      setMessage({ kind: "error", text: "Missing project context. Open this page from a project." });
+      return;
+    }
     try {
       setGeneratingMarketing(true);
       setMessage(null);
-      const res = await generateDoc(
-        [
-          "Create a compact marketing plan for this film.",
-          `Project title: ${title || "Untitled project"}`,
-          `Logline: ${formData.logline || "N/A"}`,
-          "Focus on audience channels, content plan, and press approach.",
-        ].join("\n")
+      const response = await api.post<{ result: MarketingAnalysisResult }>(
+        "/api/film-in-a-box/marketing-analyze",
+        {
+          projectId,
+          title: title.trim() || "Untitled project",
+          logline: formData.logline.trim(),
+          genre: formData.genre.trim(),
+          projectDescription: projectDescription.trim(),
+        },
+        90000
       );
-      const scriptText = extractScriptText(res.script);
+      const res = response.result;
       setFormData((prev) => ({
         ...prev,
-        contentPlan: scriptText || prev.contentPlan,
-        channels: (res.bRollWishlist || []).join(", ") || prev.channels,
-        pressOutlets: (res.interviewCandidates || []).map((x) => x.role).join(", ") || prev.pressOutlets,
+        logline: res.logline || prev.logline,
+        synopsis: res.synopsis || prev.synopsis,
+        visualTone: res.visualTone || prev.visualTone,
+        contentPlan: res.contentPlan || prev.contentPlan,
+        channels: res.channels || prev.channels,
+        pressOutlets: res.pressOutlets || prev.pressOutlets,
       }));
-      setMessage({ kind: "success", text: "Marketing guidance generated." });
+      setMessage({ kind: "success", text: "Marketing fields updated from script analysis." });
     } catch (err) {
       setMessage({
         kind: "error",
@@ -364,22 +414,33 @@ function TheFilmFestivalPage() {
       setMessage({ kind: "error", text: "AI gateway is not connected. Please try again shortly." });
       return;
     }
+    if (!projectId) {
+      setMessage({ kind: "error", text: "Missing project context. Open this page from a project." });
+      return;
+    }
     try {
       setGeneratingFestivals(true);
       setMessage(null);
-      const text = await generateText(
-        [
-          "Create a film festival strategy with tiered targets.",
-          `Project title: ${title || "Untitled project"}`,
-          `Genre/tone: ${formData.genre || "N/A"}`,
-          "Include tier 1, tier 2, tier 3 and a post-festival distribution plan.",
-        ].join("\n")
+      const response = await api.post<{ result: FestivalStrategyResult }>(
+        "/api/film-in-a-box/festival-strategy-analyze",
+        {
+          projectId,
+          title: title.trim() || "Untitled project",
+          genre: formData.genre.trim(),
+          logline: formData.logline.trim(),
+          projectDescription: projectDescription.trim(),
+        },
+        90000
       );
+      const res = response.result;
       setFormData((prev) => ({
         ...prev,
-        tier1: text || prev.tier1,
+        tier1: res.tier1 || prev.tier1,
+        tier2: res.tier2 || prev.tier2,
+        tier3: res.tier3 || prev.tier3,
+        distribution: res.distribution || prev.distribution,
       }));
-      setMessage({ kind: "success", text: "Festival strategy guidance generated." });
+      setMessage({ kind: "success", text: "Festival strategy fields updated from script analysis." });
     } catch (err) {
       setMessage({
         kind: "error",

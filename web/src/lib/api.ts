@@ -30,8 +30,8 @@ export async function apiRequest<T>(endpoint: string, options: RequestOptions = 
     const timeoutMs =
         typeof options.timeoutMs === "number" && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
             ? options.timeoutMs
-            : null;
-    const controller = timeoutMs ? new AbortController() : null;
+            : undefined;
+    const controller = typeof timeoutMs === "number" ? new AbortController() : null;
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
     if (controller) {
         config.signal = controller.signal;

@@ -6,6 +6,7 @@ interface RequestOptions {
     method?: RequestMethod;
     headers?: Record<string, string>;
     body?: unknown;
+    timeoutMs?: number;
 }
 
 export async function apiRequest<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
@@ -26,7 +27,28 @@ export async function apiRequest<T>(endpoint: string, options: RequestOptions = 
         config.body = JSON.stringify(options.body);
     }
 
-    const response = await fetch(url, config);
+    const timeoutMs =
+        typeof options.timeoutMs === "number" && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+            ? options.timeoutMs
+            : null;
+    const controller = timeoutMs ? new AbortController() : null;
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    if (controller) {
+        config.signal = controller.signal;
+        timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+    }
+
+    let response: Response;
+    try {
+        response = await fetch(url, config);
+    } catch (err) {
+        if ((err as { name?: string })?.name === "AbortError") {
+            throw new Error(`Request timed out after ${timeoutMs}ms`);
+        }
+        throw err;
+    } finally {
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+    }
 
     if (!response.ok) {
         if (response.status === 401) {
@@ -87,7 +109,8 @@ export function storageImageUrl(pathOrUrl: string | null | undefined): string | 
 
 export const api = {
     get: <T>(endpoint: string) => apiRequest<T>(endpoint, { method: "GET" }),
-    post: <T>(endpoint: string, body: unknown) => apiRequest<T>(endpoint, { method: "POST", body }),
+    post: <T>(endpoint: string, body: unknown, timeoutMs?: number) =>
+        apiRequest<T>(endpoint, { method: "POST", body, timeoutMs }),
     put: <T>(endpoint: string, body: unknown) => apiRequest<T>(endpoint, { method: "PUT", body }),
     patch: <T>(endpoint: string, body: unknown) => apiRequest<T>(endpoint, { method: "PATCH", body }),
     delete: <T>(endpoint: string) => apiRequest<T>(endpoint, { method: "DELETE" }),

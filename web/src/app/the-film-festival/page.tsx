@@ -29,6 +29,14 @@ interface ProjectData {
   description?: string | null;
 }
 
+interface ConfigStatusResponse {
+  success: boolean;
+  config: {
+    gatewayConnected: boolean;
+    hasGatewayKey: boolean;
+  };
+}
+
 interface PlanData {
   format: string;
   genre: string;
@@ -130,6 +138,7 @@ function TheFilmFestivalPage() {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [formData, setFormData] = useState<PlanData>(INITIAL_DATA);
   const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+  const [configStatus, setConfigStatus] = useState<ConfigStatusResponse["config"] | null>(null);
 
   const localStorageKey = useMemo(
     () => (projectId ? `film-festival-plan-${projectId}` : null),
@@ -140,6 +149,10 @@ function TheFilmFestivalPage() {
     if (!projectId) return;
     void loadProjectDetails(projectId);
   }, [projectId]);
+
+  useEffect(() => {
+    void loadConfigStatus();
+  }, []);
 
   useEffect(() => {
     if (!localStorageKey) return;
@@ -168,6 +181,19 @@ function TheFilmFestivalPage() {
       setMessage({ kind: "error", text: "Failed to load project details." });
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadConfigStatus() {
+    try {
+      const res = await api.get<ConfigStatusResponse>("/api/config/status");
+      if (res?.success) {
+        setConfigStatus(res.config);
+      } else {
+        setConfigStatus(null);
+      }
+    } catch {
+      setConfigStatus(null);
     }
   }
 
@@ -204,7 +230,7 @@ function TheFilmFestivalPage() {
       title: title.trim() || "Untitled project",
       prompt,
       type: "DOC",
-    });
+    }, 90000);
     return result.result;
   }
 
@@ -213,11 +239,15 @@ function TheFilmFestivalPage() {
       title: title.trim() || "Untitled project",
       prompt,
       type: "FILM",
-    });
+    }, 90000);
     return typeof result.result === "string" ? result.result : "";
   }
 
   async function handleAnalyzeScript() {
+    if (!configStatus?.gatewayConnected || !configStatus?.hasGatewayKey) {
+      setMessage({ kind: "error", text: "AI gateway is not connected. Please try again shortly." });
+      return;
+    }
     try {
       setAnalyzing(true);
       setMessage(null);
@@ -254,6 +284,10 @@ function TheFilmFestivalPage() {
   }
 
   async function handleGenerateFunding() {
+    if (!configStatus?.gatewayConnected || !configStatus?.hasGatewayKey) {
+      setMessage({ kind: "error", text: "AI gateway is not connected. Please try again shortly." });
+      return;
+    }
     try {
       setGeneratingFunding(true);
       setMessage(null);
@@ -281,6 +315,10 @@ function TheFilmFestivalPage() {
   }
 
   async function handleGenerateMarketing() {
+    if (!configStatus?.gatewayConnected || !configStatus?.hasGatewayKey) {
+      setMessage({ kind: "error", text: "AI gateway is not connected. Please try again shortly." });
+      return;
+    }
     try {
       setGeneratingMarketing(true);
       setMessage(null);
@@ -311,6 +349,10 @@ function TheFilmFestivalPage() {
   }
 
   async function handleGenerateFestivals() {
+    if (!configStatus?.gatewayConnected || !configStatus?.hasGatewayKey) {
+      setMessage({ kind: "error", text: "AI gateway is not connected. Please try again shortly." });
+      return;
+    }
     try {
       setGeneratingFestivals(true);
       setMessage(null);
@@ -374,6 +416,11 @@ function TheFilmFestivalPage() {
                 <CardDescription>Context for this strategy draft.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div className="rounded-md border px-3 py-2 text-xs text-muted-foreground">
+                  {configStatus?.gatewayConnected && configStatus?.hasGatewayKey
+                    ? "AI status: Ready"
+                    : "AI status: Not ready"}
+                </div>
                 <div className="space-y-2">
                   <Label>Working Title</Label>
                   <Input

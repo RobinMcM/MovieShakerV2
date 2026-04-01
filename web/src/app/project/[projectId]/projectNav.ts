@@ -9,6 +9,7 @@ import {
   MessageCircle,
   Palette,
   Settings,
+  Ticket,
   Users,
 } from "lucide-react";
 
@@ -17,6 +18,7 @@ export interface ProjectNavItem {
   label: string;
   href: (projectId: string) => string;
   icon: React.ComponentType<{ className?: string }>;
+  disabled?: boolean;
 }
 
 export const PROJECT_DEFAULT_ROUTE = "scheduling";
@@ -76,12 +78,19 @@ export const PROJECT_ASSISTANT_NAV: ProjectNavItem[] = [
   {
     id: "production-assistant",
     label: "Production Assistant",
-    href: (projectId) => `/project/${projectId}/the-film-festival`,
+    href: () => "#",
     icon: MessageCircle,
+    disabled: true,
   },
 ];
 
 export const PROJECT_EXTERNAL_NAV: ProjectNavItem[] = [
+  {
+    id: "film-festival",
+    label: "The Film Festival",
+    href: (projectId) => `/project/${projectId}/the-film-festival`,
+    icon: Ticket,
+  },
   {
     id: "submit-funding",
     label: "Submit for Funding",

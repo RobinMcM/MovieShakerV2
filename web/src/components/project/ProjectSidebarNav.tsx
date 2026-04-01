@@ -83,9 +83,21 @@ export function ProjectSidebarNav({
           </p>
           <div className="space-y-1">
             {PROJECT_ASSISTANT_NAV.map((item) => {
+              const Icon = item.icon;
+              if (item.disabled) {
+                return (
+                  <div
+                    key={item.id}
+                    aria-disabled="true"
+                    className="flex items-center gap-2 rounded-md px-2.5 py-2 text-sm text-muted-foreground/60 cursor-not-allowed opacity-80"
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span>{item.label}</span>
+                  </div>
+                );
+              }
               const href = item.href(projectId);
               const isActive = pathname === href;
-              const Icon = item.icon;
               return (
                 <Link
                   key={item.id}

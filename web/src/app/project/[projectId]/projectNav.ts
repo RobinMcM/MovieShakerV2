@@ -6,9 +6,9 @@ import {
   CreditCard,
   Eye,
   List,
+  MessageCircle,
   Palette,
   Settings,
-  Ticket,
   Users,
 } from "lucide-react";
 
@@ -72,13 +72,16 @@ export const PROJECT_TOOL_NAV: ProjectNavItem[] = [
   },
 ];
 
-export const PROJECT_EXTERNAL_NAV: ProjectNavItem[] = [
+export const PROJECT_ASSISTANT_NAV: ProjectNavItem[] = [
   {
-    id: "film-festival",
-    label: "The Film Festival",
+    id: "production-assistant",
+    label: "Production Assistant",
     href: (projectId) => `/project/${projectId}/the-film-festival`,
-    icon: Ticket,
+    icon: MessageCircle,
   },
+];
+
+export const PROJECT_EXTERNAL_NAV: ProjectNavItem[] = [
   {
     id: "submit-funding",
     label: "Submit for Funding",

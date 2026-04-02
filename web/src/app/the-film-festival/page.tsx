@@ -274,7 +274,7 @@ function TheFilmFestivalPage() {
   const chatbotEmbedSrc = useMemo(() => {
     const query = new URLSearchParams();
     query.set("rule", chatbotContextStatus?.selection_key || chatbotContextKey);
-    query.set("rules_source", "hidden");
+    query.set("rules_source", "external");
     query.set("bg", assistantAccentColor);
     query.set("context_key", chatbotContextKey);
     query.set(
@@ -285,6 +285,7 @@ function TheFilmFestivalPage() {
     query.set("prompt_info", chatbotContextStatus?.prompt_information || "");
     query.set("assistant_enabled", assistantActive ? "1" : "0");
     query.set("assistant_disabled_message", assistantStatusMessage);
+    query.set("rules_panel", "visible");
     return `${CHATBOT_BASE_URL}/chatbot/embed?${query.toString()}`;
   }, [
     activeTabMeta,

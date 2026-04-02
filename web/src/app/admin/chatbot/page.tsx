@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, MessageCircle, RefreshCw } from "lucide-react";
+import { Download, Loader2, MessageCircle, RefreshCw } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/lib/api";
 
@@ -21,6 +21,25 @@ interface ChatbotConfig {
   prompt_information: string;
   prompt_rules: string;
   updated_at: string;
+}
+
+interface ChatbotLayoutField {
+  field_key: string;
+  field_label: string;
+}
+
+interface ChatbotLayoutTab {
+  tab_key: string;
+  tab_label: string;
+  fields: ChatbotLayoutField[];
+}
+
+interface ChatbotLayoutSchema {
+  selection_key: SelectionKey;
+  selection_label: string;
+  page_title: string;
+  tabs: ChatbotLayoutTab[];
+  generated_at: string;
 }
 
 const DEFAULT_SELECTION: SelectionKey = "the-film-festival";
@@ -40,6 +59,8 @@ function AdminChatbotPage() {
   const [saving, setSaving] = useState(false);
   const [selection, setSelection] = useState<SelectionKey>(DEFAULT_SELECTION);
   const [config, setConfig] = useState<ChatbotConfig>(defaultConfig);
+  const [layoutJson, setLayoutJson] = useState("");
+  const [layoutLoading, setLayoutLoading] = useState(false);
   const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
@@ -96,6 +117,38 @@ function AdminChatbotPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function generateLayoutJson() {
+    try {
+      setLayoutLoading(true);
+      setMessage(null);
+      const schema = await api.get<ChatbotLayoutSchema>(
+        `/admin/chatbot/layout?selection=${encodeURIComponent(selection)}`
+      );
+      setLayoutJson(JSON.stringify(schema, null, 2));
+      setMessage({ kind: "success", text: "Page layout JSON generated." });
+    } catch (err) {
+      setMessage({
+        kind: "error",
+        text: err instanceof Error ? err.message : "Failed to generate layout JSON.",
+      });
+    } finally {
+      setLayoutLoading(false);
+    }
+  }
+
+  function downloadLayoutJson() {
+    if (!layoutJson) return;
+    const blob = new Blob([layoutJson], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${selection}-layout.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
   }
 
   if (allowed !== true) return null;
@@ -169,6 +222,45 @@ function AdminChatbotPage() {
                   onChange={(e) => setConfig((prev) => ({ ...prev, prompt_rules: e.target.value }))}
                   className="min-h-[220px]"
                   placeholder="Enter the guard rails and advisor-style flow rules."
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Label htmlFor="generated_layout_json">Generated Layout JSON</Label>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={generateLayoutJson}
+                      disabled={layoutLoading || loading || saving}
+                    >
+                      {layoutLoading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Generating...
+                        </>
+                      ) : (
+                        "Generate Layout JSON"
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={downloadLayoutJson}
+                      disabled={!layoutJson}
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Download JSON
+                    </Button>
+                  </div>
+                </div>
+                <Textarea
+                  id="generated_layout_json"
+                  value={layoutJson}
+                  readOnly
+                  className="min-h-[240px] font-mono text-xs"
+                  placeholder="Click 'Generate Layout JSON' to inspect tabs and fields."
                 />
               </div>
 

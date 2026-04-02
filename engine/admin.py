@@ -17,6 +17,60 @@ MAX_CHATBOT_TEXT_LENGTH = 20000
 CHATBOT_SELECTIONS: dict[str, str] = {
     "the-film-festival": "The Film Festival",
 }
+CHATBOT_LAYOUT_SCHEMAS: dict[str, dict] = {
+    "the-film-festival": {
+        "page_title": "The Film Festival",
+        "tabs": [
+            {
+                "tab_key": "positioning",
+                "tab_label": "Positioning",
+                "fields": [
+                    {"field_key": "writer", "field_label": "Writer"},
+                    {"field_key": "format", "field_label": "Format"},
+                    {"field_key": "genre", "field_label": "Genre & Tone"},
+                    {"field_key": "whyNow", "field_label": "Why this film now?"},
+                    {"field_key": "comps", "field_label": "Comps"},
+                    {"field_key": "targetAudience", "field_label": "Target Audience"},
+                ],
+            },
+            {
+                "tab_key": "funding",
+                "tab_label": "Funding",
+                "fields": [
+                    {"field_key": "budgetMvp", "field_label": "MVP"},
+                    {"field_key": "budgetTarget", "field_label": "Target"},
+                    {"field_key": "budgetStretch", "field_label": "Stretch"},
+                    {"field_key": "sourceGrants", "field_label": "Grants & Public Funds"},
+                    {"field_key": "sourcePrivate", "field_label": "Private Investment"},
+                    {"field_key": "sourceCrowd", "field_label": "Crowdfunding"},
+                    {"field_key": "sourceInKind", "field_label": "In-kind Support"},
+                ],
+            },
+            {
+                "tab_key": "marketing",
+                "tab_label": "Marketing",
+                "fields": [
+                    {"field_key": "logline", "field_label": "Logline"},
+                    {"field_key": "synopsis", "field_label": "Synopsis"},
+                    {"field_key": "visualTone", "field_label": "Visual Tone"},
+                    {"field_key": "contentPlan", "field_label": "Content Plan"},
+                    {"field_key": "channels", "field_label": "Channels"},
+                    {"field_key": "pressOutlets", "field_label": "Press Outlets"},
+                ],
+            },
+            {
+                "tab_key": "festivals",
+                "tab_label": "Festivals",
+                "fields": [
+                    {"field_key": "tier1", "field_label": "Tier 1"},
+                    {"field_key": "tier2", "field_label": "Tier 2"},
+                    {"field_key": "tier3", "field_label": "Tier 3"},
+                    {"field_key": "distribution", "field_label": "Distribution"},
+                ],
+            },
+        ],
+    }
+}
 
 
 class UserWithProfileResponse(BaseModel):
@@ -151,6 +205,25 @@ class ChatbotPromptConfigUpdate(BaseModel):
     selection_key: str
     prompt_information: str
     prompt_rules: str
+
+
+class ChatbotLayoutField(BaseModel):
+    field_key: str
+    field_label: str
+
+
+class ChatbotLayoutTab(BaseModel):
+    tab_key: str
+    tab_label: str
+    fields: List[ChatbotLayoutField]
+
+
+class ChatbotLayoutSchemaResponse(BaseModel):
+    selection_key: str
+    selection_label: str
+    page_title: str
+    tabs: List[ChatbotLayoutTab]
+    generated_at: datetime
 
 
 async def _build_bulk_email_recipients(
@@ -657,4 +730,24 @@ async def admin_update_chatbot_prompt_config(
         prompt_information=config.prompt_information,
         prompt_rules=config.prompt_rules,
         updated_at=config.updated_at,
+    )
+
+
+@router.get("/chatbot/layout", response_model=ChatbotLayoutSchemaResponse)
+async def admin_get_chatbot_layout_schema(
+    selection: str = "the-film-festival",
+    _admin: UserProfile = Depends(require_admin),
+):
+    selection_key = (selection or "").strip()
+    if selection_key not in CHATBOT_SELECTIONS:
+        raise HTTPException(status_code=400, detail="Unsupported selection key")
+    layout = CHATBOT_LAYOUT_SCHEMAS.get(selection_key)
+    if layout is None:
+        raise HTTPException(status_code=404, detail="No layout schema configured")
+    return ChatbotLayoutSchemaResponse(
+        selection_key=selection_key,
+        selection_label=CHATBOT_SELECTIONS[selection_key],
+        page_title=layout["page_title"],
+        tabs=[ChatbotLayoutTab(**tab) for tab in layout["tabs"]],
+        generated_at=datetime.utcnow(),
     )

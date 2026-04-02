@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
 from sqlmodel import Session, select
+from supertokens_python.recipe.session.framework.fastapi import verify_session
+from supertokens_python.recipe.session import SessionContainer
 
 from db import get_session
 from models import UserProfile, AuthConfig, ChatbotPromptConfig, EmailSendLog, EmailWebhookEvent
@@ -207,6 +209,14 @@ class ChatbotPromptConfigUpdate(BaseModel):
     prompt_rules: str
 
 
+class ChatbotContextStatusResponse(BaseModel):
+    selection_key: str
+    configured: bool
+    selection_label: str
+    prompt_information: str
+    prompt_rules: str
+
+
 class ChatbotSelectionItem(BaseModel):
     selection_key: str
     selection_label: str
@@ -344,6 +354,23 @@ def _resolve_root_selection_key(selection_key: str) -> Optional[str]:
         if possible_root in CHATBOT_ROOT_SELECTIONS:
             return possible_root
     return None
+
+
+def _derive_selection_label(selection_key: str) -> str:
+    root_selection_key = _resolve_root_selection_key(selection_key)
+    if root_selection_key is None:
+        return selection_key
+    root_label = CHATBOT_ROOT_SELECTIONS[root_selection_key]
+    if selection_key == root_selection_key:
+        return root_label
+    if "::" in selection_key:
+        tab_key = selection_key.split("::", 1)[1]
+        layout = CHATBOT_LAYOUT_SCHEMAS.get(root_selection_key)
+        if layout:
+            matched_tab = next((tab for tab in layout["tabs"] if tab["tab_key"] == tab_key), None)
+            if matched_tab:
+                return f"{root_label} | {matched_tab['tab_label']}"
+    return root_label
 
 
 @router.get("/users", response_model=List[UserWithProfileResponse])
@@ -773,6 +800,46 @@ async def admin_update_chatbot_prompt_config(
         prompt_information=config.prompt_information,
         prompt_rules=config.prompt_rules,
         updated_at=config.updated_at,
+    )
+
+
+@router.get("/chatbot/context-status", response_model=ChatbotContextStatusResponse)
+async def get_chatbot_context_status(
+    selection: str = "the-film-festival",
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    profile = db.get(UserProfile, user_id)
+    if profile and profile.blocked:
+        raise HTTPException(status_code=403, detail="Account is blocked")
+
+    selection_key = (selection or "").strip()
+    root_selection_key = _resolve_root_selection_key(selection_key)
+    if root_selection_key is None:
+        return ChatbotContextStatusResponse(
+            selection_key=selection_key,
+            configured=False,
+            selection_label=selection_key or "Unknown context",
+            prompt_information="",
+            prompt_rules="",
+        )
+
+    config = db.get(ChatbotPromptConfig, selection_key)
+    configured = bool(
+        config
+        and isinstance(config.prompt_information, str)
+        and config.prompt_information.strip()
+        and isinstance(config.prompt_rules, str)
+        and config.prompt_rules.strip()
+    )
+
+    return ChatbotContextStatusResponse(
+        selection_key=selection_key,
+        configured=configured,
+        selection_label=config.selection_label if config else _derive_selection_label(selection_key),
+        prompt_information=config.prompt_information.strip() if configured else "",
+        prompt_rules=config.prompt_rules.strip() if configured else "",
     )
 
 

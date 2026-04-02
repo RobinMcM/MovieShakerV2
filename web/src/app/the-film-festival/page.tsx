@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
 import {
@@ -37,6 +37,14 @@ interface ConfigStatusResponse {
   };
 }
 
+interface ChatbotContextStatusResponse {
+  selection_key: string;
+  configured: boolean;
+  selection_label: string;
+  prompt_information: string;
+  prompt_rules: string;
+}
+
 interface PlanData {
   format: string;
   genre: string;
@@ -62,6 +70,12 @@ interface PlanData {
   tier3: string;
   distribution: string;
 }
+
+type FestivalTabKey = "positioning" | "funding" | "marketing" | "festivals";
+const CHATBOT_CONTEXT_ROOT = "the-film-festival";
+const CHATBOT_ACCENT_COLOR = "#2563eb";
+const CHATBOT_BASE_URL =
+  (process.env.NEXT_PUBLIC_CHATBOT_BASE_URL || "https://chatbot.rapidmvp.io").trim();
 
 interface DocChapter {
   chapterNumber: number;
@@ -174,11 +188,53 @@ function TheFilmFestivalPage() {
   const [formData, setFormData] = useState<PlanData>(INITIAL_DATA);
   const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [configStatus, setConfigStatus] = useState<ConfigStatusResponse["config"] | null>(null);
+  const [activeTab, setActiveTab] = useState<FestivalTabKey>("positioning");
+  const [assistantToggleOn, setAssistantToggleOn] = useState(true);
+  const [chatbotContextStatus, setChatbotContextStatus] = useState<ChatbotContextStatusResponse | null>(null);
+  const [widgetScriptReady, setWidgetScriptReady] = useState(false);
+  const widgetHostRef = useRef<HTMLDivElement | null>(null);
 
   const localStorageKey = useMemo(
     () => (projectId ? `film-festival-plan-${projectId}` : null),
     [projectId]
   );
+  const chatbotContextKey = useMemo(
+    () => `${CHATBOT_CONTEXT_ROOT}::${activeTab}`,
+    [activeTab]
+  );
+  const assistantConfigured = chatbotContextStatus?.configured === true;
+  const assistantActive = assistantConfigured && assistantToggleOn;
+  const assistantStatusMessage = assistantConfigured
+    ? "Production Assistant is off for this section."
+    : "Production Assistant not configured for this page yet.";
+  const hiddenRulesText = useMemo(() => {
+    if (!assistantActive || !chatbotContextStatus) return "";
+    return [
+      "# Prompt Selection",
+      chatbotContextStatus.selection_label || "The Film Festival",
+      "",
+      "# Prompt Information",
+      chatbotContextStatus.prompt_information || "",
+      "",
+      "# Prompt Rules",
+      chatbotContextStatus.prompt_rules || "",
+    ].join("\n");
+  }, [assistantActive, chatbotContextStatus]);
+  const chatbotEmbedSrc = useMemo(() => {
+    const query = new URLSearchParams();
+    query.set("rule", "default");
+    query.set("rules_source", assistantActive ? "hidden" : "folder");
+    query.set("bg", CHATBOT_ACCENT_COLOR);
+    query.set("context_key", chatbotContextKey);
+    query.set(
+      "context_label",
+      chatbotContextStatus?.selection_label || `The Film Festival | ${activeTab}`
+    );
+    query.set("prompt_info", chatbotContextStatus?.prompt_information || "");
+    query.set("assistant_enabled", assistantActive ? "1" : "0");
+    query.set("assistant_disabled_message", assistantStatusMessage);
+    return `${CHATBOT_BASE_URL}/chatbot/embed?${query.toString()}`;
+  }, [activeTab, assistantActive, assistantStatusMessage, chatbotContextKey, chatbotContextStatus]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -188,6 +244,68 @@ function TheFilmFestivalPage() {
   useEffect(() => {
     void loadConfigStatus();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const scriptId = "usageflows-chatbot-widget-script";
+    const existing = document.getElementById(scriptId) as HTMLScriptElement | null;
+    if (existing) {
+      if ((window as { customElements?: CustomElementRegistry }).customElements?.get("usageflows-chatbot")) {
+        setWidgetScriptReady(true);
+      } else {
+        existing.addEventListener("load", () => setWidgetScriptReady(true), { once: true });
+      }
+      return;
+    }
+    const script = document.createElement("script");
+    script.id = scriptId;
+    script.src = `${CHATBOT_BASE_URL}/chatbot-widget/usageflows-chatbot.js`;
+    script.defer = true;
+    script.onload = () => setWidgetScriptReady(true);
+    document.body.appendChild(script);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const context = await api.get<ChatbotContextStatusResponse>(
+          `/admin/chatbot/context-status?selection=${encodeURIComponent(chatbotContextKey)}`
+        );
+        if (cancelled) return;
+        setChatbotContextStatus(context);
+        if (!context.configured) {
+          setAssistantToggleOn(false);
+        }
+      } catch {
+        if (cancelled) return;
+        setChatbotContextStatus({
+          selection_key: chatbotContextKey,
+          configured: false,
+          selection_label: `The Film Festival | ${activeTab}`,
+          prompt_information: "",
+          prompt_rules: "",
+        });
+        setAssistantToggleOn(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, chatbotContextKey]);
+
+  useEffect(() => {
+    if (!widgetScriptReady || !widgetHostRef.current) return;
+    const host = widgetHostRef.current;
+    host.innerHTML = "";
+    const widget = document.createElement("usageflows-chatbot");
+    widget.setAttribute("embed-src", chatbotEmbedSrc);
+    widget.setAttribute("embedded", "false");
+    widget.setAttribute("hidden-rules-field-id", "chatbot-hidden-rules");
+    widget.setAttribute("result-field-id", "chatbot-result");
+    widget.setAttribute("allowed-parent-origins", window.location.origin);
+    host.appendChild(widget);
+  }, [chatbotEmbedSrc, widgetScriptReady]);
 
   useEffect(() => {
     if (!localStorageKey) return;
@@ -456,6 +574,19 @@ function TheFilmFestivalPage() {
       <AppHeader />
       <main className="flex-1 container mx-auto px-4 py-8 space-y-8">
         <div className="flex items-center justify-end gap-3">
+          <div className="flex items-center gap-2 mr-auto">
+            <span className="text-sm font-medium">Production Assistant</span>
+            <button
+              type="button"
+              onClick={() => setAssistantToggleOn((prev) => !prev)}
+              disabled={!assistantConfigured}
+              className="rounded-full px-3 py-1 text-xs font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ backgroundColor: assistantToggleOn ? CHATBOT_ACCENT_COLOR : "#64748b" }}
+            >
+              {assistantToggleOn ? "On" : "Off"}
+            </button>
+            <span className="text-xs text-muted-foreground">{assistantStatusMessage}</span>
+          </div>
           <h1 className="text-2xl font-bold text-center">The Film Festival</h1>
           <Button
             variant="outline"
@@ -515,7 +646,7 @@ function TheFilmFestivalPage() {
           </div>
 
           <div className="lg:col-span-3">
-            <Tabs defaultValue="positioning" className="w-full">
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as FestivalTabKey)} className="w-full">
               <TabsList className="grid grid-cols-2 sm:grid-cols-4 w-full h-auto gap-1">
                 <TabsTrigger value="positioning">
                   <Target className="h-4 w-4 mr-1" />
@@ -741,6 +872,11 @@ function TheFilmFestivalPage() {
           </div>
         </div>
       </main>
+      <div ref={widgetHostRef} />
+      <div className="sr-only" aria-hidden="true">
+        <textarea id="chatbot-hidden-rules" readOnly value={hiddenRulesText} />
+        <textarea id="chatbot-result" readOnly defaultValue="" />
+      </div>
       <Footer />
     </div>
   );

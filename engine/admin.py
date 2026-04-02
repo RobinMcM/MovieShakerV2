@@ -14,7 +14,7 @@ from email_stats import record_email_send
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 MAX_CHATBOT_TEXT_LENGTH = 20000
-CHATBOT_SELECTIONS: dict[str, str] = {
+CHATBOT_ROOT_SELECTIONS: dict[str, str] = {
     "the-film-festival": "The Film Festival",
 }
 CHATBOT_LAYOUT_SCHEMAS: dict[str, dict] = {
@@ -207,6 +207,15 @@ class ChatbotPromptConfigUpdate(BaseModel):
     prompt_rules: str
 
 
+class ChatbotSelectionItem(BaseModel):
+    selection_key: str
+    selection_label: str
+
+
+class ChatbotSelectionsResponse(BaseModel):
+    selections: List[ChatbotSelectionItem]
+
+
 class ChatbotLayoutField(BaseModel):
     field_key: str
     field_label: str
@@ -224,6 +233,15 @@ class ChatbotLayoutSchemaResponse(BaseModel):
     page_title: str
     tabs: List[ChatbotLayoutTab]
     generated_at: datetime
+
+
+class GenerateSubSectionsRequest(BaseModel):
+    selection_key: str
+
+
+class GenerateSubSectionsResponse(BaseModel):
+    root_selection_key: str
+    created_or_updated: List[ChatbotSelectionItem]
 
 
 async def _build_bulk_email_recipients(
@@ -288,14 +306,22 @@ def _get_or_create_auth_config(db: Session) -> AuthConfig:
 
 
 def _get_or_create_chatbot_prompt_config(
-    db: Session, selection_key: str, updated_by: Optional[str] = None
+    db: Session,
+    selection_key: str,
+    selection_label: Optional[str] = None,
+    updated_by: Optional[str] = None,
 ) -> ChatbotPromptConfig:
     config = db.get(ChatbotPromptConfig, selection_key)
     if config:
         return config
+    resolved_label = (
+        selection_label
+        or CHATBOT_ROOT_SELECTIONS.get(selection_key)
+        or selection_key.replace("-", " ").replace("|", " | ").title()
+    )
     config = ChatbotPromptConfig(
         selection_key=selection_key,
-        selection_label=CHATBOT_SELECTIONS[selection_key],
+        selection_label=resolved_label,
         prompt_information="Please let us know more about your film.",
         prompt_rules=(
             "You are a film festival advisor. Ask focused questions relevant to this page "
@@ -308,6 +334,16 @@ def _get_or_create_chatbot_prompt_config(
     db.commit()
     db.refresh(config)
     return config
+
+
+def _resolve_root_selection_key(selection_key: str) -> Optional[str]:
+    if selection_key in CHATBOT_ROOT_SELECTIONS:
+        return selection_key
+    if "::" in selection_key:
+        possible_root = selection_key.split("::", 1)[0]
+        if possible_root in CHATBOT_ROOT_SELECTIONS:
+            return possible_root
+    return None
 
 
 @router.get("/users", response_model=List[UserWithProfileResponse])
@@ -672,7 +708,10 @@ async def admin_get_chatbot_prompt_config(
     db: Session = Depends(get_session),
 ):
     selection_key = (selection or "").strip()
-    if selection_key not in CHATBOT_SELECTIONS:
+    if not selection_key:
+        raise HTTPException(status_code=400, detail="selection is required")
+    existing = db.get(ChatbotPromptConfig, selection_key)
+    if existing is None and selection_key not in CHATBOT_ROOT_SELECTIONS:
         raise HTTPException(status_code=400, detail="Unsupported selection key")
     config = _get_or_create_chatbot_prompt_config(
         db, selection_key=selection_key, updated_by=_admin.user_id
@@ -693,7 +732,10 @@ async def admin_update_chatbot_prompt_config(
     db: Session = Depends(get_session),
 ):
     selection_key = (body.selection_key or "").strip()
-    if selection_key not in CHATBOT_SELECTIONS:
+    if not selection_key:
+        raise HTTPException(status_code=400, detail="selection_key is required")
+    existing = db.get(ChatbotPromptConfig, selection_key)
+    if existing is None and selection_key not in CHATBOT_ROOT_SELECTIONS:
         raise HTTPException(status_code=400, detail="Unsupported selection key")
 
     prompt_information = (body.prompt_information or "").strip()
@@ -716,7 +758,8 @@ async def admin_update_chatbot_prompt_config(
     config = _get_or_create_chatbot_prompt_config(
         db, selection_key=selection_key, updated_by=_admin.user_id
     )
-    config.selection_label = CHATBOT_SELECTIONS[selection_key]
+    if selection_key in CHATBOT_ROOT_SELECTIONS:
+        config.selection_label = CHATBOT_ROOT_SELECTIONS[selection_key]
     config.prompt_information = prompt_information
     config.prompt_rules = prompt_rules
     config.updated_by = _admin.user_id
@@ -733,21 +776,124 @@ async def admin_update_chatbot_prompt_config(
     )
 
 
+@router.get("/chatbot/selections", response_model=ChatbotSelectionsResponse)
+async def admin_get_chatbot_selections(
+    _admin: UserProfile = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    for key, label in CHATBOT_ROOT_SELECTIONS.items():
+        _get_or_create_chatbot_prompt_config(
+            db,
+            selection_key=key,
+            selection_label=label,
+            updated_by=_admin.user_id,
+        )
+    rows = list(db.exec(select(ChatbotPromptConfig)).all())
+    rows.sort(key=lambda row: row.selection_label.lower())
+    return ChatbotSelectionsResponse(
+        selections=[
+            ChatbotSelectionItem(
+                selection_key=row.selection_key,
+                selection_label=row.selection_label,
+            )
+            for row in rows
+        ]
+    )
+
+
+@router.post("/chatbot/generate-subsections", response_model=GenerateSubSectionsResponse)
+async def admin_generate_chatbot_subsections(
+    body: GenerateSubSectionsRequest,
+    _admin: UserProfile = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    selection_key = (body.selection_key or "").strip()
+    root_selection_key = _resolve_root_selection_key(selection_key)
+    if root_selection_key is None:
+        raise HTTPException(status_code=400, detail="Unsupported selection key")
+
+    root_label = CHATBOT_ROOT_SELECTIONS[root_selection_key]
+    layout = CHATBOT_LAYOUT_SCHEMAS.get(root_selection_key)
+    if layout is None:
+        raise HTTPException(status_code=404, detail="No layout schema configured")
+
+    created_or_updated: list[ChatbotSelectionItem] = []
+
+    root_config = _get_or_create_chatbot_prompt_config(
+        db,
+        selection_key=root_selection_key,
+        selection_label=f"{root_label} | Root",
+        updated_by=_admin.user_id,
+    )
+    root_config.selection_label = f"{root_label} | Root"
+    root_config.updated_by = _admin.user_id
+    root_config.updated_at = datetime.utcnow()
+    db.add(root_config)
+    created_or_updated.append(
+        ChatbotSelectionItem(
+            selection_key=root_config.selection_key,
+            selection_label=root_config.selection_label,
+        )
+    )
+
+    for tab in layout["tabs"]:
+        tab_key = tab["tab_key"]
+        tab_label = tab["tab_label"]
+        sub_selection_key = f"{root_selection_key}::{tab_key}"
+        sub_selection_label = f"{root_label} | {tab_label}"
+        sub_config = _get_or_create_chatbot_prompt_config(
+            db,
+            selection_key=sub_selection_key,
+            selection_label=sub_selection_label,
+            updated_by=_admin.user_id,
+        )
+        sub_config.selection_label = sub_selection_label
+        sub_config.updated_by = _admin.user_id
+        sub_config.updated_at = datetime.utcnow()
+        db.add(sub_config)
+        created_or_updated.append(
+            ChatbotSelectionItem(
+                selection_key=sub_config.selection_key,
+                selection_label=sub_config.selection_label,
+            )
+        )
+
+    db.commit()
+    return GenerateSubSectionsResponse(
+        root_selection_key=root_selection_key,
+        created_or_updated=created_or_updated,
+    )
+
+
 @router.get("/chatbot/layout", response_model=ChatbotLayoutSchemaResponse)
 async def admin_get_chatbot_layout_schema(
     selection: str = "the-film-festival",
     _admin: UserProfile = Depends(require_admin),
 ):
     selection_key = (selection or "").strip()
-    if selection_key not in CHATBOT_SELECTIONS:
+    root_selection_key = _resolve_root_selection_key(selection_key)
+    if root_selection_key is None:
         raise HTTPException(status_code=400, detail="Unsupported selection key")
-    layout = CHATBOT_LAYOUT_SCHEMAS.get(selection_key)
+    layout = CHATBOT_LAYOUT_SCHEMAS.get(root_selection_key)
     if layout is None:
         raise HTTPException(status_code=404, detail="No layout schema configured")
+    tabs = layout["tabs"]
+    page_title = layout["page_title"]
+    if "::" in selection_key:
+        tab_key = selection_key.split("::", 1)[1]
+        matched_tab = next((tab for tab in tabs if tab["tab_key"] == tab_key), None)
+        if matched_tab is None:
+            raise HTTPException(status_code=404, detail="No layout tab configured")
+        tabs = [matched_tab]
+        page_title = f"{layout['page_title']} | {matched_tab['tab_label']}"
     return ChatbotLayoutSchemaResponse(
         selection_key=selection_key,
-        selection_label=CHATBOT_SELECTIONS[selection_key],
-        page_title=layout["page_title"],
-        tabs=[ChatbotLayoutTab(**tab) for tab in layout["tabs"]],
+        selection_label=(
+            CHATBOT_ROOT_SELECTIONS[root_selection_key]
+            if selection_key == root_selection_key
+            else selection_key.replace("::", " | ").replace("-", " ").title()
+        ),
+        page_title=page_title,
+        tabs=[ChatbotLayoutTab(**tab) for tab in tabs],
         generated_at=datetime.utcnow(),
     )

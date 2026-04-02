@@ -9,14 +9,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Download, Loader2, MessageCircle, RefreshCw } from "lucide-react";
+import { Download, Loader2, MessageCircle, RefreshCw, Wand2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/lib/api";
 
-type SelectionKey = "the-film-festival";
-
 interface ChatbotConfig {
-  selection_key: SelectionKey;
+  selection_key: string;
   selection_label: string;
   prompt_information: string;
   prompt_rules: string;
@@ -35,14 +33,28 @@ interface ChatbotLayoutTab {
 }
 
 interface ChatbotLayoutSchema {
-  selection_key: SelectionKey;
+  selection_key: string;
   selection_label: string;
   page_title: string;
   tabs: ChatbotLayoutTab[];
   generated_at: string;
 }
 
-const DEFAULT_SELECTION: SelectionKey = "the-film-festival";
+interface ChatbotSelectionItem {
+  selection_key: string;
+  selection_label: string;
+}
+
+interface ChatbotSelectionsResponse {
+  selections: ChatbotSelectionItem[];
+}
+
+interface GenerateSubSectionsResponse {
+  root_selection_key: string;
+  created_or_updated: ChatbotSelectionItem[];
+}
+
+const DEFAULT_SELECTION = "the-film-festival";
 
 const defaultConfig: ChatbotConfig = {
   selection_key: DEFAULT_SELECTION,
@@ -57,10 +69,12 @@ function AdminChatbotPage() {
   const [allowed, setAllowed] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [selection, setSelection] = useState<SelectionKey>(DEFAULT_SELECTION);
+  const [selection, setSelection] = useState<string>(DEFAULT_SELECTION);
+  const [selections, setSelections] = useState<ChatbotSelectionItem[]>([]);
   const [config, setConfig] = useState<ChatbotConfig>(defaultConfig);
   const [layoutJson, setLayoutJson] = useState("");
   const [layoutLoading, setLayoutLoading] = useState(false);
+  const [subSectionLoading, setSubSectionLoading] = useState(false);
   const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
@@ -76,11 +90,36 @@ function AdminChatbotPage() {
 
   useEffect(() => {
     if (allowed === true) {
+      void initializeAdminPage();
+    }
+  }, [allowed]);
+
+  useEffect(() => {
+    if (allowed === true) {
       void loadConfig(selection);
     }
-  }, [allowed, selection]);
+  }, [selection, allowed]);
 
-  async function loadConfig(selectionKey: SelectionKey) {
+  async function initializeAdminPage() {
+    try {
+      setLoading(true);
+      const data = await api.get<ChatbotSelectionsResponse>("/admin/chatbot/selections");
+      setSelections(data.selections);
+      const exists = data.selections.some((item) => item.selection_key === selection);
+      const firstSelection = data.selections[0]?.selection_key;
+      const nextSelection = exists ? selection : firstSelection || DEFAULT_SELECTION;
+      setSelection(nextSelection);
+      await loadConfig(nextSelection);
+    } catch (err) {
+      setMessage({
+        kind: "error",
+        text: err instanceof Error ? err.message : "Failed to initialize chatbot admin page.",
+      });
+      setLoading(false);
+    }
+  }
+
+  async function loadConfig(selectionKey: string) {
     try {
       setLoading(true);
       setMessage(null);
@@ -138,6 +177,28 @@ function AdminChatbotPage() {
     }
   }
 
+  async function generateSubSections() {
+    try {
+      setSubSectionLoading(true);
+      setMessage(null);
+      await api.post<GenerateSubSectionsResponse>("/admin/chatbot/generate-subsections", {
+        selection_key: selection,
+      });
+      const refreshed = await api.get<ChatbotSelectionsResponse>("/admin/chatbot/selections");
+      setSelections(refreshed.selections);
+      const rootSelection = selection.includes("::") ? selection.split("::", 1)[0] : selection;
+      setSelection(rootSelection);
+      setMessage({ kind: "success", text: "Sub sections generated and selection list updated." });
+    } catch (err) {
+      setMessage({
+        kind: "error",
+        text: err instanceof Error ? err.message : "Failed to generate sub sections.",
+      });
+    } finally {
+      setSubSectionLoading(false);
+    }
+  }
+
   function downloadLayoutJson() {
     if (!layoutJson) return;
     const blob = new Blob([layoutJson], { type: "application/json;charset=utf-8" });
@@ -188,14 +249,18 @@ function AdminChatbotPage() {
                 <Label>Prompt Selection</Label>
                 <Select
                   value={selection}
-                  onValueChange={(value) => setSelection(value as SelectionKey)}
-                  disabled={saving}
+                  onValueChange={(value) => setSelection(value)}
+                  disabled={saving || loading}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="the-film-festival">The Film Festival</SelectItem>
+                    {selections.map((item) => (
+                      <SelectItem key={item.selection_key} value={item.selection_key}>
+                        {item.selection_label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
@@ -229,6 +294,24 @@ function AdminChatbotPage() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <Label htmlFor="generated_layout_json">Generated Layout JSON</Label>
                   <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={generateSubSections}
+                      disabled={subSectionLoading || layoutLoading || loading || saving}
+                    >
+                      {subSectionLoading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Generating Sub Sections...
+                        </>
+                      ) : (
+                        <>
+                          <Wand2 className="h-4 w-4 mr-2" />
+                          Generate Sub Sections
+                        </>
+                      )}
+                    </Button>
                     <Button
                       type="button"
                       variant="outline"

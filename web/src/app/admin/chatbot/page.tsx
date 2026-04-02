@@ -18,6 +18,7 @@ interface ChatbotConfig {
   selection_label: string;
   prompt_information: string;
   prompt_rules: string;
+  accent_color?: string | null;
   updated_at: string;
 }
 
@@ -61,6 +62,7 @@ const defaultConfig: ChatbotConfig = {
   selection_label: "The Film Festival",
   prompt_information: "",
   prompt_rules: "",
+  accent_color: "",
   updated_at: "",
 };
 
@@ -145,6 +147,7 @@ function AdminChatbotPage() {
         selection_key: config.selection_key,
         prompt_information: config.prompt_information,
         prompt_rules: config.prompt_rules,
+        accent_color: (config.accent_color || "").trim(),
       });
       setConfig(updated);
       setMessage({ kind: "success", text: "Chatbot prompt settings saved." });
@@ -265,6 +268,20 @@ function AdminChatbotPage() {
                 </Select>
                 <p className="text-xs text-muted-foreground">
                   Auto Generated Key: <span className="font-mono">{config.selection_key}</span>
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="accent_color">Accent Color (Hex)</Label>
+                <Input
+                  id="accent_color"
+                  value={config.accent_color || ""}
+                  onChange={(e) => setConfig((prev) => ({ ...prev, accent_color: e.target.value }))}
+                  placeholder="#2563eb"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Optional. Use hex format like <span className="font-mono">#2563eb</span>. Empty uses
+                  runtime default.
                 </p>
               </div>
 

@@ -206,6 +206,21 @@ def _migrate_email_tracking_tables():
                     logger.warning("Migration email tracking index failed (%s): %s", stmt, e)
 
 
+def _migrate_chatbot_prompt_config_table():
+    """Add chatbot prompt config columns if missing."""
+    with engine.connect() as conn:
+        with conn.begin():
+            try:
+                conn.execute(
+                    text(
+                        "ALTER TABLE chatbot_prompt_config "
+                        "ADD COLUMN IF NOT EXISTS accent_color VARCHAR"
+                    )
+                )
+            except Exception as e:
+                logger.warning("Migration chatbot_prompt_config accent_color: %s", e)
+
+
 def init_db():
     # Ensure models are registered (import side-effect)
     from models import (  # noqa: F401
@@ -247,6 +262,7 @@ def init_db():
     _migrate_characters_cast_tier()
     _migrate_characters_objects_fields()
     _migrate_email_tracking_tables()
+    _migrate_chatbot_prompt_config_table()
 
 
 def get_session():

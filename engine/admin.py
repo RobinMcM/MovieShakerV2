@@ -1,5 +1,6 @@
 """Admin-only routes: User Management + Email Management."""
 from datetime import datetime
+import re
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
@@ -16,6 +17,7 @@ from email_stats import record_email_send
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 MAX_CHATBOT_TEXT_LENGTH = 20000
+HEX_COLOR_REGEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 CHATBOT_ROOT_SELECTIONS: dict[str, str] = {
     "the-film-festival": "The Film Festival",
 }
@@ -200,6 +202,7 @@ class ChatbotPromptConfigResponse(BaseModel):
     selection_label: str
     prompt_information: str
     prompt_rules: str
+    accent_color: Optional[str] = None
     updated_at: datetime
 
 
@@ -207,6 +210,7 @@ class ChatbotPromptConfigUpdate(BaseModel):
     selection_key: str
     prompt_information: str
     prompt_rules: str
+    accent_color: Optional[str] = None
 
 
 class ChatbotContextStatusResponse(BaseModel):
@@ -215,6 +219,7 @@ class ChatbotContextStatusResponse(BaseModel):
     selection_label: str
     prompt_information: str
     prompt_rules: str
+    accent_color: Optional[str] = None
 
 
 class ChatbotSelectionItem(BaseModel):
@@ -371,6 +376,17 @@ def _derive_selection_label(selection_key: str) -> str:
             if matched_tab:
                 return f"{root_label} | {matched_tab['tab_label']}"
     return root_label
+
+
+def _normalize_accent_color_or_none(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    normalized = value.strip().lower()
+    if not normalized:
+        return None
+    if not HEX_COLOR_REGEX.match(normalized):
+        raise HTTPException(status_code=400, detail="accent_color must be a hex value like #2563eb")
+    return normalized
 
 
 @router.get("/users", response_model=List[UserWithProfileResponse])
@@ -748,6 +764,7 @@ async def admin_get_chatbot_prompt_config(
         selection_label=config.selection_label,
         prompt_information=config.prompt_information,
         prompt_rules=config.prompt_rules,
+        accent_color=config.accent_color,
         updated_at=config.updated_at,
     )
 
@@ -781,6 +798,7 @@ async def admin_update_chatbot_prompt_config(
             status_code=400,
             detail=f"prompt_rules must be <= {MAX_CHATBOT_TEXT_LENGTH} characters",
         )
+    accent_color = _normalize_accent_color_or_none(body.accent_color)
 
     config = _get_or_create_chatbot_prompt_config(
         db, selection_key=selection_key, updated_by=_admin.user_id
@@ -789,6 +807,7 @@ async def admin_update_chatbot_prompt_config(
         config.selection_label = CHATBOT_ROOT_SELECTIONS[selection_key]
     config.prompt_information = prompt_information
     config.prompt_rules = prompt_rules
+    config.accent_color = accent_color
     config.updated_by = _admin.user_id
     config.updated_at = datetime.utcnow()
     db.add(config)
@@ -799,6 +818,7 @@ async def admin_update_chatbot_prompt_config(
         selection_label=config.selection_label,
         prompt_information=config.prompt_information,
         prompt_rules=config.prompt_rules,
+        accent_color=config.accent_color,
         updated_at=config.updated_at,
     )
 
@@ -823,6 +843,7 @@ async def get_chatbot_context_status(
             selection_label=selection_key or "Unknown context",
             prompt_information="",
             prompt_rules="",
+            accent_color=None,
         )
 
     config = db.get(ChatbotPromptConfig, selection_key)
@@ -840,6 +861,7 @@ async def get_chatbot_context_status(
         selection_label=config.selection_label if config else _derive_selection_label(selection_key),
         prompt_information=config.prompt_information.strip() if configured else "",
         prompt_rules=config.prompt_rules.strip() if configured else "",
+        accent_color=config.accent_color if config else None,
     )
 
 

@@ -43,6 +43,7 @@ interface ChatbotContextStatusResponse {
   selection_label: string;
   prompt_information: string;
   prompt_rules: string;
+  accent_color?: string | null;
 }
 
 interface PlanData {
@@ -73,9 +74,15 @@ interface PlanData {
 
 type FestivalTabKey = "positioning" | "funding" | "marketing" | "festivals";
 const CHATBOT_CONTEXT_ROOT = "the-film-festival";
-const CHATBOT_ACCENT_COLOR = "#2563eb";
+const DEFAULT_CHATBOT_ACCENT_COLOR = "#2563eb";
 const CHATBOT_BASE_URL =
   (process.env.NEXT_PUBLIC_CHATBOT_BASE_URL || "https://chatbot.rapidmvp.io").trim();
+
+function normalizeHexColor(value?: string | null): string | null {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  return /^#[0-9a-f]{6}$/.test(normalized) ? normalized : null;
+}
 
 interface DocChapter {
   chapterNumber: number;
@@ -205,10 +212,14 @@ function TheFilmFestivalPage() {
   const assistantConfigured = chatbotContextStatus?.configured === true;
   const assistantActive = assistantConfigured && assistantToggleOn;
   const assistantStatusMessage = assistantConfigured
-    ? "Production Assistant is off for this section."
+    ? assistantActive
+      ? "Production Assistant is active for this section."
+      : "Production Assistant is off for this section."
     : "Production Assistant not configured for this page yet.";
+  const assistantAccentColor =
+    normalizeHexColor(chatbotContextStatus?.accent_color) || DEFAULT_CHATBOT_ACCENT_COLOR;
   const hiddenRulesText = useMemo(() => {
-    if (!assistantActive || !chatbotContextStatus) return "";
+    if (!assistantConfigured || !chatbotContextStatus) return "";
     return [
       "# Prompt Selection",
       chatbotContextStatus.selection_label || "The Film Festival",
@@ -219,12 +230,12 @@ function TheFilmFestivalPage() {
       "# Prompt Rules",
       chatbotContextStatus.prompt_rules || "",
     ].join("\n");
-  }, [assistantActive, chatbotContextStatus]);
+  }, [assistantConfigured, chatbotContextStatus]);
   const chatbotEmbedSrc = useMemo(() => {
     const query = new URLSearchParams();
-    query.set("rule", "default");
-    query.set("rules_source", assistantActive ? "hidden" : "folder");
-    query.set("bg", CHATBOT_ACCENT_COLOR);
+    query.set("rule", chatbotContextStatus?.selection_key || chatbotContextKey);
+    query.set("rules_source", "hidden");
+    query.set("bg", assistantAccentColor);
     query.set("context_key", chatbotContextKey);
     query.set(
       "context_label",
@@ -234,7 +245,14 @@ function TheFilmFestivalPage() {
     query.set("assistant_enabled", assistantActive ? "1" : "0");
     query.set("assistant_disabled_message", assistantStatusMessage);
     return `${CHATBOT_BASE_URL}/chatbot/embed?${query.toString()}`;
-  }, [activeTab, assistantActive, assistantStatusMessage, chatbotContextKey, chatbotContextStatus]);
+  }, [
+    activeTab,
+    assistantActive,
+    assistantAccentColor,
+    assistantStatusMessage,
+    chatbotContextKey,
+    chatbotContextStatus,
+  ]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -581,7 +599,7 @@ function TheFilmFestivalPage() {
               onClick={() => setAssistantToggleOn((prev) => !prev)}
               disabled={!assistantConfigured}
               className="rounded-full px-3 py-1 text-xs font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ backgroundColor: assistantToggleOn ? CHATBOT_ACCENT_COLOR : "#64748b" }}
+              style={{ backgroundColor: assistantToggleOn ? assistantAccentColor : "#64748b" }}
             >
               {assistantToggleOn ? "On" : "Off"}
             </button>

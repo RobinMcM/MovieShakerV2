@@ -55,6 +55,7 @@ class ChatbotPromptConfig(SQLModel, table=True):
     selection_label: str = Field(default="The Film Festival")
     prompt_information: str = Field(default="")
     prompt_rules: str = Field(default="")
+    accent_color: Optional[str] = Field(default=None)
     updated_by: Optional[str] = Field(default=None, index=True)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

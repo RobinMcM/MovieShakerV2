@@ -6,13 +6,17 @@ from typing import Optional, List
 from sqlmodel import Session, select
 
 from db import get_session
-from models import UserProfile, AuthConfig, EmailSendLog, EmailWebhookEvent
+from models import UserProfile, AuthConfig, ChatbotPromptConfig, EmailSendLog, EmailWebhookEvent
 from auth_deps import require_admin
 from supertokens_python.asyncio import get_users_oldest_first
 from email_client import send_email_via_web
 from email_stats import record_email_send
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+MAX_CHATBOT_TEXT_LENGTH = 20000
+CHATBOT_SELECTIONS: dict[str, str] = {
+    "the-film-festival": "The Film Festival",
+}
 
 
 class UserWithProfileResponse(BaseModel):
@@ -135,6 +139,20 @@ class AuthConfigUpdate(BaseModel):
     reset_confirmation_body: Optional[str] = None
 
 
+class ChatbotPromptConfigResponse(BaseModel):
+    selection_key: str
+    selection_label: str
+    prompt_information: str
+    prompt_rules: str
+    updated_at: datetime
+
+
+class ChatbotPromptConfigUpdate(BaseModel):
+    selection_key: str
+    prompt_information: str
+    prompt_rules: str
+
+
 async def _build_bulk_email_recipients(
     db: Session, require_communication_email: bool = False
 ) -> List[BulkEmailRecipient]:
@@ -190,6 +208,29 @@ def _get_or_create_auth_config(db: Session) -> AuthConfig:
     if config:
         return config
     config = AuthConfig(id=1)
+    db.add(config)
+    db.commit()
+    db.refresh(config)
+    return config
+
+
+def _get_or_create_chatbot_prompt_config(
+    db: Session, selection_key: str, updated_by: Optional[str] = None
+) -> ChatbotPromptConfig:
+    config = db.get(ChatbotPromptConfig, selection_key)
+    if config:
+        return config
+    config = ChatbotPromptConfig(
+        selection_key=selection_key,
+        selection_label=CHATBOT_SELECTIONS[selection_key],
+        prompt_information="Please let us know more about your film.",
+        prompt_rules=(
+            "You are a film festival advisor. Ask focused questions relevant to this page "
+            "and keep suggestions practical and concise."
+        ),
+        updated_by=updated_by,
+        updated_at=datetime.utcnow(),
+    )
     db.add(config)
     db.commit()
     db.refresh(config)
@@ -547,5 +588,73 @@ async def admin_update_auth_config(
         welcome_body=config.welcome_body,
         reset_confirmation_subject=config.reset_confirmation_subject,
         reset_confirmation_body=config.reset_confirmation_body,
+        updated_at=config.updated_at,
+    )
+
+
+@router.get("/chatbot/config", response_model=ChatbotPromptConfigResponse)
+async def admin_get_chatbot_prompt_config(
+    selection: str = "the-film-festival",
+    _admin: UserProfile = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    selection_key = (selection or "").strip()
+    if selection_key not in CHATBOT_SELECTIONS:
+        raise HTTPException(status_code=400, detail="Unsupported selection key")
+    config = _get_or_create_chatbot_prompt_config(
+        db, selection_key=selection_key, updated_by=_admin.user_id
+    )
+    return ChatbotPromptConfigResponse(
+        selection_key=config.selection_key,
+        selection_label=config.selection_label,
+        prompt_information=config.prompt_information,
+        prompt_rules=config.prompt_rules,
+        updated_at=config.updated_at,
+    )
+
+
+@router.put("/chatbot/config", response_model=ChatbotPromptConfigResponse)
+async def admin_update_chatbot_prompt_config(
+    body: ChatbotPromptConfigUpdate,
+    _admin: UserProfile = Depends(require_admin),
+    db: Session = Depends(get_session),
+):
+    selection_key = (body.selection_key or "").strip()
+    if selection_key not in CHATBOT_SELECTIONS:
+        raise HTTPException(status_code=400, detail="Unsupported selection key")
+
+    prompt_information = (body.prompt_information or "").strip()
+    prompt_rules = (body.prompt_rules or "").strip()
+    if not prompt_information:
+        raise HTTPException(status_code=400, detail="prompt_information is required")
+    if not prompt_rules:
+        raise HTTPException(status_code=400, detail="prompt_rules is required")
+    if len(prompt_information) > MAX_CHATBOT_TEXT_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"prompt_information must be <= {MAX_CHATBOT_TEXT_LENGTH} characters",
+        )
+    if len(prompt_rules) > MAX_CHATBOT_TEXT_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"prompt_rules must be <= {MAX_CHATBOT_TEXT_LENGTH} characters",
+        )
+
+    config = _get_or_create_chatbot_prompt_config(
+        db, selection_key=selection_key, updated_by=_admin.user_id
+    )
+    config.selection_label = CHATBOT_SELECTIONS[selection_key]
+    config.prompt_information = prompt_information
+    config.prompt_rules = prompt_rules
+    config.updated_by = _admin.user_id
+    config.updated_at = datetime.utcnow()
+    db.add(config)
+    db.commit()
+    db.refresh(config)
+    return ChatbotPromptConfigResponse(
+        selection_key=config.selection_key,
+        selection_label=config.selection_label,
+        prompt_information=config.prompt_information,
+        prompt_rules=config.prompt_rules,
         updated_at=config.updated_at,
     )

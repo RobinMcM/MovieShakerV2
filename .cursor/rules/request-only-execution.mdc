@@ -1,0 +1,12 @@
+---
+description: Only implement explicitly requested changes
+alwaysApply: true
+---
+
+# Request-Only Execution
+
+- Only do what the user explicitly asks for.
+- Do not add extra features, routes, wiring, or behavior unless explicitly requested.
+- If a request is ambiguous, ask a clarification question before implementing.
+- Prefer placeholder or disabled behavior over inferred functionality when no destination or behavior is specified.
+- Do not repurpose existing pages/components as defaults unless the user explicitly asks for that mapping.

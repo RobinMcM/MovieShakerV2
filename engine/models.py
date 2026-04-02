@@ -48,6 +48,17 @@ class AuthConfig(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class ChatbotPromptConfig(SQLModel, table=True):
+    """Global admin-managed chatbot prompt templates keyed by selection key."""
+    __tablename__ = "chatbot_prompt_config"
+    selection_key: str = Field(primary_key=True)
+    selection_label: str = Field(default="The Film Festival")
+    prompt_information: str = Field(default="")
+    prompt_rules: str = Field(default="")
+    updated_by: Optional[str] = Field(default=None, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class EmailSendLog(SQLModel, table=True):
     """Outbound email log correlated with provider message IDs."""
     __tablename__ = "email_send_log"

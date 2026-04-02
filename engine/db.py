@@ -229,6 +229,7 @@ def init_db():
         FilmInABoxItem,
         EmailVerificationToken,
         AuthConfig,
+        ChatbotPromptConfig,
         Notification,
         ContactSubmission,
         EmailSendLog,

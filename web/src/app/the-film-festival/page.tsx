@@ -95,6 +95,7 @@ const CHATBOT_CONTEXT_ROOT = "the-film-festival";
 const DEFAULT_CHATBOT_ACCENT_COLOR = "#2563eb";
 const CHATBOT_BASE_URL =
   (process.env.NEXT_PUBLIC_CHATBOT_BASE_URL || "https://chatbot.rapidmvp.io").trim();
+const CHATBOT_DEBUG_PREFIX = "[film-festival-chatbot]";
 const FALLBACK_LAYOUT_TABS: ChatbotLayoutTab[] = [
   { tab_key: "positioning", tab_label: "Positioning", fields: [] },
   { tab_key: "funding", tab_label: "Funding", fields: [] },
@@ -315,6 +316,11 @@ function TheFilmFestivalPage() {
           ? layout.tabs
           : FALLBACK_LAYOUT_TABS;
         const tabKeys = tabs.map((tab) => tab.tab_key);
+        console.info(CHATBOT_DEBUG_PREFIX, "layout-loaded", {
+          selection: CHATBOT_CONTEXT_ROOT,
+          tabKeys,
+          tabLabels: tabs.map((tab) => tab.tab_label),
+        });
         setLayoutTabs(tabs);
         setActiveTab((prev) => {
           if (prev && tabKeys.includes(prev)) return prev;
@@ -324,6 +330,9 @@ function TheFilmFestivalPage() {
       } catch {
         if (cancelled) return;
         const tabKeys = FALLBACK_LAYOUT_TABS.map((tab) => tab.tab_key);
+        console.warn(CHATBOT_DEBUG_PREFIX, "layout-load-failed-using-fallback", {
+          fallbackTabKeys: tabKeys,
+        });
         setLayoutTabs(FALLBACK_LAYOUT_TABS);
         setActiveTab((prev) => {
           if (prev && tabKeys.includes(prev)) return prev;
@@ -362,16 +371,31 @@ function TheFilmFestivalPage() {
     let cancelled = false;
     (async () => {
       try {
+        console.info(CHATBOT_DEBUG_PREFIX, "context-status-request", {
+          contextKey: chatbotContextKey,
+          activeTab,
+        });
         const context = await api.get<ChatbotContextStatusResponse>(
           `/admin/chatbot/context-status?selection=${encodeURIComponent(chatbotContextKey)}`
         );
         if (cancelled) return;
+        console.info(CHATBOT_DEBUG_PREFIX, "context-status-response", {
+          selection_key: context.selection_key,
+          configured: context.configured,
+          selection_label: context.selection_label,
+          prompt_information_length: context.prompt_information?.length || 0,
+          prompt_rules_length: context.prompt_rules?.length || 0,
+          accent_color: context.accent_color || null,
+        });
         setChatbotContextStatus(context);
         if (!context.configured) {
           setAssistantToggleOn(false);
         }
       } catch {
         if (cancelled) return;
+        console.error(CHATBOT_DEBUG_PREFIX, "context-status-failed", {
+          contextKey: chatbotContextKey,
+        });
         setChatbotContextStatus({
           selection_key: chatbotContextKey,
           configured: false,
@@ -392,6 +416,13 @@ function TheFilmFestivalPage() {
   useEffect(() => {
     if (!widgetScriptReady || !widgetHostRef.current) return;
     const host = widgetHostRef.current;
+    console.info(CHATBOT_DEBUG_PREFIX, "widget-remount", {
+      contextKey: chatbotContextKey,
+      configured: assistantConfigured,
+      assistantActive,
+      hiddenRulesLength: hiddenRulesText.length,
+      embedSrc: chatbotEmbedSrc,
+    });
     host.innerHTML = "";
     const widget = document.createElement("usageflows-chatbot");
     widget.setAttribute("embed-src", chatbotEmbedSrc);

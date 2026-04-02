@@ -46,6 +46,25 @@ interface ChatbotContextStatusResponse {
   accent_color?: string | null;
 }
 
+interface ChatbotLayoutField {
+  field_key: string;
+  field_label: string;
+}
+
+interface ChatbotLayoutTab {
+  tab_key: string;
+  tab_label: string;
+  fields: ChatbotLayoutField[];
+}
+
+interface ChatbotLayoutSchemaResponse {
+  selection_key: string;
+  selection_label: string;
+  page_title: string;
+  tabs: ChatbotLayoutTab[];
+  generated_at: string;
+}
+
 interface PlanData {
   format: string;
   genre: string;
@@ -72,11 +91,16 @@ interface PlanData {
   distribution: string;
 }
 
-type FestivalTabKey = "positioning" | "funding" | "marketing" | "festivals";
 const CHATBOT_CONTEXT_ROOT = "the-film-festival";
 const DEFAULT_CHATBOT_ACCENT_COLOR = "#2563eb";
 const CHATBOT_BASE_URL =
   (process.env.NEXT_PUBLIC_CHATBOT_BASE_URL || "https://chatbot.rapidmvp.io").trim();
+const FALLBACK_LAYOUT_TABS: ChatbotLayoutTab[] = [
+  { tab_key: "positioning", tab_label: "Positioning", fields: [] },
+  { tab_key: "funding", tab_label: "Funding", fields: [] },
+  { tab_key: "marketing", tab_label: "Marketing", fields: [] },
+  { tab_key: "festivals", tab_label: "Festivals", fields: [] },
+];
 
 function normalizeHexColor(value?: string | null): string | null {
   if (!value) return null;
@@ -195,20 +219,29 @@ function TheFilmFestivalPage() {
   const [formData, setFormData] = useState<PlanData>(INITIAL_DATA);
   const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
   const [configStatus, setConfigStatus] = useState<ConfigStatusResponse["config"] | null>(null);
-  const [activeTab, setActiveTab] = useState<FestivalTabKey>("positioning");
+  const [layoutTabs, setLayoutTabs] = useState<ChatbotLayoutTab[]>(FALLBACK_LAYOUT_TABS);
+  const [activeTab, setActiveTab] = useState<string>("positioning");
   const [assistantToggleOn, setAssistantToggleOn] = useState(true);
   const [chatbotContextStatus, setChatbotContextStatus] = useState<ChatbotContextStatusResponse | null>(null);
   const [widgetScriptReady, setWidgetScriptReady] = useState(false);
   const widgetHostRef = useRef<HTMLDivElement | null>(null);
+  const requestedTab = useMemo(
+    () => (searchParams.get("tab") || "").trim().toLowerCase(),
+    [searchParams]
+  );
 
   const localStorageKey = useMemo(
     () => (projectId ? `film-festival-plan-${projectId}` : null),
     [projectId]
   );
-  const chatbotContextKey = useMemo(
-    () => `${CHATBOT_CONTEXT_ROOT}::${activeTab}`,
-    [activeTab]
+  const activeTabMeta = useMemo(
+    () => layoutTabs.find((tab) => tab.tab_key === activeTab) || null,
+    [activeTab, layoutTabs]
   );
+  const chatbotContextKey = useMemo(() => {
+    if (!activeTab) return CHATBOT_CONTEXT_ROOT;
+    return `${CHATBOT_CONTEXT_ROOT}::${activeTab}`;
+  }, [activeTab]);
   const assistantConfigured = chatbotContextStatus?.configured === true;
   const assistantActive = assistantConfigured && assistantToggleOn;
   const assistantStatusMessage = assistantConfigured
@@ -220,6 +253,9 @@ function TheFilmFestivalPage() {
     normalizeHexColor(chatbotContextStatus?.accent_color) || DEFAULT_CHATBOT_ACCENT_COLOR;
   const hiddenRulesText = useMemo(() => {
     if (!assistantConfigured || !chatbotContextStatus) return "";
+    const layoutFieldLines = (activeTabMeta?.fields || []).map(
+      (field) => `- ${field.field_label} (${field.field_key})`
+    );
     return [
       "# Prompt Selection",
       chatbotContextStatus.selection_label || "The Film Festival",
@@ -229,8 +265,11 @@ function TheFilmFestivalPage() {
       "",
       "# Prompt Rules",
       chatbotContextStatus.prompt_rules || "",
+      ...(layoutFieldLines.length > 0
+        ? ["", "# Page Layout Fields", ...layoutFieldLines]
+        : []),
     ].join("\n");
-  }, [assistantConfigured, chatbotContextStatus]);
+  }, [activeTabMeta?.fields, assistantConfigured, chatbotContextStatus]);
   const chatbotEmbedSrc = useMemo(() => {
     const query = new URLSearchParams();
     query.set("rule", chatbotContextStatus?.selection_key || chatbotContextKey);
@@ -239,14 +278,15 @@ function TheFilmFestivalPage() {
     query.set("context_key", chatbotContextKey);
     query.set(
       "context_label",
-      chatbotContextStatus?.selection_label || `The Film Festival | ${activeTab}`
+      chatbotContextStatus?.selection_label ||
+        (activeTabMeta ? `The Film Festival | ${activeTabMeta.tab_label}` : "The Film Festival")
     );
     query.set("prompt_info", chatbotContextStatus?.prompt_information || "");
     query.set("assistant_enabled", assistantActive ? "1" : "0");
     query.set("assistant_disabled_message", assistantStatusMessage);
     return `${CHATBOT_BASE_URL}/chatbot/embed?${query.toString()}`;
   }, [
-    activeTab,
+    activeTabMeta,
     assistantActive,
     assistantAccentColor,
     assistantStatusMessage,
@@ -262,6 +302,40 @@ function TheFilmFestivalPage() {
   useEffect(() => {
     void loadConfigStatus();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const layout = await api.get<ChatbotLayoutSchemaResponse>(
+          `/admin/chatbot/layout?selection=${encodeURIComponent(CHATBOT_CONTEXT_ROOT)}`
+        );
+        if (cancelled) return;
+        const tabs = Array.isArray(layout.tabs) && layout.tabs.length > 0
+          ? layout.tabs
+          : FALLBACK_LAYOUT_TABS;
+        const tabKeys = tabs.map((tab) => tab.tab_key);
+        setLayoutTabs(tabs);
+        setActiveTab((prev) => {
+          if (prev && tabKeys.includes(prev)) return prev;
+          if (requestedTab && tabKeys.includes(requestedTab)) return requestedTab;
+          return tabKeys[0] || "positioning";
+        });
+      } catch {
+        if (cancelled) return;
+        const tabKeys = FALLBACK_LAYOUT_TABS.map((tab) => tab.tab_key);
+        setLayoutTabs(FALLBACK_LAYOUT_TABS);
+        setActiveTab((prev) => {
+          if (prev && tabKeys.includes(prev)) return prev;
+          if (requestedTab && tabKeys.includes(requestedTab)) return requestedTab;
+          return tabKeys[0];
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [requestedTab]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -284,6 +358,7 @@ function TheFilmFestivalPage() {
   }, []);
 
   useEffect(() => {
+    if (!activeTab) return;
     let cancelled = false;
     (async () => {
       try {
@@ -300,7 +375,9 @@ function TheFilmFestivalPage() {
         setChatbotContextStatus({
           selection_key: chatbotContextKey,
           configured: false,
-          selection_label: `The Film Festival | ${activeTab}`,
+          selection_label: activeTabMeta
+            ? `The Film Festival | ${activeTabMeta.tab_label}`
+            : "The Film Festival",
           prompt_information: "",
           prompt_rules: "",
         });
@@ -310,7 +387,7 @@ function TheFilmFestivalPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeTab, chatbotContextKey]);
+  }, [activeTab, activeTabMeta, chatbotContextKey]);
 
   useEffect(() => {
     if (!widgetScriptReady || !widgetHostRef.current) return;
@@ -664,24 +741,17 @@ function TheFilmFestivalPage() {
           </div>
 
           <div className="lg:col-span-3">
-            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as FestivalTabKey)} className="w-full">
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value)} className="w-full">
               <TabsList className="grid grid-cols-2 sm:grid-cols-4 w-full h-auto gap-1">
-                <TabsTrigger value="positioning">
-                  <Target className="h-4 w-4 mr-1" />
-                  Positioning
-                </TabsTrigger>
-                <TabsTrigger value="funding">
-                  <Wallet className="h-4 w-4 mr-1" />
-                  Funding
-                </TabsTrigger>
-                <TabsTrigger value="marketing">
-                  <Megaphone className="h-4 w-4 mr-1" />
-                  Marketing
-                </TabsTrigger>
-                <TabsTrigger value="festivals">
-                  <Ticket className="h-4 w-4 mr-1" />
-                  Festivals
-                </TabsTrigger>
+                {layoutTabs.map((tab) => (
+                  <TabsTrigger key={tab.tab_key} value={tab.tab_key}>
+                    {tab.tab_key === "positioning" ? <Target className="h-4 w-4 mr-1" /> : null}
+                    {tab.tab_key === "funding" ? <Wallet className="h-4 w-4 mr-1" /> : null}
+                    {tab.tab_key === "marketing" ? <Megaphone className="h-4 w-4 mr-1" /> : null}
+                    {tab.tab_key === "festivals" ? <Ticket className="h-4 w-4 mr-1" /> : null}
+                    {tab.tab_label}
+                  </TabsTrigger>
+                ))}
               </TabsList>
 
               <TabsContent value="positioning" className="space-y-4 mt-6">

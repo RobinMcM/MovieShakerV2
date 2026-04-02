@@ -1,0 +1,11 @@
+---
+description: Enforce MovieShaker-only edits and block chatbot repo changes
+alwaysApply: true
+---
+
+# Repo Boundary: MovieShaker Only
+
+- Never create, edit, delete, stage, commit, or run write commands in `/Users/robinmcmanus/code/chatbot`.
+- Only perform implementation work inside `/Users/robinmcmanus/Desktop/projects/MovieShaker`.
+- If a request appears to require chatbot changes, stop and ask for explicit approval before touching that repo.
+- Treat chatbot as a dumb immutable proxy for MovieShaker tasks.

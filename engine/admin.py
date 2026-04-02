@@ -957,8 +957,14 @@ async def admin_generate_chatbot_subsections(
 @router.get("/chatbot/layout", response_model=ChatbotLayoutSchemaResponse)
 async def admin_get_chatbot_layout_schema(
     selection: str = "the-film-festival",
-    _admin: UserProfile = Depends(require_admin),
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
 ):
+    user_id = session.get_user_id()
+    profile = db.get(UserProfile, user_id)
+    if profile and profile.blocked:
+        raise HTTPException(status_code=403, detail="Account is blocked")
+
     selection_key = (selection or "").strip()
     root_selection_key = _resolve_root_selection_key(selection_key)
     if root_selection_key is None:

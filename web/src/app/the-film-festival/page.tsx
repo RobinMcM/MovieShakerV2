@@ -285,7 +285,7 @@ function TheFilmFestivalPage() {
     query.set("prompt_info", chatbotContextStatus?.prompt_information || "");
     query.set("assistant_enabled", assistantActive ? "1" : "0");
     query.set("assistant_disabled_message", assistantStatusMessage);
-    query.set("rules_panel", "visible");
+    query.set("rules_panel", "hidden");
     return `${CHATBOT_BASE_URL}/chatbot/embed?${query.toString()}`;
   }, [
     activeTabMeta,

@@ -3,8 +3,10 @@
 ## Service Identity
 Film production management platform. Projects, scripts, budgeting, scheduling,
 crew workflows, and production operations.
+**This is a live production platform with real users. Treat every change accordingly.**
+
 - **Frontend**: Next.js 16, React 19, App Router (`web/`)
-- **Backend**: FastAPI engine (`engine/`)
+- **Backend**: FastAPI engine (`engine/`) — flat file structure
 - **Database**: PostgreSQL
 - **Cache**: Valkey
 - **Storage**: DigitalOcean Spaces (S3-compatible)
@@ -14,18 +16,49 @@ crew workflows, and production operations.
 
 ## Structure
 ```
-web/                     ← Next.js 16 frontend (DO NOT touch engine files from here)
-  app/                   ← App Router pages and layouts
-  components/            ← React components
-  lib/                   ← client utilities
-engine/                  ← FastAPI backend (DO NOT touch web files from here)
-  app/                   ← FastAPI application
-  tests/                 ← pytest tests
-caddy/                   ← reverse proxy config (DO NOT modify without explicit request)
-init-scripts/            ← database init (DO NOT modify without explicit request)
-scripts/                 ← go-live and maintenance scripts
-docker-compose.yml       ← local dev orchestration
-docker-compose.prod.yml  ← production orchestration
+web/                          ← Next.js 16 frontend
+  app/                        ← App Router pages and layouts
+  components/                 ← React components
+  lib/                        ← client utilities
+
+engine/                       ← FastAPI backend (flat structure)
+  main.py                     ← entry point, all route registrations
+  gateway_client.py           ← openrouter-gateway integration
+  model_catalog.py            ← model listing and selection
+  models.py                   ← database models
+  db.py                       ← database connection
+  cache.py                    ← Valkey cache
+  auth_deps.py                ← SuperTokens auth dependencies
+  config.py                   ← environment variable loading
+  admin.py                    ← admin routes
+  budget.py                   ← budget management
+  characters.py               ← character management
+  compiled_videos.py          ← compiled video handling
+  contact.py                  ← contact routes
+  credits.py                  ← credits management
+  email_client.py             ← email integration
+  email_stats.py              ← email statistics
+  email_webhooks.py           ← Resend webhook handler
+  film_in_a_box.py            ← FilmInABox integration
+  media_handler_client.py     ← FFmpeg service client
+  moodboard.py                ← moodboard management
+  notifications.py            ← notification system
+  profile.py                  ← user profile
+  projects.py                 ← project management
+  scene_costs.py              ← scene cost calculations
+  scripts.py                  ← script management
+  storage.py                  ← storage utilities
+  storage_routes.py           ← storage API routes
+  tram_lines.py               ← tram lines feature
+  video_history.py            ← video history
+  visualize_config.py         ← visualisation config
+  tests/                      ← pytest tests
+
+caddy/                        ← reverse proxy config
+init-scripts/                 ← database initialisation scripts
+scripts/                      ← go-live and maintenance scripts
+docker-compose.yml            ← local dev orchestration
+docker-compose.prod.yml       ← production orchestration
 ```
 
 ## Rules — Read Before Every Task
@@ -37,6 +70,7 @@ docker-compose.prod.yml  ← production orchestration
 - Do not modify `caddy/` config unless explicitly asked
 - Do not modify `DEPLOYMENT_RULES.md` under any circumstances
 - Do not modify `init-scripts/` under any circumstances
+- Do not modify `engine/tests/` unless explicitly asked
 
 ### Git
 - Do NOT run any git commands
@@ -47,7 +81,7 @@ docker-compose.prod.yml  ← production orchestration
 - Do NOT run docker or docker compose commands
 - Do NOT attempt to build images
 - Do NOT attempt to start or stop services
-- If a docker operation is needed, suggest the command and wait
+- If a docker operation is needed, suggest the command and wait for confirmation
 
 ### Running the Application
 - Do NOT run `npm run dev`, `npm run build`, or any npm scripts
@@ -70,16 +104,19 @@ The engine connects to openrouter-gateway via these env vars:
 - `GATEWAY_VERIFY_TLS` = true in production
 
 Gateway calls are made engine-side only. The web layer NEVER calls the gateway directly.
-New gateway integration code belongs in `engine/app/` only.
+New gateway integration code belongs in `engine/` only.
+Existing gateway integration: `engine/gateway_client.py`
+Existing model catalog: `engine/model_catalog.py`
 
 ## Auth Architecture
 - SuperTokens session cookies (HTTP-only)
 - Auth proxied: `api.movieshaker.com/auth/*` → `auth.rapidmvp.io/auth/*`
+- Auth dependencies: `engine/auth_deps.py`
 - Do NOT move auth routes off `api.movieshaker.com`
 - Do NOT attempt cross-app cookie sharing
 
 ## Production Topology
-- Web: Vercel or static host
+- Web: hosted frontend
 - Engine: DO Droplet via Docker (`docker-compose.prod.yml`)
 - Gateway: `https://models.rapidmvp.io` (separate DO Droplet)
 - Node version: 20.x (use `nvm use 20`)
@@ -93,3 +130,4 @@ New gateway integration code belongs in `engine/app/` only.
 ## If Uncertain
 Ask before proceeding. Do not infer intent and act.
 One task at a time. Wait for confirmation before moving to the next step.
+This is a live production platform — caution on every change.

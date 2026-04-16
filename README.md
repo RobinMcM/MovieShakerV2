@@ -1,215 +1,195 @@
 # MovieShakerV2
 
-MovieShaker is a film production management platform that helps teams run projects end-to-end: projects, scripts, budgeting, scheduling, crew workflows, and supporting production operations.
-
-This repository contains the Next.js frontend and the FastAPI backend, plus local infrastructure for auth and database services.
+Film production management platform.
+Helps production teams run projects end-to-end — scripts, budgeting,
+scheduling, crew, casting, moodboards, shot lists, visualization,
+AI generation, and festival strategy.
 
 ## Architecture
 
-- `web/` - Next.js 16 app (React 19, App Router)
-- `engine/` - FastAPI service (business APIs)
-- `docker-compose.yml` - local orchestration for API, auth, database, cache, and proxy
-- `caddy/` - reverse proxy config for `api.movieshaker.com`
-- `init-scripts/` - database initialization scripts
-
-### Service interaction
-
-```mermaid
-flowchart LR
-  browser[Browser]
-  web[Next.js web]
-  engine[FastAPI engine]
-  supertokens[SuperTokens core]
-  db[(PostgreSQL)]
-  valkey[(Valkey)]
-  storage[(DO Spaces / S3)]
-  email[Resend]
-
-  browser --> web
-  browser --> engine
-  web --> engine
-  engine --> supertokens
-  engine --> db
-  engine --> valkey
-  engine --> storage
-  web --> email
+```
+web/        Next.js 16 frontend    → movieshaker.com
+engine/     FastAPI backend        → api.movieshaker.com
 ```
 
-## Prerequisites
+External services:
+```
+models.rapidmvp.io   openrouter-gateway   AI text + media generation
+media.rapidmvp.io    media-handler        FFmpeg video processing
+auth.rapidmvp.io     SuperTokens core     Authentication
+```
 
-- Docker Desktop (or Docker Engine + Compose plugin)
-- Node.js 20.x (for frontend local build/dev)
-- Python 3.11+ (only needed for backend tests outside containers)
+## Quick Start
 
-## Quick start (full stack, recommended)
-
-From the repository root:
-
+### Full stack (recommended)
 ```bash
 docker compose up -d --build
 ```
 
-Local endpoints:
+| Service | URL |
+|---------|-----|
+| Web | http://localhost:3000 |
+| Engine API | http://localhost:8000 |
+| SuperTokens | http://localhost:3567 |
 
-- Web: `http://localhost:3000`
-- Engine API: `http://localhost:8000`
-- SuperTokens: `http://localhost:3567`
-- Health check: `http://localhost:8000/health`
+### Frontend only
+```bash
+cd web && npm install && npm run dev
+```
 
-## Production pilot launch (April 1 path)
+### Backend only
+```bash
+docker compose up -d db supertokens valkey engine
+```
 
-Use the production compose file for pilot launch hardening:
+## Platform Features
+
+### Project Management
+Create and manage film projects. Invite team members. Track project status.
+
+### Scripts
+Upload screenplays (PDF/FDX). Parse into scenes, characters, and headings.
+View structured script with scene breakdown.
+
+### Budgeting
+Line-item production budgeting. Scene cost breakdown.
+Budget vs actual tracking.
+
+### Scheduling
+Shoot day planning via tram lines. Scene ordering by location and time of day.
+Day-out-of-days management.
+
+### Characters & Cast
+Character management from script breakdown.
+Casting workflow with public actor role pages.
+Audition tracking.
+
+### Moodboard
+Visual development boards with drawing canvas.
+AI image generation via openrouter-gateway.
+
+### Shot List
+Shot-by-shot planning per scene.
+Camera, lens, and movement specifications.
+
+### Visualize
+AI-powered scene visualization.
+Image-to-video generation via FAL models through openrouter-gateway.
+
+### Film in a Box
+AI-assisted script and film generation.
+Powered by OpenRouter text models via openrouter-gateway.
+
+### Film Festival
+AI festival strategy and analysis.
+Submission planning and targeting.
+
+### AI Assistant
+Context-aware virtual co-production assistant.
+Embedded chatbot with mode-specific system prompts.
+Powered by openrouter-gateway via engine `/api/ai/chat`.
+
+### Objects
+Props and production object management.
+
+### Submit Funding
+Funding application management.
+
+### Admin
+User management, email statistics, chatbot configuration,
+auth configuration. Role-restricted.
+
+## Engine API
+
+The engine (`engine/`) is a flat FastAPI application.
+Each feature is a separate router file.
+
+### Adding a new feature
+1. Create `engine/new_feature.py` — router + models + logic
+2. Add to `engine/main.py`:
+   ```python
+   from new_feature import router as new_feature_router
+   app.include_router(new_feature_router)
+   ```
+
+### Key engine files
+
+| File | Purpose |
+|------|---------|
+| `main.py` | Entry point, all router registrations |
+| `models.py` | All database models |
+| `gateway_client.py` | AI gateway client |
+| `media_handler_client.py` | FFmpeg service client |
+| `model_catalog.py` | AI model metadata |
+| `credits.py` | AI usage credit system |
+| `film_in_a_box.py` | AI generation features |
+| `ai_assistant.py` | AI chat assistant |
+
+## Environment Variables
+
+### Backend (engine)
+```
+DATABASE_URL
+SUPERTOKENS_CONNECTION_URI
+API_BASE_URL
+WEBSITE_DOMAIN
+GATEWAY_BASE_URL=https://models.rapidmvp.io
+GATEWAY_INTERNAL_API_KEY
+GATEWAY_TIMEOUT_SECONDS
+GATEWAY_VERIFY_TLS
+DO_SPACES_ENDPOINT
+DO_SPACES_REGION
+DO_SPACES_BUCKET
+DO_SPACES_ACCESS_KEY_ID
+DO_SPACES_SECRET_ACCESS_KEY
+RESEND_API_KEY
+RESEND_WEBHOOK_SECRET
+INTERNAL_API_KEY
+```
+
+### Frontend (web/.env.local)
+```
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_WEBSITE_DOMAIN=http://localhost:3000
+```
+
+## Auth
+
+SuperTokens email/password auth.
+Auth proxied: `api.movieshaker.com/auth/*` → `auth.rapidmvp.io/auth/*`
+
+Reference implementation for shared auth across:
+- movieshaker.com
+- afilminabox.com
+- reelinvesting.com
+- ooocreatives.com
+
+## Production
 
 ```bash
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-Key differences from local dev compose:
-
-- no `next dev` runtime
-- internal services are not published publicly
-- explicit production env wiring for auth email pipeline
-- pinned SuperTokens image default (`9.3`)
-
-## Run frontend only
-
-Use this when working only on UI and routing:
-
-```bash
-cd web
-npm install
-npm run dev
-```
-
-Then open `http://localhost:3000`.
-
-If Docker services are already running and you want a single reliable command for web startup/logs:
-
-```bash
-./dev-web.sh
-```
-
-## Run backend only (without compose web service)
-
-```bash
-docker compose up -d db supertokens valkey engine
-```
-
-The API will be available at `http://localhost:8000`.
-
-## Environment variables
-
-Copy `.env.example` to `.env` at repo root, then set values for your environment.
-
-### Core backend/auth variables
-
-- `API_BASE_URL` - external API origin (example: `https://api.movieshaker.com`)
-- `WEBSITE_DOMAIN` - external web origin (example: `https://movieshaker.com`)
-- `CORS_ORIGINS` - optional extra allowed origins (comma-separated)
-- `SQL_ECHO` - optional SQL logging toggle (`false` by default; set `true` only for local debugging)
-- `SUPERTOKENS_CONNECTION_URI` - SuperTokens core URI
-- `DATABASE_URL` - engine DB URL
-
-### Storage/email variables
-
-- `DO_SPACES_ENDPOINT`
-- `DO_SPACES_REGION`
-- `DO_SPACES_BUCKET`
-- `DO_SPACES_ACCESS_KEY_ID`
-- `DO_SPACES_SECRET_ACCESS_KEY`
-- `RESEND_API_KEY` (web email route)
-- `RESEND_WEBHOOK_SECRET` (engine webhook signature verification)
-- `INTERNAL_API_KEY` (shared secret engine <-> web internal email route)
-
-### Gateway variables (AI source of truth)
-
-- `GATEWAY_BASE_URL` (example: `https://134.209.184.66`)
-- `GATEWAY_INTERNAL_API_KEY` (shared secret for engine -> gateway)
-- `GATEWAY_TIMEOUT_SECONDS` (optional; default `45`)
-- `GATEWAY_VERIFY_TLS` (optional; `false` for self-signed/IP certs)
-
-### Frontend variables (`web/.env.local`)
-
-- `NEXT_PUBLIC_API_URL` (example: `http://localhost:8000`)
-- `NEXT_PUBLIC_AUTH_API_URL` (optional override for auth routes; for MovieShaker Option 1 keep unset or set to same value as `NEXT_PUBLIC_API_URL`)
-- `NEXT_PUBLIC_WEBSITE_DOMAIN` (example: `http://localhost:3000`)
-
-## Shared auth standard (RapidMVP apps)
-
-MovieShaker is the reference implementation for shared auth across:
-
-- `rapidmvp.io`
-- `afilminabox.com`
-- `reelinvesting.com`
-- `ooocreatives.com`
-
-Canonical identity/auth domain:
-
-- `auth.rapidmvp.io`
-
-Use redirect-based SSO for cross-app authentication. Do not attempt to share a single cookie across different top-level domains. Each app must create and own a first-party local session after successful callback validation.
-
-For MovieShaker Option 1 deployment, keep auth requests first-party by proxying `https://api.movieshaker.com/auth/*` to `https://auth.rapidmvp.io/auth/*` at Caddy. Keep CRUD routes served directly by MovieShaker engine on `api.movieshaker.com`.
-
-The full deployment guardrails, callback allowlist rules, Resend requirements, and cutover checklist are defined in:
-
-- `DEPLOYMENT_RULES.md`
+See `DEPLOYMENT_RULES.md` and `scripts/go-live/RUNBOOK.md`.
 
 ## Testing
 
-Backend tests:
-
 ```bash
-pip install -r engine/requirements.txt
 pytest engine/tests -q
 ```
 
-## Production notes
+## Troubleshooting
 
-- Keep `API_BASE_URL` and `WEBSITE_DOMAIN` set explicitly in production.
-- Set `APP_ENV=production` in engine runtime.
-- Keep `WEB_INTERNAL_URL` + `INTERNAL_API_KEY` configured for engine -> web internal email route.
-- Set explicit `RESEND_FROM` in production (do not rely on sandbox fallback).
-- CORS defaults include key production domains; localhost dev origins are only included outside production unless explicitly added via `CORS_ORIGINS`.
-- SuperTokens dashboard recipe is disabled in the backend service.
-- Resend is required for auth email delivery in shared-auth deployments (`RESEND_API_KEY`, `RESEND_FROM`).
+**Node version**: use Node 20 (`nvm use 20`)
 
-### Go-live runbook scripts
+**CORS / session refresh failures**:
+- Verify `API_BASE_URL`, `WEBSITE_DOMAIN`, `CORS_ORIGINS`
+- Restart engine after env changes
 
-- Pilot runbook: `scripts/go-live/RUNBOOK.md`
-- Smoke checks: `scripts/go-live/auth-email-smoke.sh`
-- Failure drills: `scripts/go-live/failure-drills.sh`
-- Backup + rollback helper: `scripts/go-live/backup-rollback.sh`
+**Gateway not responding**:
+- Check `GATEWAY_BASE_URL` and `GATEWAY_INTERNAL_API_KEY`
+- Verify `https://models.rapidmvp.io/health`
 
-### Resend webhook setup
-
-- Configure Resend webhook destination to:
-  - `https://api.movieshaker.com/webhooks/resend`
-- Set `RESEND_WEBHOOK_SECRET` in engine runtime.
-- Validate webhook ingestion from Admin Email statistics page (`/admin/email`) after sending a test email.
-- For auth refresh issues, validate preflight:
-
-```bash
-curl -i -X OPTIONS "https://api.movieshaker.com/auth/session/refresh" \
-  -H "Origin: https://movieshaker.com" \
-  -H "Access-Control-Request-Method: POST"
-```
-
-## Common troubleshooting
-
-- **Node version issues**: use Node 20 (`nvm use 20`) for `web` dev/build.
-- **CORS/session refresh failures**:
-  - verify `API_BASE_URL`, `WEBSITE_DOMAIN`, and `CORS_ORIGINS`
-  - redeploy/restart engine after env changes
-- **Cross-app SSO rollout issues**:
-  - verify `AUTH_BASE_URL` / `NEXT_PUBLIC_AUTH_BASE_URL` point to `https://auth.rapidmvp.io`
-  - verify callback and `return_to` URLs are allowlisted
-  - run the validation checklist in `DEPLOYMENT_RULES.md`
-- **Media-handler stitch/frame command mismatch**:
-  - when changing `media-handler/stitch.sh` or FFmpeg command builders, rebuild the `media-handler` worker image
-  - when changing `media-handler/ffmpeg-api/app/main.py` or schemas, rebuild/recreate the `ffmpeg-api` service
-  - deploy both together (`docker build -t media-handler .` then `docker compose up -d --force-recreate --no-deps ffmpeg-api`)
-  - verify `/api/instructions` lists the updated endpoints/commands and run one live stitch/frame request before sign-off
-- **Stuck git operations in Cursor**:
-  - stop queued git jobs in the IDE terminal queue
-  - retry commit/push
+**Media handler errors**:
+- Rebuild both `media-handler` image and `ffmpeg-api` service together
+- Verify `/api/instructions` after rebuild

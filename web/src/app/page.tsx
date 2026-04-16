@@ -9,7 +9,6 @@ import heroImage from "@/assets/hero-film-production.jpg";
 import budgetingWorkspace from "@/assets/budgeting-workspace.jpg";
 import schedulingTimeline from "@/assets/scheduling-timeline.jpg";
 import shotListPlanning from "@/assets/shot-list-planning.jpg";
-import auditionsCasting from "@/assets/auditions-casting.jpg";
 import crewCoordination from "@/assets/crew-coordination.jpg";
 import moodBoardInspiration from "@/assets/mood-board-inspiration.jpg";
 
@@ -67,12 +66,6 @@ export default function Landing() {
                                 image={shotListPlanning}
                                 title="Shot List"
                                 description="Plan camera angles, organize scenes, and create detailed shot lists for your production"
-                            />
-                            <FeatureCard
-                                href="/auditions-info"
-                                image={auditionsCasting}
-                                title="Auditions"
-                                description="Manage casting calls, schedule auditions, and organize actor submissions"
                             />
                             <FeatureCard
                                 href="/crew-info"

@@ -130,18 +130,6 @@ function CastManagementPageInner() {
                 <Card>
                   <CardContent className="pt-6">
                     <div className="flex flex-col items-center text-center gap-2">
-                      <Calendar className="h-8 w-8 text-primary" />
-                      <h3 className="font-semibold">Scheduled Auditions</h3>
-                      <p className="text-3xl font-bold">0</p>
-                      <p className="text-xs text-muted-foreground">
-                        Upcoming sessions
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex flex-col items-center text-center gap-2">
                       <Users className="h-8 w-8 text-primary" />
                       <h3 className="font-semibold">Script Characters</h3>
                       <p className="text-3xl font-bold">{characters.length}</p>
@@ -268,14 +256,6 @@ function CastManagementPageInner() {
                               }
                               className="resize-none"
                             />
-                          </div>
-
-                          <div className="border-t pt-4">
-                            <h4 className="font-semibold mb-2">Casting Workflow</h4>
-                            <p className="text-sm text-muted-foreground">
-                              External cast and crew sourcing is temporarily disabled in this view.
-                              Script-linked role notes and shareable role links remain active.
-                            </p>
                           </div>
                         </div>
                       </AccordionContent>

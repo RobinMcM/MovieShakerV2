@@ -371,9 +371,10 @@ def delete_project(
     for row in db.exec(select(SceneCostConfig).where(SceneCostConfig.project_id == project_uuid)).all():
         db.delete(row)
 
-    # Members and project (last)
+    # Members (must be deleted before project)
     for row in db.exec(select(ProjectMember).where(ProjectMember.project_id == project_uuid)).all():
         db.delete(row)
+    db.flush()
     db.delete(project)
     db.commit()
 

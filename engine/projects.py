@@ -371,10 +371,6 @@ def delete_project(
     for row in db.exec(select(SceneCostConfig).where(SceneCostConfig.project_id == project_uuid)).all():
         db.delete(row)
 
-    # Moodboard image history
-    for row in db.exec(select(MoodBoardImageHistory).where(MoodBoardImageHistory.project_id == project_uuid)).all():
-        db.delete(row)
-
     # Members and project (last)
     for row in db.exec(select(ProjectMember).where(ProjectMember.project_id == project_uuid)).all():
         db.delete(row)

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDown, ChevronRight, FileText, FolderKanban, Home } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, FolderKanban, Home, Upload } from "lucide-react";
 import {
   PROJECT_ASSISTANT_NAV,
   PROJECT_EXTERNAL_NAV,
@@ -132,6 +132,18 @@ export function ProjectSidebarNav({
 
           {scriptsExpanded && (
             <div className="mt-1 space-y-1">
+              <Link
+                href={`/project/${projectId}/scripts`}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs transition-colors font-medium",
+                  pathname === `/project/${projectId}/scripts`
+                    ? "bg-primary/15 text-primary"
+                    : "text-primary/80 hover:bg-accent hover:text-foreground"
+                )}
+              >
+                <Upload className="h-3 w-3" />
+                Upload / Manage Scripts
+              </Link>
               {scriptsLoading && (
                 <p className="text-xs text-muted-foreground px-2.5 py-1">Loading scripts...</p>
               )}

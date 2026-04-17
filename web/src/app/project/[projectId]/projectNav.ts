@@ -8,6 +8,7 @@ import {
   List,
   MessageCircle,
   Palette,
+  ScrollText,
   Settings,
   Ticket,
   Users,
@@ -24,6 +25,12 @@ export interface ProjectNavItem {
 export const PROJECT_DEFAULT_ROUTE = "scheduling";
 
 export const PROJECT_TOOL_NAV: ProjectNavItem[] = [
+  {
+    id: "scripts",
+    label: "Scripts",
+    href: (projectId) => `/project/${projectId}/scripts`,
+    icon: ScrollText,
+  },
   {
     id: "scheduling",
     label: "Scheduling",

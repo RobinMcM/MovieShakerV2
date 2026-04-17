@@ -324,19 +324,68 @@ def delete_project(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
         
-    db.delete(project) # Cascades should handle members if configured, but for now we might need manual cleanup if not
-    # Manual cleanup of members just in case (though we should use cascade in models really)
-    # SQLModel doesn't enable cascade by default easily without sa_relationship_kwargs
-    
-    # Delete members manually to be safe for now
-    db.exec(select(ProjectMember).where(ProjectMember.project_id == project_id)).fetchall() 
-    # Actually delete:
-    members_to_delete = db.exec(select(ProjectMember).where(ProjectMember.project_id == project_id)).all()
-    for m in members_to_delete:
-        db.delete(m)
-        
+    from models import (
+        Script, Scene, SceneCharacter, SceneCost, Character,
+        TramLine, Budget, BudgetLineItem, SceneCostConfig,
+        MoodBoardComposition, MoodBoardImageHistory,
+        MoodBoardVideoHistory, MoodBoardCompiledVideo,
+        FilmInABoxItem,
+    )
+    from storage import delete_script_dir
+
+    project_uuid = uuid.UUID(project_id)
+
+    # Scripts → scenes → scene dependents (deepest FK level first)
+    scripts = db.exec(select(Script).where(Script.project_id == project_uuid)).all()
+    for script in scripts:
+        scenes = db.exec(select(Scene).where(Scene.script_id == script.id)).all()
+        for scene in scenes:
+            for row in db.exec(select(SceneCharacter).where(SceneCharacter.scene_id == scene.id)).all():
+                db.delete(row)
+            for row in db.exec(select(SceneCost).where(SceneCost.scene_id == scene.id)).all():
+                db.delete(row)
+            for row in db.exec(select(TramLine).where(TramLine.scene_id == scene.id)).all():
+                db.delete(row)
+            db.delete(scene)
+        for row in db.exec(select(Character).where(Character.script_id == script.id)).all():
+            db.delete(row)
+        db.delete(script)
+        try:
+            delete_script_dir(user_id, project_id, str(script.id))
+        except Exception:
+            pass
+    db.flush()
+
+    # Budget → line items
+    budgets = db.exec(select(Budget).where(Budget.project_id == project_uuid)).all()
+    for budget in budgets:
+        for row in db.exec(select(BudgetLineItem).where(BudgetLineItem.budget_id == budget.id)).all():
+            db.delete(row)
+        db.delete(budget)
+
+    # Scene cost config (unique per project)
+    for row in db.exec(select(SceneCostConfig).where(SceneCostConfig.project_id == project_uuid)).all():
+        db.delete(row)
+
+    # Moodboard
+    for row in db.exec(select(MoodBoardComposition).where(MoodBoardComposition.project_id == project_uuid)).all():
+        db.delete(row)
+    for row in db.exec(select(MoodBoardImageHistory).where(MoodBoardImageHistory.project_id == project_uuid)).all():
+        db.delete(row)
+    for row in db.exec(select(MoodBoardVideoHistory).where(MoodBoardVideoHistory.project_id == project_uuid)).all():
+        db.delete(row)
+    for row in db.exec(select(MoodBoardCompiledVideo).where(MoodBoardCompiledVideo.project_id == project_uuid)).all():
+        db.delete(row)
+
+    # Film in a Box items
+    for row in db.exec(select(FilmInABoxItem).where(FilmInABoxItem.project_id == project_uuid)).all():
+        db.delete(row)
+
+    # Members and project (last)
+    for row in db.exec(select(ProjectMember).where(ProjectMember.project_id == project_uuid)).all():
+        db.delete(row)
+    db.delete(project)
     db.commit()
-    
+
     cache_delete(_projects_cache_key(user_id))
-    
     return {"success": True, "message": "Project deleted"}

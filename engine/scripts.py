@@ -39,6 +39,10 @@ from storage import (
     uses_spaces,
     MAX_UPLOAD_BYTES,
 )
+from script_parser import (
+    parse_pdf, parse_json_v1, document_to_bytes,
+    derive_db_data, ParseError,
+)
 
 router = APIRouter(tags=["scripts"])
 
@@ -400,22 +404,36 @@ def get_script_stats(
         except Exception:
             pass
 
-    scenes, characters = 0, 0
-    json_path = script_json_path(script.user_id, str(script.project_id), str(script.id))
-    if json_path.exists():
-        try:
-            with open(json_path) as f:
-                data = json.load(f)
-            if isinstance(data.get("scenes"), list):
-                scenes = len(data["scenes"])
-            if isinstance(data.get("characters"), list):
-                characters = len(data["characters"])
-            elif "characters" in data and isinstance(data["characters"], dict):
-                characters = len(data["characters"])
-        except Exception:
-            pass
+    scenes = 0
+    characters = 0
+    total_eighths = 0
 
-    stats = {"scenes": scenes, "characters": characters}
+    parsed = _read_script_json(script)
+    if parsed is not None:
+        elements, metadata = parsed
+        char_names: set[str] = set()
+        for el in elements:
+            if not isinstance(el, dict):
+                continue
+            el_type = (el.get("type") or "").strip().lower()
+            if el_type == "scene_heading":
+                scenes += 1
+                total_eighths += el.get("eighths", 1)
+                for cname in (el.get("characters") or []):
+                    if cname:
+                        char_names.add(cname)
+            elif el_type == "character":
+                from script_parser import _clean_character_name
+                name = _clean_character_name(el.get("text") or "")
+                if name:
+                    char_names.add(name)
+        characters = len(char_names)
+
+    stats = {
+        "scenes": scenes,
+        "characters": characters,
+        "total_eighths": total_eighths,
+    }
     try:
         cache_set(cache_key, json.dumps(stats), SCRIPTS_STATS_TTL)
     except Exception:
@@ -787,281 +805,10 @@ def _get_script_file_bytes(script: Script) -> Tuple[bytes, bool]:
     return (body, body[:5].strip().startswith(b"%PDF-"))
 
 
-def _derive_db_from_elements(
-    elements: List[dict], page_count: int
-) -> Tuple[List[dict], List[str], dict, int]:
-    """Derive (headings, unique_characters, scene_char_map, page_count) from full elements for DB insert."""
-    headings = []
-    character_set = set()
-    scene_char_map: dict = {}
-    for el in elements:
-        el_type = (el.get("type") or "action").strip().lower()
-        text = (el.get("text") or "").strip()
-        if el_type == "scene_heading":
-            headings.append({
-                "heading": text[:255],
-                "page_number": f"Page {len(headings) + 1}",
-                "length_in_eighths": 1,
-            })
-            scene_char_map[len(headings) - 1] = set()
-        elif el_type == "character":
-            name = re.sub(r"\s*\([^)]*\)", "", text)
-            name = re.sub(r"[(),!?:;]", "", name).strip().rstrip(". ")
-            if 0 < len(name) < 50:
-                character_set.add(name)
-                if headings:
-                    scene_char_map[len(headings) - 1].add(name)
-    return (headings, sorted(character_set), scene_char_map, page_count)
-
-
-def _parse_json_script(body: bytes) -> Tuple[List[dict], List[str], dict, int]:
-    """Parse JSON script. Returns (headings, unique_characters, scene_index_to_characters, page_count)."""
-    data = json.loads(body.decode("utf-8", errors="replace"))
-    elements = data.get("elements") or []
-    page_count = 1
-    if isinstance(data.get("metadata"), dict) and "page_count" in data["metadata"]:
-        page_count = int(data["metadata"]["page_count"]) or 1
-    return _derive_db_from_elements(elements, page_count)
-
-
 # Canonical script.json types (source of truth)
 SCRIPT_JSON_TYPES = frozenset(
     {"scene_heading", "scene_number", "action", "character", "dialogue", "parenthetical", "transition", "page_number", "general"}
 )
-
-
-def _script_json_to_bytes(elements: List[dict], metadata: dict) -> bytes:
-    """Serialize script.json document. metadata must include page_count."""
-    meta = dict(metadata)
-    if "page_count" not in meta:
-        meta["page_count"] = 1
-    doc = {"metadata": meta, "elements": elements}
-    return json.dumps(doc, indent=2).encode("utf-8")
-
-
-def _build_script_json(
-    headings: List[dict], unique_characters: List[str], scene_char_map: dict, page_count: int
-) -> bytes:
-    """Build reduced script.json (scene_heading + character only) for saving as script.json."""
-    elements: List[dict] = []
-    for i, h in enumerate(headings):
-        elements.append({"type": "scene_heading", "text": h.get("heading", "")})
-        for cname in sorted(scene_char_map.get(i, set())):
-            elements.append({"type": "character", "text": cname})
-    return _script_json_to_bytes(elements, {"page_count": page_count})
-
-
-def _parse_pdf_script(body: bytes) -> Tuple[List[dict], List[str], dict, int]:
-    """Extract scenes and characters from PDF text. Returns same shape as _parse_json_script."""
-    from pypdf import PdfReader
-    reader = PdfReader(io.BytesIO(body))
-    page_count = len(reader.pages)
-    headings = []
-    character_set = set()
-    scene_char_map = {}
-    scene_heading_re = re.compile(r"^(INT\.|EXT\.|INT\./EXT\.|I/E|EST\.)\s", re.IGNORECASE)
-    for pagenum, page in enumerate(reader.pages, 1):
-        text = page.extract_text() or ""
-        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-        for line in lines:
-            if scene_heading_re.match(line):
-                headings.append({
-                    "heading": line[:255],
-                    "page_number": f"Page {pagenum}",
-                    "length_in_eighths": 1,
-                })
-                scene_char_map[len(headings) - 1] = set()
-            elif line.isupper() and len(line) < 50 and re.match(r"^[A-Z][A-Z\s\-']+$", line):
-                name = re.sub(r"\s*\([^)]*\)", "", line).strip().rstrip(". ")
-                if name:
-                    character_set.add(name)
-                    if headings:
-                        scene_char_map[len(headings) - 1].add(name)
-    unique_characters = sorted(character_set)
-    return (headings, unique_characters, scene_char_map, page_count)
-
-
-def _extract_title_page_metadata(
-    page1_lines: List[Tuple[float, float, str]], script_name: str
-) -> dict:
-    """
-    Build metadata from title page (page 1) lines. Each item is (x_center, y_center, text).
-    script_name is fallback for title.
-    """
-    now_iso = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-    metadata = {
-        "title": script_name or "Untitled",
-        "author": "Unknown",
-        "created": now_iso,
-        "draft": "MovieShaker (Imported)",
-    }
-    # Centered lines typically 150 < x < 450; title often in upper-mid Y (e.g. 300-500 in pdf coords)
-    by_y = sorted(page1_lines, key=lambda t: -t[1])
-    found_by = False
-    for x, y, text in by_y:
-        t = text.strip()
-        if not t:
-            continue
-        is_centered = 100 < x < 450
-        if is_centered and not re.match(r"^\d+\.?$", t):
-            if re.match(r"^(written\s+by|screenplay\s+by|story\s+by|by)\s*:?$", t, re.I):
-                found_by = True
-                continue
-            if found_by and metadata["author"] == "Unknown":
-                metadata["author"] = t
-                found_by = False
-                continue
-            if metadata["title"] == (script_name or "Untitled") and len(t) > 1 and 200 < y < 600:
-                metadata["title"] = t
-        if re.search(r"\d{4}-\d{2}-\d{2}|\d{1,2}/\d{1,2}/\d{2,4}|(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}", t, re.I):
-            metadata["created"] = now_iso  # could parse date; keep simple
-        if re.match(r"^(first|second|revised|production|final)\s+draft\.?$", t, re.I):
-            metadata["draft"] = t
-    return metadata
-
-
-def _parse_pdf_to_script_document(body: bytes, script_name: str = "") -> Optional[dict]:
-    """
-    Parse PDF to canonical script.json document per script-rules.md.
-    Page 1 = title page (metadata only). Body elements from page 2+.
-    Returns {"metadata": {title, author, created, draft, page_count}, "elements": [...]} or None.
-    """
-    try:
-        from pdfminer.converter import PDFPageAggregator
-        from pdfminer.layout import LAParams, LTTextBox, LTTextLine
-        from pdfminer.pdfpage import PDFPage
-        from pdfminer.pdfinterp import PDFPageInterpreter, PDFResourceManager
-    except ImportError:
-        return None
-    try:
-        rsrc = PDFResourceManager()
-        laparams = LAParams()
-        device = PDFPageAggregator(rsrc, laparams=laparams)
-        interpreter = PDFPageInterpreter(rsrc, device)
-        all_lines: List[Tuple[int, float, float, str]] = []  # (page_num, x_left, y, text) — x_left for alignment
-        line_height_tol = 5
-        for page_num, page in enumerate(PDFPage.get_pages(io.BytesIO(body)), 1):
-            interpreter.process_page(page)
-            layout = device.get_result()
-            for obj in layout:
-                if isinstance(obj, LTTextBox):
-                    for line in obj:
-                        if isinstance(line, LTTextLine):
-                            text = (line.get_text() or "").strip()
-                            if not text:
-                                continue
-                            x0, y0, x1, y1 = line.bbox
-                            x_left = x0  # Use left edge so left-aligned action isn't misclassified as dialogue
-                            y_center = (y0 + y1) / 2
-                            all_lines.append((page_num, x_left, y_center, text))
-        if not all_lines:
-            return None
-        page_count = max(t[0] for t in all_lines)
-        # Title page (page 1) -> metadata only
-        page1_lines = [(x, y, t) for p, x, y, t in all_lines if p == 1]
-        metadata = _extract_title_page_metadata(page1_lines, script_name)
-        metadata["page_count"] = page_count
-        # Body: page 2+ only
-        body_lines = [(p, x, y, t) for p, x, y, t in all_lines if p >= 2]
-        if not body_lines:
-            return {"metadata": metadata, "elements": []}
-        body_lines.sort(key=lambda t: (t[0], -t[2], t[1]))
-        grouped: List[Tuple[int, float, float, str]] = []
-        for page_num, x, y, text in body_lines:
-            if grouped and grouped[-1][0] == page_num and abs(grouped[-1][2] - y) <= line_height_tol:
-                # Keep leftmost x so wrapped action stays left-aligned
-                x_min = min(grouped[-1][1], x)
-                grouped[-1] = (page_num, x_min, grouped[-1][2], grouped[-1][3] + " " + text)
-            else:
-                grouped.append((page_num, x, y, text))
-        scene_heading_re = re.compile(r"^(INT\.|EXT\.|INT\./EXT\.|I/E|EST\.)(?:\s|$)", re.IGNORECASE)
-        MERGE_Y_TOLERANCE = 20
-        elements: List[dict] = []
-        last_el: Optional[dict] = None
-        last_y: float = -1e9
-        scene_num = 0
-        # Transition by content (FADE IN:, CUT TO:, etc.) regardless of position
-        transition_re = re.compile(r"^FADE\s", re.I)
-        for page_num, x, y, text in grouped:
-            is_centered = 150 < x < 400  # x is left edge: left-aligned action has small x
-            is_parenthetical = text.startswith("(") and text.endswith(")")
-            starts_scene = bool(scene_heading_re.match(text))
-            is_page_num = bool(re.match(r"^\d+\.?$", text)) and y > 500 and x > 450
-            is_upper = text == text.upper() and bool(re.search(r"[A-Z]", text))
-            el_type = "action"
-            if is_page_num:
-                el_type = "page_number"
-            elif starts_scene:
-                el_type = "scene_heading"
-            elif text.endswith("TO:") or transition_re.match(text):
-                el_type = "transition"
-            elif is_centered and is_upper and not is_parenthetical:
-                el_type = "character"
-            elif is_centered and is_parenthetical:
-                el_type = "parenthetical"
-            elif is_centered:
-                if last_el and last_el.get("type") in ("character", "parenthetical", "dialogue"):
-                    el_type = "dialogue"
-                else:
-                    el_type = "dialogue"
-                # "NAME (cont'd)" only (dialogue on next line) -> character
-                if re.match(r"^[A-Z][A-Z0-9\s]+?\s*\(cont'd\)\s*$", text, re.IGNORECASE):
-                    el_type = "character"
-            else:
-                el_type = "action"
-            # script-rules: do not merge two scene_headings; do not merge across parenthetical
-            # (cont'd) lines are character + dialogue: never merge into previous dialogue
-            contd_match = el_type == "dialogue" and re.match(
-                r"^([A-Z][A-Z0-9\s]+?)\s*\(cont'd\)\s+(.+)$", text, re.IGNORECASE
-            )
-            should_merge = (
-                not contd_match
-                and last_el is not None
-                and last_el.get("_page") == page_num
-                and last_el.get("type") == el_type
-                and abs(last_y - y) <= MERGE_Y_TOLERANCE
-                and not (el_type == "scene_heading")
-                and el_type != "parenthetical"
-                and last_el.get("type") != "parenthetical"
-            )
-            if should_merge and last_el is not None:
-                last_el["text"] = (last_el["text"] or "") + " " + text
-            else:
-                if el_type == "scene_heading":
-                    scene_num += 1
-                    last_el = {"type": "scene_heading", "scene": str(scene_num), "text": text, "_page": page_num}
-                    elements.append(last_el)
-                    last_y = y
-                    continue
-                # (cont'd) = same character after action: emit character "NAME (cont'd)" then dialogue
-                if el_type == "dialogue" and contd_match:
-                    m = contd_match
-                    name_part = m.group(1).strip() + " (cont'd)"
-                    dialogue_part = m.group(2).strip()
-                    elements.append({"type": "character", "text": name_part, "_page": page_num})
-                    last_el = {"type": "dialogue", "text": dialogue_part, "_page": page_num}
-                    elements.append(last_el)
-                    last_y = y
-                    continue
-                last_el = {"type": el_type, "text": text, "_page": page_num}
-                elements.append(last_el)
-            last_y = y
-        for el in elements:
-            el.pop("_page", None)
-        return {"metadata": metadata, "elements": elements}
-    except Exception:
-        return None
-
-
-def _parse_pdf_script_full(body: bytes, script_name: str = "") -> Optional[Tuple[List[dict], dict]]:
-    """
-    Parse PDF to full elements + metadata per script-rules.md.
-    Returns (elements, metadata) or None. Kept for compatibility with parse route.
-    """
-    doc = _parse_pdf_to_script_document(body, script_name)
-    if doc is None:
-        return None
-    return (doc["elements"], doc["metadata"])
 
 
 def _read_script_json(script: Script) -> Optional[Tuple[List[dict], dict]]:
@@ -1098,16 +845,24 @@ def update_script_json(
     session: SessionContainer = Depends(verify_session()),
     db: Session = Depends(get_session),
 ):
-    """Update script.json in storage (full replace). Use for saving edits or replacing document. Does not change scenes/characters in DB."""
+    """Full replace of script.json. Normalises to schema v2. Does not re-populate DB."""
     user_id = session.get_user_id()
     script = _get_script_and_ensure_access(db, script_id, user_id)
     if not body.elements:
-        raise HTTPException(status_code=400, detail="elements array is required and must not be empty")
+        raise HTTPException(
+            status_code=400, detail="elements array is required and must not be empty"
+        )
     metadata = body.metadata or {}
-    if "page_count" not in metadata:
-        metadata = {**metadata, "page_count": 1}
-    normalized = [{"type": (e.get("type") or "action").strip().lower(), "text": (e.get("text") or "").strip()} for e in body.elements]
-    json_bytes = _script_json_to_bytes(normalized, metadata)
+    metadata.setdefault("page_count", 1)
+
+    payload_bytes = json.dumps(
+        {"schema_version": "1.0", "metadata": metadata, "elements": body.elements}
+    ).encode()
+    doc = parse_json_v1(payload_bytes)
+    if doc is None:
+        raise HTTPException(status_code=400, detail="Invalid elements")
+
+    json_bytes = document_to_bytes(doc)
     save_script_file(
         script.user_id,
         str(script.project_id),
@@ -1168,79 +923,85 @@ def parse_script(
     script = _get_script_and_ensure_access(db, script_id, user_id)
     if getattr(script, "is_locked", False):
         raise HTTPException(status_code=403, detail="Script is locked. Unlock it to re-parse.")
+
     body, is_pdf = _get_script_file_bytes(script)
-    full_elements: Optional[List[dict]] = None
-    script_metadata: Optional[dict] = None
-    if body[:20].strip().startswith(b"{") or body[:20].strip().startswith(b"["):
-        headings, unique_characters, scene_char_map, page_count = _parse_json_script(body)
-        data = json.loads(body.decode("utf-8", errors="replace"))
-        raw_elements = data.get("elements") or []
-        raw_meta = data.get("metadata") or {}
-        types_present = { (e.get("type") or "action").strip().lower() for e in raw_elements }
-        if types_present - {"scene_heading", "character"}:
-            full_elements = [{"type": (e.get("type") or "action").strip().lower(), "text": (e.get("text") or "").strip()} for e in raw_elements]
-            script_metadata = {**raw_meta, "page_count": raw_meta.get("page_count", page_count)}
-    elif is_pdf:
-        full_result = _parse_pdf_script_full(body, script_name=script.name or "")
-        if full_result is not None:
-            full_elements, script_metadata = full_result
-            page_count = script_metadata.get("page_count", 1)
-            headings, unique_characters, scene_char_map, page_count = _derive_db_from_elements(
-                full_elements, page_count
-            )
-        else:
+
+    doc: Optional[dict] = None
+
+    if is_pdf:
+        try:
+            doc = parse_pdf(body, script_name=script.name or "")
+        except ParseError as exc:
+            raise HTTPException(status_code=422, detail=f"Failed to parse PDF: {exc}")
+        except Exception:
             raise HTTPException(
                 status_code=422,
                 detail="Failed to parse PDF. Ensure the file is a valid screenplay PDF.",
             )
+    elif body[:1].strip() in (b"{", b"["):
+        doc = parse_json_v1(body)
+        if doc is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid script JSON. Expected elements[] array.",
+            )
     else:
-        raise HTTPException(status_code=400, detail="File format not recognized (expected PDF or JSON).")
+        raise HTTPException(
+            status_code=400,
+            detail="File format not recognised. Upload a PDF or valid script JSON.",
+        )
+
+    elements = doc["elements"]
+    metadata = doc["metadata"]
+    page_count = metadata.get("page_count", 1)
+
+    headings, unique_characters, scene_char_map, page_count = derive_db_data(
+        elements, page_count
+    )
+
     script_uuid = script.id
-    # Delete in FK order: scene_characters -> scenes, characters
+
     existing_scenes = list(db.exec(select(Scene).where(Scene.script_id == script_uuid)).all())
     for scene in existing_scenes:
         for sc in db.exec(select(SceneCharacter).where(SceneCharacter.scene_id == scene.id)).all():
             db.delete(sc)
-    db.flush()  # Emit scene_character DELETEs before deleting scenes (FK constraint)
+    db.flush()
     for s in existing_scenes:
         db.delete(s)
     for c in db.exec(select(Character).where(Character.script_id == script_uuid)).all():
         db.delete(c)
     db.commit()
-    # Insert characters
+
     char_id_by_name = {}
     for name in unique_characters:
         ch = Character(script_id=script_uuid, user_id=user_id, name=name)
         db.add(ch)
         db.flush()
         char_id_by_name[name] = ch.id
-    # Insert scenes and scene_characters
-    scene_ids = []
+
     for i, h in enumerate(headings):
         sc = Scene(
             script_id=script_uuid,
             user_id=user_id,
             heading=h["heading"],
             page_number=h.get("page_number", ""),
-            length_in_eighths=h.get("length_in_eighths"),
-            scene_number=i + 1,
+            length_in_eighths=h.get("length_in_eighths", 1),
+            scene_number=h.get("scene_number", i + 1),
         )
         db.add(sc)
         db.flush()
-        scene_ids.append(sc.id)
         for cname in scene_char_map.get(i, set()):
             cid = char_id_by_name.get(cname)
             if cid:
                 db.add(SceneCharacter(scene_id=sc.id, character_id=cid, user_id=user_id))
+
     script.page_count = page_count
     db.add(script)
     db.commit()
+
     cache_delete(scripts_stats_key(script_id))
-    # Persist script.json in same location as script.pdf (full elements when available, else reduced)
-    if full_elements is not None and script_metadata is not None:
-        json_bytes = _script_json_to_bytes(full_elements, script_metadata)
-    else:
-        json_bytes = _build_script_json(headings, unique_characters, scene_char_map, page_count)
+
+    json_bytes = document_to_bytes(doc)
     save_script_file(
         script.user_id,
         str(script.project_id),
@@ -1249,7 +1010,17 @@ def parse_script(
         io.BytesIO(json_bytes),
         len(json_bytes),
     )
-    return {"success": True, "data": {"scenes": len(headings), "characters": len(unique_characters)}}
+
+    return {
+        "success": True,
+        "data": {
+            "scenes": len(headings),
+            "characters": len(unique_characters),
+            "total_eighths": metadata.get("total_eighths", 0),
+            "page_count": page_count,
+            "schema_version": doc.get("schema_version"),
+        },
+    }
 
 
 # DELETE /scripts/{script_id}

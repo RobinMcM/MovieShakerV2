@@ -221,16 +221,20 @@ def _classify(
         return "action"
 
     if _ACTION_MAX_X <= x0 < _DIALOGUE_MAX_X:
-        # Dialogue zone
+        # Short ALL-CAPS line in dialogue zone = character cue
+        # (PDF indentation varies by authoring tool)
+        if is_upper and len(t) < 50 and not is_paren:
+            return "character"
         if prev_type in ("character", "parenthetical", "dialogue"):
             return "dialogue"
-        # Could be dialogue even without clear context (rare)
         return "dialogue"
 
     if _DIALOGUE_MAX_X <= x0 < _PARENTH_MAX_X:
-        # Parenthetical or dialogue
         if is_paren:
             return "parenthetical"
+        # Short ALL-CAPS = character cue regardless of previous type
+        if is_upper and len(t) < 50 and not is_paren:
+            return "character"
         if prev_type in ("character", "parenthetical", "dialogue"):
             return "dialogue"
         return "dialogue"
@@ -239,7 +243,6 @@ def _classify(
         # Character name zone
         if is_upper:
             return "character"
-        # Non-uppercase in character zone: probably a dialogue that ran wide
         if prev_type in ("character", "parenthetical", "dialogue"):
             return "dialogue"
         return "action"

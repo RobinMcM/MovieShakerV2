@@ -329,8 +329,6 @@ def delete_project(
         Script, Scene, SceneCharacter, SceneCost, Character,
         TramLine, Budget, BudgetLineItem, SceneCostConfig,
         MoodBoardComposition, MoodBoardImageHistory,
-        MoodBoardVideoHistory, MoodBoardCompiledVideo,
-        FilmInABoxItem,
     )
     from storage import delete_script_dir
 
@@ -345,8 +343,13 @@ def delete_project(
                 db.delete(row)
             for row in db.exec(select(SceneCost).where(SceneCost.scene_id == scene.id)).all():
                 db.delete(row)
-            for row in db.exec(select(TramLine).where(TramLine.scene_id == scene.id)).all():
-                db.delete(row)
+            tram_lines = db.exec(select(TramLine).where(TramLine.scene_id == scene.id)).all()
+            for tram_line in tram_lines:
+                for row in db.exec(select(MoodBoardComposition).where(MoodBoardComposition.tram_line_id == tram_line.id)).all():
+                    db.delete(row)
+                for row in db.exec(select(MoodBoardImageHistory).where(MoodBoardImageHistory.tram_line_id == tram_line.id)).all():
+                    db.delete(row)
+                db.delete(tram_line)
             db.delete(scene)
         for row in db.exec(select(Character).where(Character.script_id == script.id)).all():
             db.delete(row)
@@ -368,18 +371,8 @@ def delete_project(
     for row in db.exec(select(SceneCostConfig).where(SceneCostConfig.project_id == project_uuid)).all():
         db.delete(row)
 
-    # Moodboard
-    for row in db.exec(select(MoodBoardComposition).where(MoodBoardComposition.project_id == project_uuid)).all():
-        db.delete(row)
+    # Moodboard image history
     for row in db.exec(select(MoodBoardImageHistory).where(MoodBoardImageHistory.project_id == project_uuid)).all():
-        db.delete(row)
-    for row in db.exec(select(MoodBoardVideoHistory).where(MoodBoardVideoHistory.project_id == project_uuid)).all():
-        db.delete(row)
-    for row in db.exec(select(MoodBoardCompiledVideo).where(MoodBoardCompiledVideo.project_id == project_uuid)).all():
-        db.delete(row)
-
-    # Film in a Box items
-    for row in db.exec(select(FilmInABoxItem).where(FilmInABoxItem.project_id == project_uuid)).all():
         db.delete(row)
 
     # Members and project (last)

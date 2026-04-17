@@ -961,10 +961,13 @@ def parse_script(
 
     script_uuid = script.id
 
+    from models import SceneCost
     existing_scenes = list(db.exec(select(Scene).where(Scene.script_id == script_uuid)).all())
     for scene in existing_scenes:
         for sc in db.exec(select(SceneCharacter).where(SceneCharacter.scene_id == scene.id)).all():
             db.delete(sc)
+        for cost in db.exec(select(SceneCost).where(SceneCost.scene_id == scene.id)).all():
+            db.delete(cost)
     db.flush()
     for s in existing_scenes:
         db.delete(s)

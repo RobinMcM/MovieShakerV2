@@ -328,7 +328,7 @@ def delete_project(
     from models import (
         Script, Scene, SceneCharacter, SceneCost, Character,
         TramLine, Budget, BudgetLineItem, SceneCostConfig,
-        MoodBoardComposition, MoodBoardImageHistory,
+        MoodBoardComposition, MoodBoardImageHistory, FilmInABoxItem,
     )
     from storage import delete_script_dir
 
@@ -369,6 +369,10 @@ def delete_project(
 
     # Scene cost config (unique per project)
     for row in db.exec(select(SceneCostConfig).where(SceneCostConfig.project_id == project_uuid)).all():
+        db.delete(row)
+
+    # Film in a Box items
+    for row in db.exec(select(FilmInABoxItem).where(FilmInABoxItem.project_id == project_uuid)).all():
         db.delete(row)
 
     # Members (must be deleted before project)

@@ -54,6 +54,7 @@ logger = logging.getLogger(__name__)
 settings = load_settings()
 
 ANALYSIS_MODEL = "anthropic/claude-3.5-sonnet"
+DECISIONS_MODEL = "google/gemma-3-12b-it:free"
 _ANALYSIS_LOCK_TTL = 120
 
 router = APIRouter(tags=["scripts"])
@@ -124,6 +125,20 @@ class ScriptAnalysisResponse(BaseModel):
     raw_analysis: Optional[str] = None
     analysed_at: Optional[datetime] = None
     model_used: Optional[str] = None
+
+
+class ProductionDecisionItem(BaseModel):
+    decision_type: str
+    summary: str
+    detail: Optional[str] = None
+    scene_refs: Optional[list] = None
+    created_at: Optional[str] = None
+
+
+class ProductionDecisionsResponse(BaseModel):
+    script_id: str
+    decisions: dict  # keyed by decision_type, each value is List[ProductionDecisionItem]
+    total: int
 
 
 class ScriptResponse(BaseModel):
@@ -1484,6 +1499,163 @@ def get_scene_elements(
         raise HTTPException(status_code=404, detail="Scene not found")
 
     return SceneElementsResponse(scene_number=scene_number, elements=scene_elements)
+
+
+def _extract_decisions(
+    script_id: str,
+    chat_id: str,
+    message: str,
+    db: Session,
+) -> list:
+    """Extract production decisions from an assistant message and persist them."""
+    system_prompt = (
+        "You are a production decision extractor. Return ONLY valid JSON. "
+        "No preamble, no markdown."
+    )
+    user_prompt = (
+        "Read this assistant message and identify any production decisions "
+        "that were made or recommended. A production decision is a concrete "
+        "actionable choice about: location, schedule, cast, budget, or creative direction.\n\n"
+        f"Message: {message}\n\n"
+        "Return a JSON array. Each item:\n"
+        '{\n'
+        '  "decision_type": "location|schedule|cast|budget|creative",\n'
+        '  "summary": "one sentence max",\n'
+        '  "detail": "fuller explanation or empty string",\n'
+        '  "scene_refs": [list of integer scene numbers affected, or []]\n'
+        '}\n\n'
+        "Return [] if no decisions are present. Return ONLY the JSON array."
+    )
+
+    try:
+        gateway_response = _gateway_client().execute_text(
+            model=DECISIONS_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+    except GatewayClientError as exc:
+        logger.warning("Decision extraction gateway error for %s: %s", script_id, exc)
+        return []
+
+    raw_text = _extract_text_from_gateway(gateway_response)
+    if not raw_text:
+        return []
+
+    # Strip markdown fences if present
+    cleaned = raw_text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```[a-zA-Z]*\n?", "", cleaned)
+        cleaned = re.sub(r"\n?```$", "", cleaned.strip())
+
+    try:
+        parsed = json.loads(cleaned)
+    except (ValueError, TypeError):
+        start = cleaned.find("[")
+        end = cleaned.rfind("]")
+        if start >= 0 and end > start:
+            try:
+                parsed = json.loads(cleaned[start : end + 1])
+            except (ValueError, TypeError):
+                logger.warning("Decision extraction unparseable response for %s: %s", script_id, cleaned[:200])
+                return []
+        else:
+            logger.warning("Decision extraction no JSON array found for %s: %s", script_id, cleaned[:200])
+            return []
+
+    if not isinstance(parsed, list) or not parsed:
+        return []
+
+    valid_types = {"location", "schedule", "cast", "budget", "creative"}
+    decisions = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        decision_type = str(item.get("decision_type") or "").strip().lower()
+        if decision_type not in valid_types:
+            continue
+        summary = str(item.get("summary") or "").strip()
+        if not summary:
+            continue
+        detail = str(item.get("detail") or "").strip()
+        scene_refs = item.get("scene_refs")
+        if not isinstance(scene_refs, list):
+            scene_refs = []
+        scene_refs = [int(r) for r in scene_refs if isinstance(r, (int, float))]
+
+        db.execute(
+            text("""
+                INSERT INTO production_decisions
+                  (id, script_id, chat_id, decision_type, summary, detail,
+                   scene_refs, created_at, created_by)
+                VALUES
+                  (gen_random_uuid(), :script_id, :chat_id, :decision_type,
+                   :summary, :detail, :scene_refs::jsonb, NOW(), :created_by)
+            """),
+            {
+                "script_id": script_id,
+                "chat_id": chat_id,
+                "decision_type": decision_type,
+                "summary": summary,
+                "detail": detail,
+                "scene_refs": json.dumps(scene_refs),
+                "created_by": "assistant",
+            },
+        )
+        decisions.append({
+            "decision_type": decision_type,
+            "summary": summary,
+            "detail": detail,
+            "scene_refs": scene_refs,
+        })
+
+    if decisions:
+        db.commit()
+
+    return decisions
+
+
+# GET /scripts/{script_id}/decisions
+@router.get("/scripts/{script_id}/decisions", response_model=ProductionDecisionsResponse)
+def get_script_decisions(
+    script_id: str,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    _get_script_and_ensure_access(db, script_id, user_id)
+
+    rows = db.execute(
+        text("""
+            SELECT decision_type, summary, detail, scene_refs, created_at
+            FROM production_decisions
+            WHERE script_id = :script_id
+            ORDER BY created_at ASC
+        """),
+        {"script_id": script_id},
+    ).fetchall()
+
+    grouped: dict = {t: [] for t in ("location", "schedule", "cast", "budget", "creative")}
+    for row in rows:
+        decision_type, summary, detail, scene_refs, created_at = row
+        if decision_type not in grouped:
+            grouped[decision_type] = []
+        grouped[decision_type].append(
+            ProductionDecisionItem(
+                decision_type=decision_type,
+                summary=summary,
+                detail=detail,
+                scene_refs=scene_refs if isinstance(scene_refs, list) else [],
+                created_at=str(created_at) if created_at else None,
+            ).model_dump()
+        )
+
+    return ProductionDecisionsResponse(
+        script_id=script_id,
+        decisions=grouped,
+        total=len(rows),
+    )
 
 
 # DELETE /scripts/{script_id}

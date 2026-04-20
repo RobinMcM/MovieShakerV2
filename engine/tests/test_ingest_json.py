@@ -132,8 +132,7 @@ def test_ingest_two_scenes_populates_correctly(db):
         elements=_two_scene_elements(),
     )
 
-    with patch("scripts._set_scene_characters"), \
-         patch("scripts._get_or_create_chat", return_value="test-chat-id"):
+    with patch("scripts._get_or_create_chat", return_value="test-chat-id"):
         result = scripts_module.ingest_script_json(
             script_id=str(script.id),
             body=body,
@@ -183,8 +182,7 @@ def test_reingest_idempotent_protected_fields_unchanged(db):
         elements=_two_scene_elements(),
     )
 
-    with patch("scripts._set_scene_characters"), \
-         patch("scripts._get_or_create_chat", return_value="chat-1"):
+    with patch("scripts._get_or_create_chat", return_value="chat-1"):
         scripts_module.ingest_script_json(
             script_id=str(script.id),
             body=body,
@@ -224,8 +222,7 @@ def test_reingest_idempotent_protected_fields_unchanged(db):
         ],
     )
 
-    with patch("scripts._set_scene_characters"), \
-         patch("scripts._get_or_create_chat", return_value="chat-1"):
+    with patch("scripts._get_or_create_chat", return_value="chat-1"):
         result = scripts_module.ingest_script_json(
             script_id=str(script.id),
             body=body2,

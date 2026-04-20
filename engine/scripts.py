@@ -1122,48 +1122,46 @@ def ingest_script_json(
         time_of_day = (el.get("time_of_day") or "").strip().lower() or None
         characters = el.get("characters")
 
-        existing = db.exec(
-            select(Scene).where(
-                Scene.script_id == script_uuid,
-                Scene.scene_number == scene_number,
-            )
-        ).first()
-
-        if existing:
-            existing.heading = el.get("text") or existing.heading
-            existing.page_number = str(el.get("page") or existing.page_number or "")
-            existing.length_in_eighths = (
-                el.get("eighths") if el.get("eighths") is not None else existing.length_in_eighths
-            )
-            existing.location_type = el.get("int_ext")
-            existing.scene_location = el.get("location")
-            existing.location_details = el.get("sub_location")
-            if time_of_day:
-                existing.is_night_shoot = (time_of_day == "night")
-                existing.time_of_day_id = time_of_day
-            db.add(existing)
-            db.flush()
-            if characters is not None:
-                _set_scene_characters(db, existing.id, characters)
-        else:
-            scene = Scene(
-                script_id=script_uuid,
-                user_id=user_id,
-                heading=el.get("text") or "",
-                page_number=str(el.get("page") or ""),
-                length_in_eighths=el.get("eighths"),
-                scene_number=scene_number,
-                location_type=el.get("int_ext"),
-                scene_location=el.get("location"),
-                location_details=el.get("sub_location"),
-                is_night_shoot=(time_of_day == "night") if time_of_day else None,
-                time_of_day_id=time_of_day,
-            )
-            db.add(scene)
-            db.flush()
-            if characters is not None:
-                _set_scene_characters(db, scene.id, characters)
-
+        db.execute(
+            text("""
+                INSERT INTO scenes (
+                    id, script_id, user_id, scene_number, heading, page_number,
+                    length_in_eighths, location_type, scene_location,
+                    location_details, is_night_shoot, characters, time_of_day_id
+                )
+                VALUES (
+                    gen_random_uuid(), :script_id, :user_id, :scene_number,
+                    :heading, :page_number, :length_in_eighths, :location_type,
+                    :scene_location, :location_details, :is_night_shoot,
+                    :characters::jsonb, :time_of_day_id
+                )
+                ON CONFLICT (script_id, scene_number)
+                DO UPDATE SET
+                    heading = EXCLUDED.heading,
+                    page_number = EXCLUDED.page_number,
+                    length_in_eighths = EXCLUDED.length_in_eighths,
+                    location_type = EXCLUDED.location_type,
+                    scene_location = EXCLUDED.scene_location,
+                    location_details = EXCLUDED.location_details,
+                    is_night_shoot = EXCLUDED.is_night_shoot,
+                    characters = EXCLUDED.characters,
+                    time_of_day_id = EXCLUDED.time_of_day_id
+            """),
+            {
+                "script_id": str(script_uuid),
+                "user_id": user_id,
+                "scene_number": scene_number,
+                "heading": el.get("text") or "",
+                "page_number": str(el.get("page") or ""),
+                "length_in_eighths": el.get("eighths"),
+                "location_type": el.get("int_ext"),
+                "scene_location": el.get("location"),
+                "location_details": el.get("sub_location"),
+                "is_night_shoot": (time_of_day == "night") if time_of_day else None,
+                "characters": json.dumps(characters) if characters is not None else None,
+                "time_of_day_id": time_of_day,
+            },
+        )
         scenes_upserted += 1
 
     db.commit()

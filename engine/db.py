@@ -236,6 +236,20 @@ def _migrate_chatbot_prompt_config_table():
                 logger.warning("Migration chatbot_prompt_config accent_color: %s", e)
 
 
+def _migrate_scenes_unique_constraint():
+    """Add unique constraint on (script_id, scene_number) required for upsert."""
+    with engine.connect() as conn:
+        with conn.begin():
+            try:
+                conn.execute(text("""
+                    ALTER TABLE scenes
+                    ADD CONSTRAINT scenes_script_scene_unique
+                    UNIQUE (script_id, scene_number)
+                """))
+            except Exception as e:
+                logger.warning("Migration scenes_script_scene_unique: %s", e)
+
+
 def _create_script_chats_table():
     """Create script_chats table if it doesn't exist."""
     with engine.connect() as conn:
@@ -371,6 +385,7 @@ def init_db():
     _migrate_characters_objects_fields()
     _migrate_email_tracking_tables()
     _migrate_chatbot_prompt_config_table()
+    _migrate_scenes_unique_constraint()
     _create_script_chats_table()
     _create_script_analysis_table()
     _create_production_decisions_table()

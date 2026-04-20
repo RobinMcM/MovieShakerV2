@@ -1110,6 +1110,7 @@ def ingest_script_json(
 
     script = _get_script_and_ensure_access(db, script_id, user_id)
     script_uuid = script.id
+    db.expunge_all()
     scenes_upserted = 0
 
     for el in body.elements:

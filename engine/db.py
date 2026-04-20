@@ -399,8 +399,8 @@ def init_db():
         EmailSendLog,
         EmailWebhookEvent,
     )
-    _drop_all_foreign_key_constraints()
     SQLModel.metadata.create_all(engine)
+    _drop_all_foreign_key_constraints()
     _migrate_user_profile_email_verified()
     _migrate_user_profile_roles()
     _migrate_user_profile_drop_admin()

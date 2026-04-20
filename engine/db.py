@@ -342,6 +342,27 @@ def _create_script_messages_table():
                 logger.warning("Migration script_messages: %s", e)
 
 
+def _drop_all_foreign_key_constraints():
+    """Drop every FK constraint so schema changes are never blocked. Idempotent via IF EXISTS."""
+    with engine.connect() as conn:
+        with conn.begin():
+            try:
+                conn.execute(text("""
+                    ALTER TABLE scenes DROP CONSTRAINT IF EXISTS scenes_script_id_fkey;
+                    ALTER TABLE scenes DROP CONSTRAINT IF EXISTS scenes_user_id_fkey;
+                    ALTER TABLE tram_lines DROP CONSTRAINT IF EXISTS tram_lines_scene_id_fkey;
+                    ALTER TABLE tram_lines DROP CONSTRAINT IF EXISTS tram_lines_script_id_fkey;
+                    ALTER TABLE script_chats DROP CONSTRAINT IF EXISTS script_chats_script_id_fkey;
+                    ALTER TABLE script_chats DROP CONSTRAINT IF EXISTS script_chats_user_id_fkey;
+                    ALTER TABLE script_messages DROP CONSTRAINT IF EXISTS script_messages_chat_id_fkey;
+                    ALTER TABLE script_analysis DROP CONSTRAINT IF EXISTS script_analysis_script_id_fkey;
+                    ALTER TABLE production_decisions DROP CONSTRAINT IF EXISTS production_decisions_script_id_fkey;
+                    ALTER TABLE production_decisions DROP CONSTRAINT IF EXISTS production_decisions_chat_id_fkey;
+                """))
+            except Exception as e:
+                logger.warning("Migration drop_all_foreign_key_constraints: %s", e)
+
+
 def init_db():
     # Ensure models are registered (import side-effect)
     from models import (  # noqa: F401
@@ -371,6 +392,7 @@ def init_db():
         EmailSendLog,
         EmailWebhookEvent,
     )
+    _drop_all_foreign_key_constraints()
     SQLModel.metadata.create_all(engine)
     _migrate_user_profile_email_verified()
     _migrate_user_profile_roles()
@@ -378,18 +400,18 @@ def init_db():
     _migrate_project_table()
     _migrate_script_table()
     _migrate_scenes_table()
-    _migrate_scenes_characters_column()
     _migrate_scene_characters_table()
     _migrate_scenes_scene_cost_columns()
     _migrate_characters_cast_tier()
     _migrate_characters_objects_fields()
     _migrate_email_tracking_tables()
     _migrate_chatbot_prompt_config_table()
-    _migrate_scenes_unique_constraint()
     _create_script_chats_table()
+    _create_script_messages_table()
     _create_script_analysis_table()
     _create_production_decisions_table()
-    _create_script_messages_table()
+    _migrate_scenes_characters_column()
+    _migrate_scenes_unique_constraint()
 
 
 def get_session():

@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from sqlalchemy import text
 from fastapi.responses import FileResponse, Response
 from sqlmodel import Session, select, update
 from pydantic import BaseModel
@@ -1024,6 +1025,236 @@ def parse_script(
             "schema_version": doc.get("schema_version"),
         },
     }
+
+
+# ── ingest-json models and helpers ───────────────────────────────────────────
+
+class IngestJsonBody(BaseModel):
+    schema_version: str
+    elements: List[dict]
+    metadata: Optional[dict] = None
+
+
+class IngestJsonResponse(BaseModel):
+    script_id: str
+    chat_id: str
+    scenes_upserted: int
+
+
+class SceneIndexItem(BaseModel):
+    id: str
+    scene_number: Optional[int] = None
+    heading: str
+    page_number: str
+    length_in_eighths: Optional[int] = None
+    location_type: Optional[str] = None
+    scene_location: Optional[str] = None
+    location_details: Optional[str] = None
+    is_night_shoot: Optional[bool] = None
+    has_stunts: Optional[bool] = None
+    has_vfx: Optional[bool] = None
+    characters: Optional[list] = None
+    shooting_day: Optional[str] = None
+    time_of_day_id: Optional[str] = None
+
+
+class SceneIndexResponse(BaseModel):
+    scenes: List[SceneIndexItem]
+
+
+class SceneElementsResponse(BaseModel):
+    scene_number: int
+    elements: List[dict]
+
+
+def _get_or_create_chat(db: Session, script_id: uuid.UUID, user_id: str) -> str:
+    """Return chat_id for script, creating a script_chats row if none exists."""
+    result = db.execute(
+        text("SELECT id FROM script_chats WHERE script_id = :script_id LIMIT 1"),
+        {"script_id": str(script_id)},
+    ).first()
+    if result:
+        return str(result[0])
+    row = db.execute(
+        text(
+            "INSERT INTO script_chats (id, script_id, user_id) "
+            "VALUES (gen_random_uuid(), :script_id, :user_id) "
+            "RETURNING id"
+        ),
+        {"script_id": str(script_id), "user_id": user_id},
+    ).first()
+    db.commit()
+    return str(row[0])
+
+
+def _set_scene_characters(db: Session, scene_id: uuid.UUID, characters: list) -> None:
+    """Write characters list into the JSONB column (not tracked by SQLModel)."""
+    db.execute(
+        text("UPDATE scenes SET characters = :chars WHERE id = :id"),
+        {"chars": json.dumps(characters), "id": str(scene_id)},
+    )
+
+
+# POST /scripts/{script_id}/ingest-json
+@router.post("/scripts/{script_id}/ingest-json", response_model=IngestJsonResponse)
+def ingest_script_json(
+    script_id: str,
+    body: IngestJsonBody,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+
+    if body.schema_version != "2.0":
+        raise HTTPException(status_code=400, detail="schema_version must be '2.0'")
+
+    script = _get_script_and_ensure_access(db, script_id, user_id)
+    script_uuid = script.id
+    scenes_upserted = 0
+
+    for el in body.elements:
+        if el.get("type") != "scene_heading":
+            continue
+        scene_number = el.get("scene_number")
+        if scene_number is None:
+            continue
+
+        time_of_day = (el.get("time_of_day") or "").strip().lower() or None
+        characters = el.get("characters")
+
+        existing = db.exec(
+            select(Scene).where(
+                Scene.script_id == script_uuid,
+                Scene.scene_number == scene_number,
+            )
+        ).first()
+
+        if existing:
+            existing.heading = el.get("text") or existing.heading
+            existing.page_number = str(el.get("page") or existing.page_number or "")
+            existing.length_in_eighths = (
+                el.get("eighths") if el.get("eighths") is not None else existing.length_in_eighths
+            )
+            existing.location_type = el.get("int_ext")
+            existing.scene_location = el.get("location")
+            existing.location_details = el.get("sub_location")
+            if time_of_day:
+                existing.is_night_shoot = (time_of_day == "night")
+                existing.time_of_day_id = time_of_day
+            db.add(existing)
+            db.flush()
+            if characters is not None:
+                _set_scene_characters(db, existing.id, characters)
+        else:
+            scene = Scene(
+                script_id=script_uuid,
+                user_id=user_id,
+                heading=el.get("text") or "",
+                page_number=str(el.get("page") or ""),
+                length_in_eighths=el.get("eighths"),
+                scene_number=scene_number,
+                location_type=el.get("int_ext"),
+                scene_location=el.get("location"),
+                location_details=el.get("sub_location"),
+                is_night_shoot=(time_of_day == "night") if time_of_day else None,
+                time_of_day_id=time_of_day,
+            )
+            db.add(scene)
+            db.flush()
+            if characters is not None:
+                _set_scene_characters(db, scene.id, characters)
+
+        scenes_upserted += 1
+
+    db.commit()
+    chat_id = _get_or_create_chat(db, script_uuid, user_id)
+
+    return IngestJsonResponse(
+        script_id=str(script_uuid),
+        chat_id=chat_id,
+        scenes_upserted=scenes_upserted,
+    )
+
+
+# GET /scripts/{script_id}/scenes/index
+@router.get("/scripts/{script_id}/scenes/index", response_model=SceneIndexResponse)
+def get_script_scenes_index(
+    script_id: str,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    _get_script_and_ensure_access(db, script_id, user_id)
+    rows = db.execute(
+        text("""
+            SELECT id, scene_number, heading, page_number, length_in_eighths,
+                   location_type, scene_location, location_details, is_night_shoot,
+                   has_stunts, has_vfx, characters, shooting_day, time_of_day_id
+            FROM scenes
+            WHERE script_id = :script_id
+            ORDER BY scene_number ASC
+        """),
+        {"script_id": str(uuid.UUID(script_id))},
+    ).fetchall()
+    data = [
+        SceneIndexItem(
+            id=str(row[0]),
+            scene_number=row[1],
+            heading=row[2] or "",
+            page_number=row[3] or "",
+            length_in_eighths=row[4],
+            location_type=row[5],
+            scene_location=row[6],
+            location_details=row[7],
+            is_night_shoot=row[8],
+            has_stunts=row[9],
+            has_vfx=row[10],
+            characters=row[11],
+            shooting_day=row[12],
+            time_of_day_id=row[13],
+        )
+        for row in rows
+    ]
+    return SceneIndexResponse(scenes=data)
+
+
+# GET /scripts/{script_id}/scenes/{scene_number}/elements
+@router.get(
+    "/scripts/{script_id}/scenes/{scene_number}/elements",
+    response_model=SceneElementsResponse,
+)
+def get_scene_elements(
+    script_id: str,
+    scene_number: int,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    script = _get_script_and_ensure_access(db, script_id, user_id)
+
+    parsed = _read_script_json(script)
+    if parsed is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Script JSON not found. Parse the script first.",
+        )
+
+    elements, _ = parsed
+    scene_elements: List[dict] = []
+    in_scene = False
+    for el in elements:
+        if el.get("type") == "scene_heading":
+            if el.get("scene_number") == scene_number:
+                in_scene = True
+            elif in_scene:
+                break
+        if in_scene:
+            scene_elements.append(el)
+
+    if not scene_elements:
+        raise HTTPException(status_code=404, detail="Scene not found")
+
+    return SceneElementsResponse(scene_number=scene_number, elements=scene_elements)
 
 
 # DELETE /scripts/{script_id}

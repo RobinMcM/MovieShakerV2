@@ -119,6 +119,21 @@ def _migrate_scenes_table():
                     logger.warning("Migration scenes %s: %s", col, e)
 
 
+def _migrate_scenes_characters_column():
+    """Add characters JSONB column to scenes table if missing."""
+    with engine.connect() as conn:
+        with conn.begin():
+            try:
+                conn.execute(
+                    text(
+                        "ALTER TABLE scenes "
+                        "ADD COLUMN IF NOT EXISTS characters JSONB DEFAULT '[]'"
+                    )
+                )
+            except Exception as e:
+                logger.warning("Migration scenes characters: %s", e)
+
+
 def _migrate_scene_characters_table():
     """Add status, notes to scene_characters table if missing."""
     with engine.connect() as conn:
@@ -221,6 +236,98 @@ def _migrate_chatbot_prompt_config_table():
                 logger.warning("Migration chatbot_prompt_config accent_color: %s", e)
 
 
+def _create_script_chats_table():
+    """Create script_chats table if it doesn't exist."""
+    with engine.connect() as conn:
+        with conn.begin():
+            try:
+                conn.execute(
+                    text(
+                        "CREATE TABLE IF NOT EXISTS script_chats ("
+                        "id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "
+                        "script_id UUID NOT NULL REFERENCES scripts(id) ON DELETE CASCADE, "
+                        "user_id TEXT NOT NULL, "
+                        "created_at TIMESTAMPTZ DEFAULT NOW(), "
+                        "updated_at TIMESTAMPTZ DEFAULT NOW()"
+                        ")"
+                    )
+                )
+            except Exception as e:
+                logger.warning("Migration script_chats: %s", e)
+
+
+def _create_script_analysis_table():
+    """Create script_analysis table if it doesn't exist."""
+    with engine.connect() as conn:
+        with conn.begin():
+            try:
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS script_analysis (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        script_id UUID NOT NULL UNIQUE REFERENCES scripts(id)
+                            ON DELETE CASCADE,
+                        act_structure JSONB,
+                        location_map JSONB,
+                        cast_summary JSONB,
+                        risk_scores JSONB,
+                        production_metrics JSONB,
+                        raw_analysis TEXT,
+                        analysed_at TIMESTAMPTZ DEFAULT NOW(),
+                        model_used VARCHAR(100)
+                    )
+                """))
+            except Exception as e:
+                logger.warning("Migration script_analysis: %s", e)
+
+
+# decision_type valid values: location, schedule, cast, budget, creative
+def _create_production_decisions_table():
+    """Create production_decisions table and index if they don't exist."""
+    with engine.connect() as conn:
+        with conn.begin():
+            try:
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS production_decisions (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        script_id UUID NOT NULL REFERENCES scripts(id) ON DELETE CASCADE,
+                        chat_id UUID REFERENCES script_chats(id) ON DELETE SET NULL,
+                        decision_type VARCHAR(50) NOT NULL,
+                        summary TEXT NOT NULL,
+                        detail TEXT,
+                        scene_refs JSONB,
+                        created_at TIMESTAMPTZ DEFAULT NOW(),
+                        created_by TEXT NOT NULL
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_production_decisions_script_id
+                    ON production_decisions(script_id);
+                """))
+            except Exception as e:
+                logger.warning("Migration production_decisions: %s", e)
+
+
+def _create_script_messages_table():
+    """Create script_messages table if it doesn't exist."""
+    with engine.connect() as conn:
+        with conn.begin():
+            try:
+                conn.execute(
+                    text(
+                        "CREATE TABLE IF NOT EXISTS script_messages ("
+                        "id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "
+                        "chat_id UUID NOT NULL REFERENCES script_chats(id) ON DELETE CASCADE, "
+                        "role VARCHAR(20) NOT NULL CHECK (role IN ('user', 'assistant')), "
+                        "content TEXT NOT NULL, "
+                        "scene_refs JSONB, "
+                        "model_used VARCHAR(100), "
+                        "created_at TIMESTAMPTZ DEFAULT NOW()"
+                        ")"
+                    )
+                )
+            except Exception as e:
+                logger.warning("Migration script_messages: %s", e)
+
+
 def init_db():
     # Ensure models are registered (import side-effect)
     from models import (  # noqa: F401
@@ -257,12 +364,17 @@ def init_db():
     _migrate_project_table()
     _migrate_script_table()
     _migrate_scenes_table()
+    _migrate_scenes_characters_column()
     _migrate_scene_characters_table()
     _migrate_scenes_scene_cost_columns()
     _migrate_characters_cast_tier()
     _migrate_characters_objects_fields()
     _migrate_email_tracking_tables()
     _migrate_chatbot_prompt_config_table()
+    _create_script_chats_table()
+    _create_script_analysis_table()
+    _create_production_decisions_table()
+    _create_script_messages_table()
 
 
 def get_session():

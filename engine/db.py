@@ -242,9 +242,17 @@ def _migrate_scenes_unique_constraint():
         with conn.begin():
             try:
                 conn.execute(text("""
-                    ALTER TABLE scenes
-                    ADD CONSTRAINT scenes_script_scene_unique
-                    UNIQUE (script_id, scene_number)
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM pg_constraint
+                            WHERE conname = 'scenes_script_scene_unique'
+                        ) THEN
+                            ALTER TABLE scenes
+                            ADD CONSTRAINT scenes_script_scene_unique
+                            UNIQUE (script_id, scene_number);
+                        END IF;
+                    END$$;
                 """))
             except Exception as e:
                 logger.warning("Migration scenes_script_scene_unique: %s", e)
@@ -259,7 +267,7 @@ def _create_script_chats_table():
                     text(
                         "CREATE TABLE IF NOT EXISTS script_chats ("
                         "id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "
-                        "script_id UUID NOT NULL REFERENCES scripts(id) ON DELETE CASCADE, "
+                        "script_id UUID NOT NULL, "
                         "user_id TEXT NOT NULL, "
                         "created_at TIMESTAMPTZ DEFAULT NOW(), "
                         "updated_at TIMESTAMPTZ DEFAULT NOW()"
@@ -278,8 +286,7 @@ def _create_script_analysis_table():
                 conn.execute(text("""
                     CREATE TABLE IF NOT EXISTS script_analysis (
                         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                        script_id UUID NOT NULL UNIQUE REFERENCES scripts(id)
-                            ON DELETE CASCADE,
+                        script_id UUID NOT NULL UNIQUE,
                         act_structure JSONB,
                         location_map JSONB,
                         cast_summary JSONB,
@@ -303,8 +310,8 @@ def _create_production_decisions_table():
                 conn.execute(text("""
                     CREATE TABLE IF NOT EXISTS production_decisions (
                         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                        script_id UUID NOT NULL REFERENCES scripts(id) ON DELETE CASCADE,
-                        chat_id UUID REFERENCES script_chats(id) ON DELETE SET NULL,
+                        script_id UUID NOT NULL,
+                        chat_id UUID,
                         decision_type VARCHAR(50) NOT NULL,
                         summary TEXT NOT NULL,
                         detail TEXT,
@@ -329,7 +336,7 @@ def _create_script_messages_table():
                     text(
                         "CREATE TABLE IF NOT EXISTS script_messages ("
                         "id UUID PRIMARY KEY DEFAULT gen_random_uuid(), "
-                        "chat_id UUID NOT NULL REFERENCES script_chats(id) ON DELETE CASCADE, "
+                        "chat_id UUID NOT NULL, "
                         "role VARCHAR(20) NOT NULL CHECK (role IN ('user', 'assistant')), "
                         "content TEXT NOT NULL, "
                         "scene_refs JSONB, "

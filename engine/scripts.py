@@ -6,18 +6,21 @@ Valkey cache: scripts:list:{project_id}, scripts:stats:{script_id}
 """
 import io
 import json
+import logging
 import re
 import uuid
 from datetime import datetime
 from typing import List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, Response
 from sqlalchemy import text
-from fastapi.responses import FileResponse, Response
 from sqlmodel import Session, select, update
 from pydantic import BaseModel
 
+from config import load_settings
 from db import get_session
+from gateway_client import GatewayClient, GatewayClientError
 from models import Character, Project, ProjectMember, Scene, SceneCharacter, Script
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
@@ -44,8 +47,83 @@ from script_parser import (
     parse_pdf, parse_json_v1, document_to_bytes,
     derive_db_data, ParseError,
 )
+from scripts.analysis import compute_production_metrics
+from scripts.prompts.analysis import ANALYSIS_SYSTEM_PROMPT, build_analysis_user_prompt
+
+logger = logging.getLogger(__name__)
+settings = load_settings()
+
+ANALYSIS_MODEL = "anthropic/claude-3.5-sonnet"
+_ANALYSIS_LOCK_TTL = 120
 
 router = APIRouter(tags=["scripts"])
+
+
+def _gateway_client() -> GatewayClient:
+    return GatewayClient(
+        base_url=settings.gateway_base_url,
+        api_key=settings.gateway_internal_api_key,
+        timeout_seconds=settings.gateway_timeout_seconds,
+        verify_tls=settings.gateway_verify_tls,
+    )
+
+
+def _extract_text_from_gateway(response: dict) -> str:
+    if not isinstance(response, dict):
+        return ""
+    result_block = response.get("result")
+    if isinstance(result_block, dict):
+        choices = result_block.get("choices")
+        if isinstance(choices, list) and choices:
+            first = choices[0]
+            if isinstance(first, dict):
+                message = first.get("message")
+                if isinstance(message, dict):
+                    content = message.get("content")
+                    if isinstance(content, str) and content.strip():
+                        return content.strip()
+                text_val = first.get("text")
+                if isinstance(text_val, str) and text_val.strip():
+                    return text_val.strip()
+    for key in ("text", "result", "output", "content", "message"):
+        value = response.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _extract_json_block(raw: str) -> Optional[dict]:
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start >= 0 and end > start:
+        snippet = raw[start : end + 1]
+        try:
+            parsed = json.loads(snippet)
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            return None
+    return None
+
+
+class ScriptAnalysisResponse(BaseModel):
+    script_id: str
+    act_structure: Optional[dict] = None
+    location_map: Optional[dict] = None
+    cast_summary: Optional[dict] = None
+    risk_scores: Optional[dict] = None
+    production_metrics: Optional[dict] = None
+    raw_analysis: Optional[str] = None
+    analysed_at: Optional[datetime] = None
+    model_used: Optional[str] = None
 
 
 class ScriptResponse(BaseModel):
@@ -1095,11 +1173,87 @@ def _set_scene_characters(db: Session, scene_id: uuid.UUID, characters: list) ->
     )
 
 
+def _run_analysis(script_id: str, db: Session) -> Optional[dict]:
+    """Run the full script analysis pass. Returns None if a run is already in progress."""
+    lock_key = f"analysis_running:{script_id}"
+    if cache_get(lock_key):
+        return None
+    cache_set(lock_key, "1", ttl_seconds=_ANALYSIS_LOCK_TTL)
+    try:
+        context = compute_production_metrics(script_id, db)
+        user_prompt = build_analysis_user_prompt(context)
+        messages = [
+            {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ]
+        gateway_response = _gateway_client().execute_text(
+            model=ANALYSIS_MODEL,
+            messages=messages,
+        )
+        raw_text = _extract_text_from_gateway(gateway_response)
+        parsed = _extract_json_block(raw_text)
+        if parsed is None:
+            logger.warning("Script analysis for %s returned unparseable JSON: %s", script_id, raw_text[:200])
+            return None
+
+        db.execute(
+            text("""
+                INSERT INTO script_analysis (
+                    id, script_id, act_structure, location_map, cast_summary,
+                    risk_scores, production_metrics, raw_analysis,
+                    analysed_at, model_used
+                )
+                VALUES (
+                    gen_random_uuid(), :script_id,
+                    :act_structure::jsonb, :location_map::jsonb,
+                    :cast_summary::jsonb, :risk_scores::jsonb,
+                    :production_metrics::jsonb, :raw_analysis,
+                    NOW(), :model_used
+                )
+                ON CONFLICT (script_id) DO UPDATE SET
+                    act_structure = EXCLUDED.act_structure,
+                    location_map = EXCLUDED.location_map,
+                    cast_summary = EXCLUDED.cast_summary,
+                    risk_scores = EXCLUDED.risk_scores,
+                    production_metrics = EXCLUDED.production_metrics,
+                    raw_analysis = EXCLUDED.raw_analysis,
+                    analysed_at = NOW(),
+                    model_used = EXCLUDED.model_used
+            """),
+            {
+                "script_id": script_id,
+                "act_structure": json.dumps(parsed.get("act_structure")),
+                "location_map": json.dumps(parsed.get("location_map")),
+                "cast_summary": json.dumps(parsed.get("cast_summary")),
+                "risk_scores": json.dumps(parsed.get("risk_scores")),
+                "production_metrics": json.dumps(parsed.get("production_metrics")),
+                "raw_analysis": raw_text,
+                "model_used": ANALYSIS_MODEL,
+            },
+        )
+        db.commit()
+
+        row = db.execute(
+            text("SELECT * FROM script_analysis WHERE script_id = :script_id"),
+            {"script_id": script_id},
+        ).first()
+        return dict(row._mapping) if row else None
+    except GatewayClientError as exc:
+        logger.warning("Script analysis gateway error for %s: %s", script_id, exc)
+        return None
+    except Exception as exc:
+        logger.exception("Script analysis unexpected error for %s: %s", script_id, exc)
+        return None
+    finally:
+        cache_delete(lock_key)
+
+
 # POST /scripts/{script_id}/ingest-json
 @router.post("/scripts/{script_id}/ingest-json", response_model=IngestJsonResponse)
 def ingest_script_json(
     script_id: str,
     body: IngestJsonBody,
+    background_tasks: BackgroundTasks,
     session: SessionContainer = Depends(verify_session()),
     db: Session = Depends(get_session),
 ):
@@ -1121,7 +1275,18 @@ def ingest_script_json(
             continue
 
         time_of_day = (el.get("time_of_day") or "").strip().lower() or None
-        characters = el.get("characters")
+        raw_characters = el.get("characters")
+        if isinstance(raw_characters, list):
+            characters = [
+                {
+                    "name": c.get("name", c) if isinstance(c, dict) else str(c),
+                    "character_type": c.get("character_type", "supporting") if isinstance(c, dict) else "supporting",
+                    "scene_function": c.get("scene_function", "") if isinstance(c, dict) else "",
+                }
+                for c in raw_characters
+            ]
+        else:
+            characters = None
 
         db.execute(
             text("""
@@ -1159,7 +1324,7 @@ def ingest_script_json(
                 "scene_location": el.get("location"),
                 "location_details": el.get("sub_location"),
                 "is_night_shoot": (time_of_day == "night") if time_of_day else None,
-                "characters": json.dumps(characters) if characters is not None else None,
+                "characters": json.dumps(characters),
                 "time_of_day_id": time_of_day,
             },
         )
@@ -1167,11 +1332,76 @@ def ingest_script_json(
 
     db.commit()
     chat_id = _get_or_create_chat(db, script_uuid, user_id)
+    background_tasks.add_task(_run_analysis, str(script_uuid), db)
 
     return IngestJsonResponse(
         script_id=str(script_uuid),
         chat_id=chat_id,
         scenes_upserted=scenes_upserted,
+    )
+
+
+# POST /scripts/{script_id}/analyse
+@router.post("/scripts/{script_id}/analyse", response_model=ScriptAnalysisResponse)
+def analyse_script(
+    script_id: str,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    _get_script_and_ensure_access(db, script_id, user_id)
+    db.expunge_all()
+
+    lock_key = f"analysis_running:{script_id}"
+    if cache_get(lock_key):
+        return JSONResponse(status_code=202, content={"status": "already_running"})
+
+    result = _run_analysis(script_id, db)
+    if result is None:
+        return JSONResponse(status_code=202, content={"status": "already_running"})
+
+    return ScriptAnalysisResponse(
+        script_id=str(result.get("script_id") or script_id),
+        act_structure=result.get("act_structure"),
+        location_map=result.get("location_map"),
+        cast_summary=result.get("cast_summary"),
+        risk_scores=result.get("risk_scores"),
+        production_metrics=result.get("production_metrics"),
+        raw_analysis=result.get("raw_analysis"),
+        analysed_at=result.get("analysed_at"),
+        model_used=result.get("model_used"),
+    )
+
+
+# GET /scripts/{script_id}/analysis
+@router.get("/scripts/{script_id}/analysis", response_model=ScriptAnalysisResponse)
+def get_script_analysis(
+    script_id: str,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    _get_script_and_ensure_access(db, script_id, user_id)
+    db.expunge_all()
+
+    row = db.execute(
+        text("SELECT * FROM script_analysis WHERE script_id = :script_id"),
+        {"script_id": script_id},
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="No analysis found. Run POST /analyse first.")
+
+    r = dict(row._mapping)
+    return ScriptAnalysisResponse(
+        script_id=str(r.get("script_id") or script_id),
+        act_structure=r.get("act_structure"),
+        location_map=r.get("location_map"),
+        cast_summary=r.get("cast_summary"),
+        risk_scores=r.get("risk_scores"),
+        production_metrics=r.get("production_metrics"),
+        raw_analysis=r.get("raw_analysis"),
+        analysed_at=r.get("analysed_at"),
+        model_used=r.get("model_used"),
     )
 
 

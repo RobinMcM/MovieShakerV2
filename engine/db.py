@@ -350,24 +350,26 @@ def _create_script_messages_table():
 
 
 def _drop_all_foreign_key_constraints():
-    """Drop every FK constraint so schema changes are never blocked. Idempotent via IF EXISTS."""
-    with engine.connect() as conn:
-        with conn.begin():
-            try:
-                conn.execute(text("""
-                    ALTER TABLE scenes DROP CONSTRAINT IF EXISTS scenes_script_id_fkey;
-                    ALTER TABLE scenes DROP CONSTRAINT IF EXISTS scenes_user_id_fkey;
-                    ALTER TABLE tram_lines DROP CONSTRAINT IF EXISTS tram_lines_scene_id_fkey;
-                    ALTER TABLE tram_lines DROP CONSTRAINT IF EXISTS tram_lines_script_id_fkey;
-                    ALTER TABLE script_chats DROP CONSTRAINT IF EXISTS script_chats_script_id_fkey;
-                    ALTER TABLE script_chats DROP CONSTRAINT IF EXISTS script_chats_user_id_fkey;
-                    ALTER TABLE script_messages DROP CONSTRAINT IF EXISTS script_messages_chat_id_fkey;
-                    ALTER TABLE script_analysis DROP CONSTRAINT IF EXISTS script_analysis_script_id_fkey;
-                    ALTER TABLE production_decisions DROP CONSTRAINT IF EXISTS production_decisions_script_id_fkey;
-                    ALTER TABLE production_decisions DROP CONSTRAINT IF EXISTS production_decisions_chat_id_fkey;
-                """))
-            except Exception as e:
-                logger.warning("Migration drop_all_foreign_key_constraints: %s", e)
+    """Drop all FK constraints individually so each is independent."""
+    constraints = [
+        "ALTER TABLE scenes DROP CONSTRAINT IF EXISTS scenes_script_id_fkey",
+        "ALTER TABLE scenes DROP CONSTRAINT IF EXISTS scenes_user_id_fkey",
+        "ALTER TABLE tram_lines DROP CONSTRAINT IF EXISTS tram_lines_scene_id_fkey",
+        "ALTER TABLE tram_lines DROP CONSTRAINT IF EXISTS tram_lines_script_id_fkey",
+        "ALTER TABLE script_chats DROP CONSTRAINT IF EXISTS script_chats_script_id_fkey",
+        "ALTER TABLE script_chats DROP CONSTRAINT IF EXISTS script_chats_user_id_fkey",
+        "ALTER TABLE script_messages DROP CONSTRAINT IF EXISTS script_messages_chat_id_fkey",
+        "ALTER TABLE script_analysis DROP CONSTRAINT IF EXISTS script_analysis_script_id_fkey",
+        "ALTER TABLE production_decisions DROP CONSTRAINT IF EXISTS production_decisions_script_id_fkey",
+        "ALTER TABLE production_decisions DROP CONSTRAINT IF EXISTS production_decisions_chat_id_fkey",
+    ]
+    for sql in constraints:
+        with engine.connect() as conn:
+            with conn.begin():
+                try:
+                    conn.execute(text(sql))
+                except Exception as e:
+                    logger.warning("Drop constraint skipped: %s", e)
 
 
 def init_db():

@@ -94,13 +94,14 @@ def _two_scene_elements():
 # ─── (c) schema_version validation ───────────────────────────────────────────
 
 def test_wrong_schema_version_returns_400():
-    import scripts as scripts_module
+    import scripts.router as scripts_module
 
     body = scripts_module.IngestJsonBody(schema_version="1.0", elements=[])
     with pytest.raises(HTTPException) as exc_info:
         scripts_module.ingest_script_json(
             script_id=str(uuid.uuid4()),
             body=body,
+            background_tasks=MagicMock(),
             session=_mock_auth(),
             db=MagicMock(),
         )
@@ -108,13 +109,14 @@ def test_wrong_schema_version_returns_400():
 
 
 def test_empty_schema_version_returns_400():
-    import scripts as scripts_module
+    import scripts.router as scripts_module
 
     body = scripts_module.IngestJsonBody(schema_version="", elements=[])
     with pytest.raises(HTTPException) as exc_info:
         scripts_module.ingest_script_json(
             script_id=str(uuid.uuid4()),
             body=body,
+            background_tasks=MagicMock(),
             session=_mock_auth(),
             db=MagicMock(),
         )
@@ -124,7 +126,7 @@ def test_empty_schema_version_returns_400():
 # ─── (a) valid ingest with 2 scene headings ──────────────────────────────────
 
 def test_ingest_two_scenes_populates_correctly(db):
-    import scripts as scripts_module
+    import scripts.router as scripts_module
 
     script = _seed_script(db)
     body = scripts_module.IngestJsonBody(
@@ -132,10 +134,11 @@ def test_ingest_two_scenes_populates_correctly(db):
         elements=_two_scene_elements(),
     )
 
-    with patch("scripts._get_or_create_chat", return_value="test-chat-id"):
+    with patch("scripts.router._get_or_create_chat", return_value="test-chat-id"):
         result = scripts_module.ingest_script_json(
             script_id=str(script.id),
             body=body,
+            background_tasks=MagicMock(),
             session=_mock_auth(script.user_id),
             db=db,
         )
@@ -174,7 +177,7 @@ def test_ingest_two_scenes_populates_correctly(db):
 # ─── (b) re-ingest is idempotent; protected fields unchanged ─────────────────
 
 def test_reingest_idempotent_protected_fields_unchanged(db):
-    import scripts as scripts_module
+    import scripts.router as scripts_module
 
     script = _seed_script(db)
     body = scripts_module.IngestJsonBody(
@@ -182,10 +185,11 @@ def test_reingest_idempotent_protected_fields_unchanged(db):
         elements=_two_scene_elements(),
     )
 
-    with patch("scripts._get_or_create_chat", return_value="chat-1"):
+    with patch("scripts.router._get_or_create_chat", return_value="chat-1"):
         scripts_module.ingest_script_json(
             script_id=str(script.id),
             body=body,
+            background_tasks=MagicMock(),
             session=_mock_auth(script.user_id),
             db=db,
         )
@@ -222,10 +226,11 @@ def test_reingest_idempotent_protected_fields_unchanged(db):
         ],
     )
 
-    with patch("scripts._get_or_create_chat", return_value="chat-1"):
+    with patch("scripts.router._get_or_create_chat", return_value="chat-1"):
         result = scripts_module.ingest_script_json(
             script_id=str(script.id),
             body=body2,
+            background_tasks=MagicMock(),
             session=_mock_auth(script.user_id),
             db=db,
         )

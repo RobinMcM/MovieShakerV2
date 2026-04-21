@@ -26,6 +26,7 @@ export interface ScriptChatProps {
     initialChatId?: string;
     onAfterResponse?: () => void;
     ref?: Ref<ScriptChatHandle>;
+    embedded?: boolean;
 }
 
 interface ChatApiResponse {
@@ -138,7 +139,7 @@ function MessageBubble({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function ScriptChat({ scriptId, initialChatId, onAfterResponse, ref }: ScriptChatProps) {
+export function ScriptChat({ scriptId, initialChatId, onAfterResponse, ref, embedded: _embedded }: ScriptChatProps) {
     const router = useRouter();
     const pathname = usePathname();
 

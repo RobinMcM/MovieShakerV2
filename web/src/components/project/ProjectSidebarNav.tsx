@@ -3,206 +3,265 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDown, ChevronRight, FileText, FolderKanban, Home, Upload } from "lucide-react";
+import { Bot, ChevronDown, ChevronRight, FileText, FolderKanban, Home, Upload } from "lucide-react";
 import {
-  PROJECT_ASSISTANT_NAV,
-  PROJECT_EXTERNAL_NAV,
-  PROJECT_TOOL_NAV,
+    PROJECT_ASSISTANT_NAV,
+    PROJECT_EXTERNAL_NAV,
+    PROJECT_TOOL_NAV,
 } from "@/app/project/[projectId]/projectNav";
 import { cn } from "@/lib/utils";
+import { CoProducerModal } from "@/components/CoProducerModal";
 
 interface ScriptItem {
-  id: string;
-  name: string;
-  is_current: boolean;
+    id: string;
+    name: string;
+    is_current: boolean;
 }
 
 interface ProjectSidebarNavProps {
-  projectId: string;
-  scripts: ScriptItem[];
-  scriptsLoading?: boolean;
+    projectId: string;
+    scripts: ScriptItem[];
+    scriptsLoading?: boolean;
+    aiCredits: number | null;
+    coproducerOpen: boolean;
+    onCoproducerToggle: () => void;
 }
 
 export function ProjectSidebarNav({
-  projectId,
-  scripts,
-  scriptsLoading = false,
+    projectId,
+    scripts,
+    scriptsLoading = false,
+    aiCredits,
+    coproducerOpen,
+    onCoproducerToggle,
 }: ProjectSidebarNavProps) {
-  const pathname = usePathname();
-  const [scriptsExpanded, setScriptsExpanded] = useState(true);
+    const pathname = usePathname();
+    const [scriptsExpanded, setScriptsExpanded] = useState(true);
+    const [modalOpen, setModalOpen] = useState(false);
 
-  const scriptLinks = useMemo(
-    () => scripts.slice(0, 8).map((s) => ({ ...s, href: `/project/${projectId}/script/${s.id}` })),
-    [scripts, projectId]
-  );
+    const scriptLinks = useMemo(
+        () =>
+            scripts
+                .slice(0, 8)
+                .map((s) => ({ ...s, href: `/project/${projectId}/script/${s.id}` })),
+        [scripts, projectId]
+    );
 
-  return (
-    <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-64 border-r bg-background/95 backdrop-blur z-40">
-      <div className="w-full pt-5 pb-4 px-3 overflow-y-auto">
-        <div className="flex items-center gap-2 px-2 mb-4">
-          <FolderKanban className="h-5 w-5 text-primary" />
-          <h2 className="text-sm font-semibold">Project Navigation</h2>
-        </div>
+    const hasCredits = aiCredits !== null && aiCredits > 0;
 
-        <div className="space-y-1 mb-3">
-          <Link
-            href="/"
-            className="flex items-center gap-2 rounded-md px-2.5 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-          >
-            <Home className="h-4 w-4" />
-            <span>Home</span>
-          </Link>
-        </div>
+    function handleCoproducerClick() {
+        if (hasCredits) {
+            onCoproducerToggle();
+        } else {
+            setModalOpen(true);
+        }
+    }
 
-        <nav className="space-y-1">
-          {PROJECT_TOOL_NAV.map((item) => {
-            const href = item.href(projectId);
-            const isActive = pathname === href;
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.id}
-                href={href}
-                className={cn(
-                  "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors",
-                  isActive
-                    ? "bg-primary/15 text-primary font-medium"
-                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                <span>{item.label}</span>
-              </Link>
-            );
-          })}
-        </nav>
+    return (
+        <>
+            <aside className="hidden md:flex flex-col fixed left-0 top-0 bottom-0 w-64 border-r bg-background/95 backdrop-blur z-40">
+                {/* Scrollable nav area */}
+                <div className="flex-1 min-h-0 overflow-y-auto pt-5 pb-4 px-3">
+                    <div className="flex items-center gap-2 px-2 mb-4">
+                        <FolderKanban className="h-5 w-5 text-primary" />
+                        <h2 className="text-sm font-semibold">Project Navigation</h2>
+                    </div>
 
-        <div className="mt-5 pt-4 border-t">
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground px-2.5 mb-2">
-            Production Assistant
-          </p>
-          <div className="space-y-1">
-            {PROJECT_ASSISTANT_NAV.map((item) => {
-              const Icon = item.icon;
-              if (item.disabled) {
-                return (
-                  <div
-                    key={item.id}
-                    aria-disabled="true"
-                    className="flex items-center gap-2 rounded-md px-2.5 py-2 text-sm text-muted-foreground/60 cursor-not-allowed opacity-80"
-                  >
-                    <Icon className="h-4 w-4" />
-                    <span>{item.label}</span>
-                  </div>
-                );
-              }
-              const href = item.href(projectId);
-              const isActive = pathname === href;
-              return (
-                <Link
-                  key={item.id}
-                  href={href}
-                  className={cn(
-                    "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors",
-                    isActive
-                      ? "bg-primary/15 text-primary font-medium"
-                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
+                    <div className="space-y-1 mb-3">
+                        <Link
+                            href="/"
+                            className="flex items-center gap-2 rounded-md px-2.5 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                        >
+                            <Home className="h-4 w-4" />
+                            <span>Home</span>
+                        </Link>
+                    </div>
 
-        <div className="mt-5 pt-4 border-t">
-          <button
-            type="button"
-            onClick={() => setScriptsExpanded((v) => !v)}
-            className="w-full flex items-center justify-between rounded-md px-2.5 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            <span className="flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              Scripts
-            </span>
-            {scriptsExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-          </button>
+                    <nav className="space-y-1">
+                        {PROJECT_TOOL_NAV.map((item) => {
+                            const href = item.href(projectId);
+                            const isActive = pathname === href;
+                            const Icon = item.icon;
+                            return (
+                                <Link
+                                    key={item.id}
+                                    href={href}
+                                    className={cn(
+                                        "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors",
+                                        isActive
+                                            ? "bg-primary/15 text-primary font-medium"
+                                            : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                                    )}
+                                >
+                                    <Icon className="h-4 w-4" />
+                                    <span>{item.label}</span>
+                                </Link>
+                            );
+                        })}
+                    </nav>
 
-          {scriptsExpanded && (
-            <div className="mt-1 space-y-1">
-              <Link
-                href={`/project/${projectId}/scripts`}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs transition-colors font-medium",
-                  pathname === `/project/${projectId}/scripts`
-                    ? "bg-primary/15 text-primary"
-                    : "text-primary/80 hover:bg-accent hover:text-foreground"
-                )}
-              >
-                <Upload className="h-3 w-3" />
-                Upload / Manage Scripts
-              </Link>
-              {scriptsLoading && (
-                <p className="text-xs text-muted-foreground px-2.5 py-1">Loading scripts...</p>
-              )}
-              {!scriptsLoading && scriptLinks.length === 0 && (
-                <p className="text-xs text-muted-foreground px-2.5 py-1">
-                  No scripts available.
-                </p>
-              )}
-              {scriptLinks.map((s) => {
-                const isActive = pathname === s.href;
-                return (
-                  <Link
-                    key={s.id}
-                    href={s.href}
-                    className={cn(
-                      "block rounded-md px-2.5 py-1.5 text-xs transition-colors truncate",
-                      isActive
-                        ? "bg-primary/15 text-primary font-medium"
-                        : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                    )}
-                    title={s.name}
-                  >
-                    {s.is_current ? "Current: " : ""}
-                    {s.name}
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                    <div className="mt-5 pt-4 border-t">
+                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground px-2.5 mb-2">
+                            Production Assistant
+                        </p>
+                        <div className="space-y-1">
+                            {PROJECT_ASSISTANT_NAV.map((item) => {
+                                const Icon = item.icon;
+                                if (item.disabled) {
+                                    return (
+                                        <div
+                                            key={item.id}
+                                            aria-disabled="true"
+                                            className="flex items-center gap-2 rounded-md px-2.5 py-2 text-sm text-muted-foreground/60 cursor-not-allowed opacity-80"
+                                        >
+                                            <Icon className="h-4 w-4" />
+                                            <span>{item.label}</span>
+                                        </div>
+                                    );
+                                }
+                                const href = item.href(projectId);
+                                const isActive = pathname === href;
+                                return (
+                                    <Link
+                                        key={item.id}
+                                        href={href}
+                                        className={cn(
+                                            "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors",
+                                            isActive
+                                                ? "bg-primary/15 text-primary font-medium"
+                                                : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                                        )}
+                                    >
+                                        <Icon className="h-4 w-4" />
+                                        <span>{item.label}</span>
+                                    </Link>
+                                );
+                            })}
+                        </div>
+                    </div>
 
-        <div className="mt-5 pt-4 border-t">
-          <p className="text-[11px] uppercase tracking-wide text-muted-foreground px-2.5 mb-2">
-            Additional Tools
-          </p>
-          <div className="space-y-1">
-            {PROJECT_EXTERNAL_NAV.map((item) => {
-              const href = item.href(projectId);
-              const isActive = pathname === href;
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.id}
-                  href={href}
-                  className={cn(
-                    "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors",
-                    isActive
-                      ? "bg-primary/15 text-primary font-medium"
-                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </aside>
-  );
+                    <div className="mt-5 pt-4 border-t">
+                        <button
+                            type="button"
+                            onClick={() => setScriptsExpanded((v) => !v)}
+                            className="w-full flex items-center justify-between rounded-md px-2.5 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+                        >
+                            <span className="flex items-center gap-2">
+                                <FileText className="h-4 w-4" />
+                                Scripts
+                            </span>
+                            {scriptsExpanded ? (
+                                <ChevronDown className="h-4 w-4" />
+                            ) : (
+                                <ChevronRight className="h-4 w-4" />
+                            )}
+                        </button>
+
+                        {scriptsExpanded && (
+                            <div className="mt-1 space-y-1">
+                                <Link
+                                    href={`/project/${projectId}/scripts`}
+                                    className={cn(
+                                        "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs transition-colors font-medium",
+                                        pathname === `/project/${projectId}/scripts`
+                                            ? "bg-primary/15 text-primary"
+                                            : "text-primary/80 hover:bg-accent hover:text-foreground"
+                                    )}
+                                >
+                                    <Upload className="h-3 w-3" />
+                                    Upload / Manage Scripts
+                                </Link>
+                                {scriptsLoading && (
+                                    <p className="text-xs text-muted-foreground px-2.5 py-1">
+                                        Loading scripts...
+                                    </p>
+                                )}
+                                {!scriptsLoading && scriptLinks.length === 0 && (
+                                    <p className="text-xs text-muted-foreground px-2.5 py-1">
+                                        No scripts available.
+                                    </p>
+                                )}
+                                {scriptLinks.map((s) => {
+                                    const isActive = pathname === s.href;
+                                    return (
+                                        <Link
+                                            key={s.id}
+                                            href={s.href}
+                                            className={cn(
+                                                "block rounded-md px-2.5 py-1.5 text-xs transition-colors truncate",
+                                                isActive
+                                                    ? "bg-primary/15 text-primary font-medium"
+                                                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                                            )}
+                                            title={s.name}
+                                        >
+                                            {s.is_current ? "Current: " : ""}
+                                            {s.name}
+                                        </Link>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="mt-5 pt-4 border-t">
+                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground px-2.5 mb-2">
+                            Additional Tools
+                        </p>
+                        <div className="space-y-1">
+                            {PROJECT_EXTERNAL_NAV.map((item) => {
+                                const href = item.href(projectId);
+                                const isActive = pathname === href;
+                                const Icon = item.icon;
+                                return (
+                                    <Link
+                                        key={item.id}
+                                        href={href}
+                                        className={cn(
+                                            "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors",
+                                            isActive
+                                                ? "bg-primary/15 text-primary font-medium"
+                                                : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                                        )}
+                                    >
+                                        <Icon className="h-4 w-4" />
+                                        <span>{item.label}</span>
+                                    </Link>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+
+                {/* CoProducer button — pinned at bottom */}
+                <div className="shrink-0 border-t px-3 py-3">
+                    <button
+                        type="button"
+                        onClick={handleCoproducerClick}
+                        className={cn(
+                            "w-full flex items-center rounded-md border text-sm overflow-hidden transition-colors",
+                            coproducerOpen && hasCredits
+                                ? "border-primary/30 bg-primary/10 text-primary"
+                                : "border-border text-muted-foreground hover:text-foreground hover:bg-accent"
+                        )}
+                    >
+                        <span className="flex items-center gap-2 px-2.5 py-2 flex-1 min-w-0">
+                            <Bot className="h-4 w-4 shrink-0" />
+                            <span className="truncate">CoProducer</span>
+                        </span>
+                        <span className="w-px self-stretch bg-border/60 shrink-0" />
+                        <span className="px-2.5 py-2 text-xs shrink-0">
+                            {aiCredits === null
+                                ? "…"
+                                : hasCredits
+                                ? `${aiCredits} credits`
+                                : "Buy Credits"}
+                        </span>
+                    </button>
+                </div>
+            </aside>
+
+            <CoProducerModal open={modalOpen} onClose={() => setModalOpen(false)} />
+        </>
+    );
 }

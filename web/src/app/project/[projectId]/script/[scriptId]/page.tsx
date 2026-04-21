@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
 import { AppHeader } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -25,7 +24,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { FileText, Loader2, CheckCircle2, Lock, MessageSquare, Unlock } from "lucide-react";
+import { FileText, Loader2, CheckCircle2, Lock, Unlock } from "lucide-react";
 import { api, API_URL } from "@/lib/api";
 
 interface Script {
@@ -397,12 +396,6 @@ function ScriptManagementPage() {
                                         Set as Current
                                     </Button>
                                 )}
-                                <Link href={`/project/${projectId}/script/${scriptId}/chat`}>
-                                    <Button variant="outline">
-                                        <MessageSquare className="h-4 w-4 mr-2" />
-                                        Chat
-                                    </Button>
-                                </Link>
                             </div>
                         </CardContent>
                     </Card>

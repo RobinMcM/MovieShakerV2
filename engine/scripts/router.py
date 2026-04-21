@@ -54,7 +54,7 @@ from scripts.prompts.analysis import ANALYSIS_SYSTEM_PROMPT, build_analysis_user
 logger = logging.getLogger(__name__)
 settings = load_settings()
 
-ANALYSIS_MODEL = "anthropic/claude-3.5-sonnet"
+ANALYSIS_MODEL = "anthropic/claude-3.7-sonnet"
 DECISIONS_MODEL = "google/gemma-3-12b-it:free"
 _ANALYSIS_LOCK_TTL = 120
 
@@ -1221,9 +1221,9 @@ def _run_analysis(script_id: str, db: Session) -> Optional[dict]:
                 )
                 VALUES (
                     gen_random_uuid(), :script_id,
-                    :act_structure::jsonb, :location_map::jsonb,
-                    :cast_summary::jsonb, :risk_scores::jsonb,
-                    :production_metrics::jsonb, :raw_analysis,
+                    cast(:act_structure as jsonb), cast(:location_map as jsonb),
+                    cast(:cast_summary as jsonb), cast(:risk_scores as jsonb),
+                    cast(:production_metrics as jsonb), :raw_analysis,
                     NOW(), :model_used
                 )
                 ON CONFLICT (script_id) DO UPDATE SET
@@ -1315,7 +1315,7 @@ def ingest_script_json(
                     gen_random_uuid(), :script_id, :user_id, :scene_number,
                     :heading, :page_number, :length_in_eighths, :location_type,
                     :scene_location, :location_details, :is_night_shoot,
-                    :characters::jsonb, :time_of_day_id
+                    cast(:characters as jsonb), :time_of_day_id
                 )
                 ON CONFLICT (script_id, scene_number)
                 DO UPDATE SET
@@ -1592,7 +1592,7 @@ def _extract_decisions(
                    scene_refs, created_at, created_by)
                 VALUES
                   (gen_random_uuid(), :script_id, :chat_id, :decision_type,
-                   :summary, :detail, :scene_refs::jsonb, NOW(), :created_by)
+                   :summary, :detail, cast(:scene_refs as jsonb), NOW(), :created_by)
             """),
             {
                 "script_id": script_id,
@@ -1836,7 +1836,7 @@ def script_chat(
             "INSERT INTO script_messages "
             "  (id, chat_id, role, content, scene_refs, model_used, created_at) "
             "VALUES "
-            "  (gen_random_uuid(), :chat_id, 'user', :content, '[]'::jsonb, NULL, NOW())"
+            "  (gen_random_uuid(), :chat_id, 'user', :content, cast('[]' as jsonb), NULL, NOW())"
         ),
         {"chat_id": chat_id, "content": message},
     )

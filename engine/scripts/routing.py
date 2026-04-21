@@ -13,7 +13,7 @@ from scripts.context_assembler import ChatContext
 logger = logging.getLogger(__name__)
 
 FAST_MODEL = "google/gemma-3-12b-it:free"
-FULL_MODEL = "anthropic/claude-3.5-sonnet"
+FULL_MODEL = "anthropic/claude-3.7-sonnet"
 
 _FULL_MODEL_KEYWORDS = re.compile(
     r'\b('

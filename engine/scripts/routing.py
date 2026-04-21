@@ -25,25 +25,29 @@ _FULL_MODEL_KEYWORDS = re.compile(
 )
 
 
-def select_model(message: str, context: ChatContext) -> tuple[str, str]:
+def select_model(message: str, context: ChatContext, user_model: str) -> tuple[str, str]:
     """
-    Returns (model_id, reason). Uses FULL_MODEL when the question
-    warrants deep reasoning; FAST_MODEL for simple factual lookups.
+    Returns (model_id, reason). Routing logic detects fast vs full signals
+    but always returns user_model — the user's profile model is the single
+    source of truth for which model to call.
+
+    # TODO: when multiple user model tiers are available,
+    # use routing logic to select fast vs full variant
     """
     if len(message) > 200:
-        return FULL_MODEL, "message length > 200 characters"
+        return user_model, "message length > 200 characters"
 
     if _FULL_MODEL_KEYWORDS.search(message):
         match = _FULL_MODEL_KEYWORDS.search(message)
-        return FULL_MODEL, f"keyword match: '{match.group(0).lower()}'"
+        return user_model, f"keyword match: '{match.group(0).lower()}'"
 
     if context.analysis_summary:
-        return FULL_MODEL, "script has been analysed — use full model by default"
+        return user_model, "script has been analysed — use full model by default"
 
     if context.production_decisions:
-        return FULL_MODEL, "production decisions exist for this script"
+        return user_model, "production decisions exist for this script"
 
-    return FAST_MODEL, "short factual query — no complex reasoning signals detected"
+    return user_model, "short factual query — no complex reasoning signals detected"
 
 
 def log_routing_decision(message: str, model: str, reason: str) -> None:

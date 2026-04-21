@@ -19,6 +19,7 @@ from sqlmodel import Session, select, update
 from pydantic import BaseModel
 
 from config import load_settings
+from credits import ensure_user_can_generate
 from db import get_session
 from gateway_client import GatewayClient, GatewayClientError
 from models import Character, Project, ProjectMember, Scene, SceneCharacter, Script
@@ -1784,6 +1785,12 @@ def script_chat(
     from scripts.routing import select_model, log_routing_decision
 
     user_id = session.get_user_id()
+    # Fetch profile — same pattern as film_in_a_box.py / ai_assistant.py
+    profile = ensure_user_can_generate(db, user_id)
+    user_model = (profile.model_fiab_text or settings.film_in_a_box_model).strip()
+    if not user_model:
+        raise HTTPException(status_code=400, detail="No model configured for this account")
+
     script = _get_script_and_ensure_access(db, script_id, user_id)
     script_uuid = script.id
     db.expunge_all()
@@ -1804,7 +1811,7 @@ def script_chat(
 
     ctx = assemble_chat_context(script_id, message, db)
     history = get_message_history(chat_id, db)
-    model, routing_reason = select_model(message, ctx)
+    model, routing_reason = select_model(message, ctx, user_model)
     log_routing_decision(message, model, routing_reason)
 
     system_prompt = _build_script_chat_system_prompt(ctx)
@@ -1826,15 +1833,20 @@ def script_chat(
 
     db.execute(
         text(
-            "INSERT INTO script_messages (id, chat_id, role, content, scene_refs, model_used, created_at) "
-            "VALUES (gen_random_uuid(), :chat_id, 'user', :content, '[]'::jsonb, NULL, NOW())"
+            "INSERT INTO script_messages "
+            "  (id, chat_id, role, content, scene_refs, model_used, created_at) "
+            "VALUES "
+            "  (gen_random_uuid(), :chat_id, 'user', :content, '[]'::jsonb, NULL, NOW())"
         ),
         {"chat_id": chat_id, "content": message},
     )
     db.execute(
         text(
-            "INSERT INTO script_messages (id, chat_id, role, content, scene_refs, model_used, created_at) "
-            "VALUES (gen_random_uuid(), :chat_id, 'assistant', :content, :scene_refs::jsonb, :model_used, NOW())"
+            "INSERT INTO script_messages "
+            "  (id, chat_id, role, content, scene_refs, model_used, created_at) "
+            "VALUES "
+            "  (gen_random_uuid(), :chat_id, 'assistant', :content, "
+            "   cast(:scene_refs as jsonb), :model_used, NOW())"
         ),
         {
             "chat_id": chat_id,

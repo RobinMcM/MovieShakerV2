@@ -116,9 +116,6 @@ export function ProjectSidebarNav({
                     </nav>
 
                     <div className="mt-5 pt-4 border-t">
-                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground px-2.5 mb-2">
-                            CoProducer
-                        </p>
                         <div className="space-y-1">
                             <button
                                 type="button"

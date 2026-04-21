@@ -43,7 +43,6 @@ export function AppHeader() {
 
 interface ProfileRole {
     role?: string;
-    ai_credits?: number;
 }
 
 export function Header() {
@@ -89,16 +88,6 @@ export function Header() {
                         <>
                             <Link href="/projects">
                                 <Button variant="ghost" size="sm">Projects</Button>
-                            </Link>
-                            <Link href="/credits" className="shrink-0">
-                                <div className="rounded-md border bg-muted/40 hover:bg-muted px-2.5 py-1.5 transition-colors">
-                                    <div className="flex items-center gap-1.5">
-                                        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Credits</span>
-                                        <span className="inline-flex items-center rounded-full bg-primary/15 text-primary text-[11px] font-semibold px-2 py-0.5">
-                                            {typeof profile?.ai_credits === "number" ? profile.ai_credits : 0}
-                                        </span>
-                                    </div>
-                                </div>
                             </Link>
                             <Button
                                 variant="ghost"

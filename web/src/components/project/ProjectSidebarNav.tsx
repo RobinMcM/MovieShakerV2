@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, ChevronDown, ChevronRight, FileText, FolderKanban, Upload } from "lucide-react";
+import { Bot, ChevronDown, ChevronRight, FileText, FolderKanban, PanelLeftClose, PanelLeftOpen, Upload } from "lucide-react";
 import {
     PROJECT_EXTERNAL_NAV,
     PROJECT_TOOL_NAV,
@@ -24,6 +24,8 @@ interface ProjectSidebarNavProps {
     aiCredits: number | null;
     coproducerActive: boolean;
     onCoproducerActivate: () => void;
+    isVisible: boolean;
+    onToggle: () => void;
 }
 
 export function ProjectSidebarNav({
@@ -33,6 +35,8 @@ export function ProjectSidebarNav({
     aiCredits,
     coproducerActive,
     onCoproducerActivate,
+    isVisible,
+    onToggle,
 }: ProjectSidebarNavProps) {
     const pathname = usePathname();
     const [scriptsExpanded, setScriptsExpanded] = useState(true);
@@ -58,7 +62,29 @@ export function ProjectSidebarNav({
 
     return (
         <>
-            <aside className="hidden md:flex flex-col fixed left-0 top-0 bottom-0 w-64 border-r bg-background/95 backdrop-blur z-40">
+            {/* Toggle tab — always present, sits on the right edge of the panel */}
+            <button
+                type="button"
+                onClick={onToggle}
+                className={`hidden md:flex fixed top-1/2 -translate-y-1/2 z-[41]
+                            h-16 w-8 items-center justify-center
+                            bg-background border border-l-0 border-border
+                            rounded-r-md shadow-lg hover:bg-accent
+                            transition-[left] duration-300 ease-in-out
+                            ${isVisible ? "left-[256px]" : "left-0"}`}
+                aria-label={isVisible ? "Close project sidebar" : "Open project sidebar"}
+                title={isVisible ? "Close sidebar" : "Open sidebar"}
+            >
+                {isVisible ? (
+                    <PanelLeftClose className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                    <PanelLeftOpen className="h-4 w-4 text-muted-foreground" />
+                )}
+            </button>
+
+            <aside className={`hidden md:flex flex-col fixed left-0 top-0 bottom-0 w-64 border-r bg-background/95 backdrop-blur z-40
+                               transition-transform duration-300 ease-in-out
+                               ${isVisible ? "translate-x-0" : "-translate-x-full"}`}>
                 {/* Scrollable nav area */}
                 <div className="flex-1 min-h-0 overflow-y-auto pt-5 pb-4 px-3">
                     <div className="flex items-center gap-2 px-2 mb-4">

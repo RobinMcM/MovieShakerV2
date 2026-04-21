@@ -2,11 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, usePathname } from "next/navigation";
-import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { ProjectMobileNav } from "@/components/project/ProjectMobileNav";
 import { ProjectSidebarNav } from "@/components/project/ProjectSidebarNav";
 import { CoproducerSidebar } from "@/components/layout/CoproducerSidebar";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { useProjectScriptsNav } from "./useProjectScriptsNav";
@@ -110,54 +108,17 @@ export default function ProjectLayout({
 
     return (
         <>
-            {desktopNavVisible && (
-                <ProjectSidebarNav
-                    projectId={projectId}
-                    scripts={scripts}
-                    scriptsLoading={loading}
-                    aiCredits={aiCredits}
-                    coproducerActive={coproducerActive}
-                    onCoproducerActivate={handleCoproducerActivate}
-                />
-            )}
+            <ProjectSidebarNav
+                projectId={projectId}
+                scripts={scripts}
+                scriptsLoading={loading}
+                aiCredits={aiCredits}
+                coproducerActive={coproducerActive}
+                onCoproducerActivate={handleCoproducerActivate}
+                isVisible={desktopNavVisible}
+                onToggle={() => setDesktopNavVisible((prev: boolean) => !prev)}
+            />
             <ProjectMobileNav projectId={projectId} scripts={scripts} scriptsLoading={loading} />
-            {/* Left sidebar toggle */}
-            <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className={cn(
-                    "hidden md:inline-flex fixed top-4 z-[61] rounded-full shadow-lg",
-                    desktopNavVisible ? "left-[15.5rem]" : "left-4"
-                )}
-                onClick={() => setDesktopNavVisible((prev: boolean) => !prev)}
-                aria-label={desktopNavVisible ? "Hide project sidebar" : "Show project sidebar"}
-                title={desktopNavVisible ? "Hide sidebar" : "Show sidebar"}
-            >
-                {desktopNavVisible ? (
-                    <PanelLeftClose className="h-5 w-5" />
-                ) : (
-                    <PanelLeftOpen className="h-5 w-5" />
-                )}
-            </Button>
-            {/* Right sidebar toggle — only visible when CoProducer is active */}
-            {coproducerActive && (
-                <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="hidden md:inline-flex fixed top-4 right-4 z-[61] rounded-full shadow-lg"
-                    onClick={() => setCoproducerOpen((v: boolean) => !v)}
-                    aria-label={coproducerOpen ? "Hide CoProducer" : "Show CoProducer"}
-                    title={coproducerOpen ? "Hide CoProducer" : "Show CoProducer"}
-                >
-                    {coproducerOpen ? (
-                        <PanelRightClose className="h-5 w-5" />
-                    ) : (
-                        <PanelRightOpen className="h-5 w-5" />
-                    )}
-                </Button>
-            )}
             <div className={cn(desktopNavVisible && "md:pl-64")}>{children}</div>
             <CoproducerSidebar
                 isOpen={coproducerOpen}

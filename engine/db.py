@@ -236,6 +236,22 @@ def _migrate_chatbot_prompt_config_table():
                 logger.warning("Migration chatbot_prompt_config accent_color: %s", e)
 
 
+def _migrate_user_profile_prompt_override():
+    """Add user prompt override columns to user_profile if missing."""
+    with engine.connect() as conn:
+        with conn.begin():
+            for col, typ in [
+                ("prompt_override", "TEXT"),
+                ("prompt_override_mode", "VARCHAR(20) DEFAULT 'append'"),
+            ]:
+                try:
+                    conn.execute(
+                        text(f"ALTER TABLE user_profile ADD COLUMN IF NOT EXISTS {col} {typ}")
+                    )
+                except Exception as e:
+                    logger.warning("Migration user_profile %s: %s", col, e)
+
+
 def _migrate_scenes_unique_constraint():
     """Add unique constraint on (script_id, scene_number) required for upsert."""
     with engine.connect() as conn:
@@ -415,6 +431,7 @@ def init_db():
     _migrate_characters_objects_fields()
     _migrate_email_tracking_tables()
     _migrate_chatbot_prompt_config_table()
+    _migrate_user_profile_prompt_override()
     _create_script_chats_table()
     _create_script_messages_table()
     _create_script_analysis_table()

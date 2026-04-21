@@ -1814,7 +1814,13 @@ def script_chat(
     model, routing_reason = select_model(message, ctx, user_model)
     log_routing_decision(message, model, routing_reason)
 
-    system_prompt = _build_script_chat_system_prompt(ctx)
+    from scripts.prompts.system_prompt_builder import build_system_prompt
+    system_prompt = build_system_prompt(
+        context_mode="scripts",
+        context=ctx,
+        db=db,
+        user_id=user_id,
+    )
     gateway_messages = [{"role": "system", "content": system_prompt}]
     for h in history:
         gateway_messages.append({"role": h["role"], "content": h["content"]})

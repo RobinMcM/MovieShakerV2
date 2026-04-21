@@ -1,7 +1,9 @@
 "use client";
 
-import { PanelRightClose, PanelRightOpen } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronDown, ChevronUp, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { ScriptChat } from "@/components/scripts/ScriptChat";
+import { api } from "@/lib/api";
 
 interface CoproducerSidebarProps {
     isOpen: boolean;
@@ -19,6 +21,11 @@ const CONTEXT_LABELS: Record<string, string> = {
     general: "General",
 };
 
+interface PromptOverrideResponse {
+    prompt_override?: string | null;
+    prompt_override_mode: string;
+}
+
 export function CoproducerSidebar({
     isOpen,
     onClose,
@@ -27,6 +34,39 @@ export function CoproducerSidebar({
     coproducerActive = false,
 }: CoproducerSidebarProps) {
     const contextLabel = CONTEXT_LABELS[contextMode] ?? "General";
+
+    const [settingsOpen, setSettingsOpen] = useState(false);
+    const [promptOverride, setPromptOverride] = useState("");
+    const [promptOverrideMode, setPromptOverrideMode] = useState<"append" | "prepend">("append");
+    const [saving, setSaving] = useState(false);
+    const [saveMessage, setSaveMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+
+    useEffect(() => {
+        api.get<PromptOverrideResponse>("/profile/prompt-override")
+            .then((data) => {
+                setPromptOverride(data.prompt_override || "");
+                setPromptOverrideMode(
+                    data.prompt_override_mode === "prepend" ? "prepend" : "append"
+                );
+            })
+            .catch(() => {});
+    }, []);
+
+    async function handleSaveOverride() {
+        setSaving(true);
+        setSaveMessage(null);
+        try {
+            await api.put("/profile/prompt-override", {
+                prompt_override: promptOverride,
+                prompt_override_mode: promptOverrideMode,
+            });
+            setSaveMessage({ kind: "success", text: "Preferences saved." });
+        } catch {
+            setSaveMessage({ kind: "error", text: "Failed to save. Please try again." });
+        } finally {
+            setSaving(false);
+        }
+    }
 
     return (
         <>
@@ -89,6 +129,78 @@ export function CoproducerSidebar({
                             <p className="text-sm text-muted-foreground">
                                 CoProducer is ready. Navigate to a script to begin.
                             </p>
+                        </div>
+                    )}
+                </div>
+
+                {/* Personalise panel — pinned at bottom, collapsed by default */}
+                <div className="shrink-0 border-t">
+                    <button
+                        type="button"
+                        onClick={() => setSettingsOpen((prev) => !prev)}
+                        className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                    >
+                        <span>Personalise CoProducer</span>
+                        {settingsOpen
+                            ? <ChevronUp className="h-3.5 w-3.5" />
+                            : <ChevronDown className="h-3.5 w-3.5" />
+                        }
+                    </button>
+
+                    {settingsOpen && (
+                        <div className="px-4 pb-4 space-y-3">
+                            <textarea
+                                value={promptOverride}
+                                onChange={(e) => setPromptOverride(e.target.value)}
+                                maxLength={2000}
+                                rows={4}
+                                placeholder="Add your own instructions to enhance the AI responses. Example: Always suggest low-budget alternatives. Focus on UK production rates."
+                                className="w-full text-xs rounded-md border border-input bg-background px-3 py-2 text-foreground placeholder:text-muted-foreground resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                            />
+
+                            <div className="space-y-1.5">
+                                <p className="text-xs text-muted-foreground">Mode:</p>
+                                <div className="flex flex-col gap-1.5">
+                                    {(["append", "prepend"] as const).map((mode) => (
+                                        <label key={mode} className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="radio"
+                                                name="prompt_override_mode"
+                                                value={mode}
+                                                checked={promptOverrideMode === mode}
+                                                onChange={() => setPromptOverrideMode(mode)}
+                                                className="accent-primary"
+                                            />
+                                            <span className="text-xs text-foreground">
+                                                {mode === "append"
+                                                    ? "Append — add after main instructions"
+                                                    : "Prepend — add before main instructions"
+                                                }
+                                            </span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2">
+                                <span className="text-xs text-muted-foreground">
+                                    {promptOverride.length}/2000
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={handleSaveOverride}
+                                    disabled={saving}
+                                    className="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                                >
+                                    {saving ? "Saving…" : "Save preferences"}
+                                </button>
+                            </div>
+
+                            {saveMessage && (
+                                <p className={`text-xs ${saveMessage.kind === "success" ? "text-green-600 dark:text-green-400" : "text-destructive"}`}>
+                                    {saveMessage.text}
+                                </p>
+                            )}
                         </div>
                     )}
                 </div>

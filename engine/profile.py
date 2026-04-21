@@ -11,6 +11,7 @@ from models import UserProfile, EmailVerificationToken, Project
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
 from sqlmodel import Session, select
+from sqlalchemy import text
 
 from email_client import send_email_via_web
 from email_stats import record_email_send
@@ -298,4 +299,83 @@ async def update_profile(
         owned_project_count=owned_count,
         created_at=profile.created_at,
         updated_at=profile.updated_at,
+    )
+
+
+MAX_PROMPT_OVERRIDE_LENGTH = 2000
+
+
+class PromptOverrideResponse(BaseModel):
+    prompt_override: Optional[str] = None
+    prompt_override_mode: str = "append"
+
+
+class PromptOverrideUpdate(BaseModel):
+    prompt_override: str
+    prompt_override_mode: str
+
+
+@router.get("/prompt-override", response_model=PromptOverrideResponse)
+def get_prompt_override(
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    row = db.execute(
+        text(
+            "SELECT prompt_override, prompt_override_mode "
+            "FROM user_profile WHERE user_id = :user_id"
+        ),
+        {"user_id": user_id},
+    ).first()
+    if not row:
+        return PromptOverrideResponse()
+    return PromptOverrideResponse(
+        prompt_override=row[0] or None,
+        prompt_override_mode=(row[1] or "append"),
+    )
+
+
+@router.put("/prompt-override", response_model=PromptOverrideResponse)
+def update_prompt_override(
+    body: PromptOverrideUpdate,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+
+    mode = (body.prompt_override_mode or "").strip()
+    if mode not in ("append", "prepend"):
+        raise HTTPException(
+            status_code=400,
+            detail="prompt_override_mode must be 'append' or 'prepend'",
+        )
+
+    override = (body.prompt_override or "").strip()
+    if len(override) > MAX_PROMPT_OVERRIDE_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"prompt_override must be {MAX_PROMPT_OVERRIDE_LENGTH} characters or fewer",
+        )
+
+    # Ensure the profile row exists before updating
+    profile = db.get(UserProfile, user_id)
+    if not profile:
+        profile = UserProfile(user_id=user_id)
+        db.add(profile)
+        db.commit()
+
+    db.execute(
+        text(
+            "UPDATE user_profile "
+            "SET prompt_override = :override, prompt_override_mode = :mode "
+            "WHERE user_id = :user_id"
+        ),
+        {"override": override or None, "mode": mode, "user_id": user_id},
+    )
+    db.commit()
+
+    return PromptOverrideResponse(
+        prompt_override=override or None,
+        prompt_override_mode=mode,
     )

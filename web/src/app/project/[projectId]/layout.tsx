@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, usePathname } from "next/navigation";
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { ProjectMobileNav } from "@/components/project/ProjectMobileNav";
 import { ProjectSidebarNav } from "@/components/project/ProjectSidebarNav";
 import { CoproducerSidebar } from "@/components/layout/CoproducerSidebar";
@@ -12,7 +12,8 @@ import { api } from "@/lib/api";
 import { useProjectScriptsNav } from "./useProjectScriptsNav";
 
 const SIDEBAR_STORAGE_KEY = "movieshaker:project-nav-visible";
-const COPRODUCER_STORAGE_KEY = "coproducer_sidebar_open";
+const COPRODUCER_OPEN_KEY = "coproducer_sidebar_open";
+const COPRODUCER_ACTIVE_KEY = "coproducer_active";
 
 interface ProfileData {
     ai_credits?: number;
@@ -36,6 +37,7 @@ export default function ProjectLayout({
 
     const { scripts, loading } = useProjectScriptsNav(projectId);
     const [desktopNavVisible, setDesktopNavVisible] = useState(true);
+    const [coproducerActive, setCoproducerActive] = useState(false);
     const [coproducerOpen, setCoproducerOpen] = useState(false);
     const [aiCredits, setAiCredits] = useState<number | null>(null);
     const [userModel, setUserModel] = useState("anthropic/claude-3.7-sonnet");
@@ -50,18 +52,34 @@ export default function ProjectLayout({
         window.localStorage.setItem(SIDEBAR_STORAGE_KEY, desktopNavVisible ? "true" : "false");
     }, [desktopNavVisible]);
 
-    // CoProducer sidebar persistence
+    // CoProducer active persistence
     useEffect(() => {
-        const stored = window.localStorage.getItem(COPRODUCER_STORAGE_KEY);
+        const stored = window.localStorage.getItem(COPRODUCER_ACTIVE_KEY);
+        if (stored === "true") setCoproducerActive(true);
+    }, []);
+
+    useEffect(() => {
+        window.localStorage.setItem(COPRODUCER_ACTIVE_KEY, coproducerActive ? "true" : "false");
+    }, [coproducerActive]);
+
+    // CoProducer open persistence
+    useEffect(() => {
+        const stored = window.localStorage.getItem(COPRODUCER_OPEN_KEY);
         if (stored === "true") setCoproducerOpen(true);
     }, []);
 
     useEffect(() => {
-        window.localStorage.setItem(
-            COPRODUCER_STORAGE_KEY,
-            coproducerOpen ? "true" : "false"
-        );
+        window.localStorage.setItem(COPRODUCER_OPEN_KEY, coproducerOpen ? "true" : "false");
     }, [coproducerOpen]);
+
+    function handleCoproducerActivate() {
+        if (coproducerActive) {
+            setCoproducerActive(false);
+            setCoproducerOpen(false);
+        } else {
+            setCoproducerActive(true);
+        }
+    }
 
     // Profile fetch — source of truth for credits and user model
     useEffect(() => {
@@ -98,11 +116,12 @@ export default function ProjectLayout({
                     scripts={scripts}
                     scriptsLoading={loading}
                     aiCredits={aiCredits}
-                    coproducerOpen={coproducerOpen}
-                    onCoproducerToggle={() => setCoproducerOpen((v: boolean) => !v)}
+                    coproducerActive={coproducerActive}
+                    onCoproducerActivate={handleCoproducerActivate}
                 />
             )}
             <ProjectMobileNav projectId={projectId} scripts={scripts} scriptsLoading={loading} />
+            {/* Left sidebar toggle */}
             <Button
                 type="button"
                 variant="outline"
@@ -121,6 +140,24 @@ export default function ProjectLayout({
                     <PanelLeftOpen className="h-5 w-5" />
                 )}
             </Button>
+            {/* Right sidebar toggle — only visible when CoProducer is active */}
+            {coproducerActive && (
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="hidden md:inline-flex fixed top-4 right-4 z-[61] rounded-full shadow-lg"
+                    onClick={() => setCoproducerOpen((v: boolean) => !v)}
+                    aria-label={coproducerOpen ? "Hide CoProducer" : "Show CoProducer"}
+                    title={coproducerOpen ? "Hide CoProducer" : "Show CoProducer"}
+                >
+                    {coproducerOpen ? (
+                        <PanelRightClose className="h-5 w-5" />
+                    ) : (
+                        <PanelRightOpen className="h-5 w-5" />
+                    )}
+                </Button>
+            )}
             <div className={cn(desktopNavVisible && "md:pl-64")}>{children}</div>
             <CoproducerSidebar
                 isOpen={coproducerOpen}

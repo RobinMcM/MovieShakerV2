@@ -26,12 +26,6 @@ export const PROJECT_DEFAULT_ROUTE = "scheduling";
 
 export const PROJECT_TOOL_NAV: ProjectNavItem[] = [
   {
-    id: "scripts",
-    label: "Scripts",
-    href: (projectId) => `/project/${projectId}/scripts`,
-    icon: ScrollText,
-  },
-  {
     id: "scheduling",
     label: "Scheduling",
     href: (projectId) => `/project/${projectId}/scheduling`,

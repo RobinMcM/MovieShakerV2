@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, ChevronDown, ChevronRight, FileText, FolderKanban, Home, Upload } from "lucide-react";
+import { Bot, ChevronDown, ChevronRight, FileText, FolderKanban, Upload } from "lucide-react";
 import {
     PROJECT_EXTERNAL_NAV,
     PROJECT_TOOL_NAV,
@@ -22,8 +22,8 @@ interface ProjectSidebarNavProps {
     scripts: ScriptItem[];
     scriptsLoading?: boolean;
     aiCredits: number | null;
-    coproducerOpen: boolean;
-    onCoproducerToggle: () => void;
+    coproducerActive: boolean;
+    onCoproducerActivate: () => void;
 }
 
 export function ProjectSidebarNav({
@@ -31,8 +31,8 @@ export function ProjectSidebarNav({
     scripts,
     scriptsLoading = false,
     aiCredits,
-    coproducerOpen,
-    onCoproducerToggle,
+    coproducerActive,
+    onCoproducerActivate,
 }: ProjectSidebarNavProps) {
     const pathname = usePathname();
     const [scriptsExpanded, setScriptsExpanded] = useState(true);
@@ -50,7 +50,7 @@ export function ProjectSidebarNav({
 
     function handleCoproducerClick() {
         if (hasCredits) {
-            onCoproducerToggle();
+            onCoproducerActivate();
         } else {
             setModalOpen(true);
         }
@@ -64,16 +64,6 @@ export function ProjectSidebarNav({
                     <div className="flex items-center gap-2 px-2 mb-4">
                         <FolderKanban className="h-5 w-5 text-primary" />
                         <h2 className="text-sm font-semibold">Project Navigation</h2>
-                    </div>
-
-                    <div className="space-y-1 mb-3">
-                        <Link
-                            href="/"
-                            className="flex items-center gap-2 rounded-md px-2.5 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                        >
-                            <Home className="h-4 w-4" />
-                            <span>Home</span>
-                        </Link>
                     </div>
 
                     <nav className="space-y-1">
@@ -109,7 +99,7 @@ export function ProjectSidebarNav({
                                 onClick={handleCoproducerClick}
                                 className={cn(
                                     "w-full flex items-center justify-between rounded-md px-2.5 py-2 text-sm transition-colors",
-                                    coproducerOpen
+                                    coproducerActive
                                         ? "bg-primary/15 text-primary font-medium"
                                         : "text-muted-foreground hover:bg-accent hover:text-foreground"
                                 )}
@@ -236,7 +226,7 @@ export function ProjectSidebarNav({
                         onClick={handleCoproducerClick}
                         className={cn(
                             "w-full flex items-center rounded-md border text-sm overflow-hidden transition-colors",
-                            coproducerOpen && hasCredits
+                            coproducerActive && hasCredits
                                 ? "border-primary/30 bg-primary/10 text-primary"
                                 : "border-border text-muted-foreground hover:text-foreground hover:bg-accent"
                         )}

@@ -161,10 +161,11 @@ export default function ProjectLayout({
             <div className={cn(desktopNavVisible && "md:pl-64")}>{children}</div>
             <CoproducerSidebar
                 isOpen={coproducerOpen}
-                onClose={() => setCoproducerOpen(false)}
+                onClose={() => setCoproducerOpen((v: boolean) => !v)}
                 contextMode={contextMode}
                 contextId={contextId}
                 userModel={userModel}
+                coproducerActive={coproducerActive}
             />
         </>
     );

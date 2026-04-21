@@ -4,7 +4,7 @@ import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref
 import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Loader2, Send } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, API_URL } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -151,6 +151,26 @@ export function ScriptChat({ scriptId, initialChatId, onAfterResponse, ref, embe
 
     const bottomRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    // Silently trigger analysis if none exists yet — fire and forget, no UI state
+    useEffect(() => {
+        if (!scriptId) return;
+        (async () => {
+            try {
+                const res = await fetch(`${API_URL}/scripts/${scriptId}/analysis`, {
+                    credentials: "include",
+                });
+                if (res.status === 404) {
+                    fetch(`${API_URL}/scripts/${scriptId}/analyse`, {
+                        method: "POST",
+                        credentials: "include",
+                    }).catch(() => {});
+                }
+            } catch {
+                // Network error — ignore silently
+            }
+        })();
+    }, [scriptId]);
 
     // Load history when chat_id is available
     useEffect(() => {

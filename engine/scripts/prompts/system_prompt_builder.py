@@ -1,10 +1,15 @@
+import json
+import logging
 from sqlmodel import Session
 from sqlalchemy import text
 
 from models import ChatbotPromptConfig
 from admin import CHATBOT_LAYOUT_SCHEMAS
 
-MAX_SYSTEM_PROMPT_LENGTH = 20000
+logger = logging.getLogger(__name__)
+
+MAX_PROMPT_TOKENS = 80_000
+MAX_SYSTEM_PROMPT_LENGTH = MAX_PROMPT_TOKENS * 4  # char ceiling (~320k)
 
 CONTEXT_MODE_TO_SELECTION_KEY: dict[str, str] = {
     "scripts":  "movieshaker-scripts",
@@ -12,6 +17,98 @@ CONTEXT_MODE_TO_SELECTION_KEY: dict[str, str] = {
     "schedule": "movieshaker-schedule",
     "general":  "movieshaker-general",
 }
+
+
+def _estimate_tokens(s: str) -> int:
+    return len(s) // 4
+
+
+def _format_full_script(full_scenes: list) -> str:
+    """Render grouped scene elements into readable screenplay format."""
+    scene_blocks: list[str] = []
+    for scene in full_scenes:
+        lines: list[str] = []
+        for el in scene.get("elements", []):
+            el_type = el.get("type", "")
+            el_text = (el.get("text") or "").strip()
+            if not el_text:
+                continue
+            if el_type == "scene_heading":
+                scene_num = scene.get("scene_number", "")
+                lines.append(f"SCENE {scene_num}: {el_text}")
+            elif el_type == "action":
+                lines.append(el_text)
+            elif el_type == "character":
+                lines.append(f"{el_text}:")
+            elif el_type == "dialogue":
+                lines.append(f'"{el_text}"')
+            elif el_type == "parenthetical":
+                lines.append(f"({el_text})")
+            elif el_type == "transition":
+                lines.append(el_text)
+            elif el_type == "page_number":
+                continue
+            else:
+                lines.append(el_text)
+        if lines:
+            scene_blocks.append("\n".join(lines))
+    return "\n\n".join(scene_blocks)
+
+
+def _format_analysis(
+    analysis_summary: dict,
+    production_decisions: list,
+    budget_context: dict,
+    schedule_context: dict,
+    title: str,
+    page_count: int,
+) -> str:
+    parts: list[str] = [f"Script: {title}, {page_count} pages"]
+
+    if analysis_summary:
+        section_lines: list[str] = []
+        for key, val in analysis_summary.items():
+            if val:
+                try:
+                    formatted = json.dumps(val, indent=2) if isinstance(val, (dict, list)) else str(val)
+                except Exception:
+                    formatted = str(val)
+                section_lines.append(f"### {key}\n{formatted}")
+        if section_lines:
+            parts.append("## Analysis\n" + "\n\n".join(section_lines))
+
+    if production_decisions:
+        decision_lines: list[str] = []
+        for d in production_decisions:
+            summary = d.get("summary", "")
+            detail = d.get("detail", "")
+            dtype = d.get("decision_type", "")
+            if summary:
+                entry = f"- [{dtype}] {summary}"
+                if detail:
+                    entry += f"\n  {detail}"
+                decision_lines.append(entry)
+        if decision_lines:
+            parts.append("## Production Decisions\n" + "\n".join(decision_lines))
+
+    if budget_context:
+        parts.append("## Budget\n" + json.dumps(budget_context, indent=2))
+
+    if schedule_context:
+        parts.append("## Schedule\n" + json.dumps(schedule_context, indent=2))
+
+    return "\n\n".join(parts)
+
+
+def _format_scene_index(scene_index: list) -> str:
+    lines: list[str] = []
+    for s in scene_index:
+        chars = ", ".join(s.get("characters") or [])
+        line = f"Scene {s['scene_number']}: {s.get('heading', '')} (p{s.get('page_number', '')})"
+        if chars:
+            line += f" — {chars}"
+        lines.append(line)
+    return "\n".join(lines)
 
 
 def build_system_prompt(
@@ -23,18 +120,12 @@ def build_system_prompt(
     """
     Assemble the system prompt for the script chat endpoint.
 
-    Order of assembly:
-      # Context       ← admin prompt_information
-      # Rules         ← admin prompt_rules
-      # Page structure← layout fields from CHATBOT_LAYOUT_SCHEMAS
-      # Script context← existing ChatContext data (scripts mode only)
-      # User instructions ← user's prompt_override (append or prepend)
-
-    Falls back to the hardcoded _build_script_chat_system_prompt when no
-    admin config exists for the selection key.
-
-    Script context is trimmed first if the total exceeds MAX_SYSTEM_PROMPT_LENGTH.
-    Admin prompt and user override are never truncated.
+    Priority order (high → low, never drop higher):
+      1. Admin context + rules + layout fields
+      2. Script analysis + production decisions + budget/schedule
+      3. User prompt override (never dropped)
+      4. Full script content (truncated scene-by-scene from end if over budget)
+      5. Scene index fallback if full script doesn't fit at all
     """
     selection_key = CONTEXT_MODE_TO_SELECTION_KEY.get(context_mode, "movieshaker-scripts")
 
@@ -46,43 +137,81 @@ def build_system_prompt(
     )
 
     if not has_admin_config:
-        # Lazy import — avoids circular dep (context_assembler → router → here → router)
+        # Lazy import to avoid circular dep (context_assembler → router → here → router)
         from scripts.router import _build_script_chat_system_prompt
         return _build_script_chat_system_prompt(context)
 
     layout_lines = _get_layout_field_lines(selection_key)
     prompt_override, override_mode = _get_user_override(db, user_id)
 
-    # Build base parts (never truncated)
+    # Build fixed (never-truncated) parts
     fixed_parts: list[str] = []
+
+    if override_mode == "prepend" and prompt_override:
+        fixed_parts.append("# User instructions\n" + prompt_override)
+
     fixed_parts.append("# Context\n" + config.prompt_information.strip())
     fixed_parts.append("# Rules\n" + config.prompt_rules.strip())
+
     if layout_lines:
         fixed_parts.append("# Page structure\n" + "\n".join(layout_lines))
 
-    # Script context part (truncatable)
-    script_context_text = ""
     if context_mode == "scripts":
-        from scripts.router import _build_script_chat_system_prompt
-        script_context_text = _build_script_chat_system_prompt(context)
+        analysis_text = _format_analysis(
+            getattr(context, "analysis_summary", {}) or {},
+            getattr(context, "production_decisions", []) or [],
+            getattr(context, "budget_context", {}) or {},
+            getattr(context, "schedule_context", {}) or {},
+            getattr(context, "title", ""),
+            getattr(context, "page_count", 0),
+        )
+        fixed_parts.append("# Script analysis\n" + analysis_text)
 
-    def _assemble(include_script: bool) -> str:
-        parts = list(fixed_parts)
-        if include_script and script_context_text:
-            parts.append("# Script context\n" + script_context_text)
-        core = "\n\n".join(parts)
-        if not prompt_override:
-            return core
-        override_section = "# User instructions\n" + prompt_override
-        if override_mode == "prepend":
-            return override_section + "\n\n" + core
-        return core + "\n\n" + override_section
+    fixed_text = "\n\n".join(fixed_parts)
+    override_append_text = prompt_override if override_mode == "append" else ""
+    script_budget = MAX_PROMPT_TOKENS - _estimate_tokens(fixed_text) - _estimate_tokens(override_append_text)
 
-    assembled = _assemble(include_script=True)
-    if len(assembled) > MAX_SYSTEM_PROMPT_LENGTH:
-        assembled = _assemble(include_script=False)
+    # Fit full script within budget, dropping scenes from end if needed
+    script_section = ""
+    if context_mode == "scripts" and script_budget > 0:
+        full_scenes = list(getattr(context, "full_scenes", []) or [])
+        original_count = len(full_scenes)
 
-    return assembled[:MAX_SYSTEM_PROMPT_LENGTH]
+        while full_scenes:
+            formatted = _format_full_script(full_scenes)
+            if _estimate_tokens(formatted) <= script_budget:
+                script_section = formatted
+                break
+            full_scenes.pop()
+
+        if full_scenes and len(full_scenes) < original_count:
+            logger.warning(
+                "Script prompt truncated: dropped %d of %d scenes to fit %d-token budget",
+                original_count - len(full_scenes),
+                original_count,
+                script_budget,
+            )
+
+        if not script_section:
+            # Full script won't fit at all — fall back to scene index
+            scene_index = getattr(context, "scene_index", []) or []
+            if scene_index:
+                idx_text = _format_scene_index(scene_index)
+                if _estimate_tokens(idx_text) <= script_budget:
+                    script_section = idx_text
+                    logger.warning(
+                        "Script too large for prompt; using scene index fallback (%d scenes)",
+                        len(scene_index),
+                    )
+
+    # Assemble final prompt
+    parts = list(fixed_parts)
+    if script_section:
+        parts.append("# Script content\n" + script_section)
+    if override_append_text:
+        parts.append("# User instructions\n" + override_append_text)
+
+    return "\n\n".join(parts)
 
 
 def _get_layout_field_lines(selection_key: str) -> list[str]:

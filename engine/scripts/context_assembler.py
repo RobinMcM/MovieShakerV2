@@ -145,30 +145,33 @@ def assemble_chat_context(script_id: str, message: str, db: Session) -> ChatCont
                 referenced_scenes.append(n)
     referenced_scenes.sort()
 
-    # 6. Fetch full elements for referenced scenes
+    # 6. Fetch full script content — always load all scenes grouped by scene_number.
+    # referenced_scenes detection above is kept for backwards compatibility but is
+    # now redundant; full content is always returned so the AI sees the complete script.
     full_scenes: List[dict] = []
-    if referenced_scenes:
-        script_obj = db.get(Script, uuid.UUID(script_id))
-        if script_obj:
-            parsed = _read_script_json(script_obj)
-            if parsed:
-                elements, _ = parsed
-                for target in referenced_scenes:
-                    scene_elements = []
-                    in_scene = False
-                    for el in elements:
-                        if el.get("type") == "scene_heading":
-                            if el.get("scene_number") == target:
-                                in_scene = True
-                            elif in_scene:
-                                break
-                        if in_scene:
-                            scene_elements.append(el)
-                    if scene_elements:
+    script_obj = db.get(Script, uuid.UUID(script_id))
+    if script_obj:
+        parsed = _read_script_json(script_obj)
+        if parsed:
+            elements, _ = parsed
+            current_scene_number: Optional[int] = None
+            current_scene_elements: List[dict] = []
+            for el in elements:
+                if el.get("type") == "scene_heading":
+                    if current_scene_number is not None:
                         full_scenes.append({
-                            "scene_number": target,
-                            "elements": scene_elements,
+                            "scene_number": current_scene_number,
+                            "elements": current_scene_elements,
                         })
+                    current_scene_number = el.get("scene_number")
+                    current_scene_elements = [el]
+                elif current_scene_number is not None:
+                    current_scene_elements.append(el)
+            if current_scene_number is not None and current_scene_elements:
+                full_scenes.append({
+                    "scene_number": current_scene_number,
+                    "elements": current_scene_elements,
+                })
 
     # 7–9. Detect context signals and fetch conditional data
     include_budget = bool(_BUDGET_SIGNALS.search(message))

@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional, Tuple
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from sqlalchemy import text
 from sqlmodel import Session, select, update
@@ -1656,6 +1656,242 @@ def get_script_decisions(
         decisions=grouped,
         total=len(rows),
     )
+
+
+# ── Script chat helpers ───────────────────────────────────────────────────────
+
+_CHAT_SCENE_PATTERNS = [
+    re.compile(r'\bscene\s+(\d+)\b', re.IGNORECASE),
+    re.compile(r'\bsc\.?\s+(\d+)\b', re.IGNORECASE),
+]
+
+
+def _extract_chat_scene_refs(text: str) -> list[int]:
+    refs: list[int] = []
+    for pattern in _CHAT_SCENE_PATTERNS:
+        for m in pattern.finditer(text):
+            n = int(m.group(1))
+            if n not in refs:
+                refs.append(n)
+    refs.sort()
+    return refs
+
+
+def _build_script_chat_system_prompt(ctx: "ChatContext") -> str:  # type: ignore[name-defined]
+    lines = [
+        "You are a script production assistant for MovieShaker, "
+        "helping production teams with physical production planning.",
+        f'\nScript: "{ctx.title}"  |  Pages: {ctx.page_count}  |  Scenes: {len(ctx.scene_index)}',
+    ]
+
+    if ctx.scene_index:
+        lines.append("\nSCENE INDEX:")
+        for s in ctx.scene_index:
+            parts = [f"  Scene {s.get('scene_number', '?')}: {s.get('heading', '')}"]
+            if s.get('location_type'):
+                parts.append(f"[{s['location_type']}]")
+            if s.get('is_night_shoot'):
+                parts.append("[NIGHT]")
+            lines.append(" ".join(parts))
+
+    if ctx.analysis_summary:
+        lines.append("\nANALYSIS:")
+        risk = ctx.analysis_summary.get("risk_scores")
+        if risk and isinstance(risk, dict):
+            risk_parts = []
+            for k in ("schedule", "budget", "vfx", "stunt", "location"):
+                entry = risk.get(k)
+                if entry and isinstance(entry, dict):
+                    risk_parts.append(f"{k.capitalize()}: {entry.get('score', '?')}/10")
+            if risk_parts:
+                lines.append("  Risks — " + ", ".join(risk_parts))
+
+    if ctx.production_decisions:
+        lines.append(f"\nPRODUCTION DECISIONS ({len(ctx.production_decisions)}):")
+        for d in ctx.production_decisions[:10]:
+            lines.append(f"  [{d.get('decision_type', '')}] {d.get('summary', '')}")
+
+    if ctx.full_scenes:
+        lines.append("\nFULL SCENE CONTENT:")
+        for fs in ctx.full_scenes:
+            lines.append(f"\n--- Scene {fs['scene_number']} ---")
+            for el in fs.get('elements', []):
+                el_type = el.get('type', '')
+                text_val = (el.get('text') or '').strip()
+                if text_val and el_type in (
+                    'scene_heading', 'action', 'dialogue',
+                    'character', 'parenthetical', 'transition',
+                ):
+                    lines.append(text_val)
+
+    if ctx.budget_context:
+        total = ctx.budget_context.get('total_budget')
+        currency = ctx.budget_context.get('currency', 'GBP')
+        if total is not None:
+            lines.append(f"\nBUDGET: {currency} {total}")
+
+    if ctx.schedule_context:
+        days = ctx.schedule_context.get('shooting_days', {})
+        if days:
+            lines.append(f"\nSCHEDULE: {len(days)} shooting day(s) planned.")
+
+    lines.append(
+        "\nAnswer specifically using actual scene numbers, character names, and locations. "
+        "Be concise and production-focused."
+    )
+    return "\n".join(lines)
+
+
+# ── Script chat Pydantic models ───────────────────────────────────────────────
+
+class ScriptChatBody(BaseModel):
+    message: str
+    chat_id: Optional[str] = None
+
+
+class ScriptChatResponse(BaseModel):
+    reply: str
+    chat_id: str
+    scene_refs: list
+    model_used: str
+
+
+class ScriptMessageItem(BaseModel):
+    role: str
+    content: str
+    scene_refs: list
+    model_used: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+class ScriptMessagesResponse(BaseModel):
+    chat_id: str
+    messages: list[ScriptMessageItem]
+
+
+# POST /scripts/{script_id}/chat
+@router.post("/scripts/{script_id}/chat", response_model=ScriptChatResponse)
+def script_chat(
+    script_id: str,
+    body: ScriptChatBody,
+    background_tasks: BackgroundTasks,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    # Lazy imports avoid circular dependency
+    # (context_assembler imports _read_script_json from this module)
+    from scripts.context_assembler import assemble_chat_context, get_message_history
+    from scripts.routing import select_model, log_routing_decision
+
+    user_id = session.get_user_id()
+    script = _get_script_and_ensure_access(db, script_id, user_id)
+    script_uuid = script.id
+    db.expunge_all()
+
+    message = (body.message or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+
+    # Resolve chat_id — verify ownership if one was provided
+    if body.chat_id:
+        chat_row = db.execute(
+            text("SELECT id FROM script_chats WHERE id = :cid AND script_id = :sid"),
+            {"cid": body.chat_id, "sid": str(script_uuid)},
+        ).first()
+        chat_id = str(chat_row[0]) if chat_row else _get_or_create_chat(db, script_uuid, user_id)
+    else:
+        chat_id = _get_or_create_chat(db, script_uuid, user_id)
+
+    ctx = assemble_chat_context(script_id, message, db)
+    history = get_message_history(chat_id, db)
+    model, routing_reason = select_model(message, ctx)
+    log_routing_decision(message, model, routing_reason)
+
+    system_prompt = _build_script_chat_system_prompt(ctx)
+    gateway_messages = [{"role": "system", "content": system_prompt}]
+    for h in history:
+        gateway_messages.append({"role": h["role"], "content": h["content"]})
+    gateway_messages.append({"role": "user", "content": message})
+
+    try:
+        gw_response = _gateway_client().execute_text(model=model, messages=gateway_messages)
+    except GatewayClientError as exc:
+        raise HTTPException(status_code=502, detail=f"AI gateway error: {exc}")
+
+    reply_text = _extract_text_from_gateway(gw_response)
+    if not reply_text:
+        raise HTTPException(status_code=502, detail="Gateway returned an empty response")
+
+    scene_refs = _extract_chat_scene_refs(reply_text)
+
+    db.execute(
+        text(
+            "INSERT INTO script_messages (id, chat_id, role, content, scene_refs, model_used, created_at) "
+            "VALUES (gen_random_uuid(), :chat_id, 'user', :content, '[]'::jsonb, NULL, NOW())"
+        ),
+        {"chat_id": chat_id, "content": message},
+    )
+    db.execute(
+        text(
+            "INSERT INTO script_messages (id, chat_id, role, content, scene_refs, model_used, created_at) "
+            "VALUES (gen_random_uuid(), :chat_id, 'assistant', :content, :scene_refs::jsonb, :model_used, NOW())"
+        ),
+        {
+            "chat_id": chat_id,
+            "content": reply_text,
+            "scene_refs": json.dumps(scene_refs),
+            "model_used": model,
+        },
+    )
+    db.commit()
+
+    background_tasks.add_task(_extract_decisions, script_id, chat_id, reply_text, db)
+
+    return ScriptChatResponse(
+        reply=reply_text,
+        chat_id=chat_id,
+        scene_refs=scene_refs,
+        model_used=model,
+    )
+
+
+# GET /scripts/{script_id}/messages
+@router.get("/scripts/{script_id}/messages", response_model=ScriptMessagesResponse)
+def get_script_messages(
+    script_id: str,
+    chat_id: str = Query(..., description="The chat session ID"),
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    _get_script_and_ensure_access(db, script_id, user_id)
+
+    chat_row = db.execute(
+        text("SELECT id FROM script_chats WHERE id = :cid AND script_id = :sid"),
+        {"cid": chat_id, "sid": script_id},
+    ).first()
+    if not chat_row:
+        raise HTTPException(status_code=404, detail="Chat session not found for this script")
+
+    rows = db.execute(
+        text(
+            "SELECT role, content, scene_refs, model_used, created_at "
+            "FROM script_messages WHERE chat_id = :chat_id ORDER BY created_at ASC"
+        ),
+        {"chat_id": chat_id},
+    ).fetchall()
+
+    messages = [
+        ScriptMessageItem(
+            role=row[0],
+            content=row[1],
+            scene_refs=row[2] if isinstance(row[2], list) else [],
+            model_used=row[3],
+            created_at=str(row[4]) if row[4] else None,
+        )
+        for row in rows
+    ]
+    return ScriptMessagesResponse(chat_id=chat_id, messages=messages)
 
 
 # DELETE /scripts/{script_id}

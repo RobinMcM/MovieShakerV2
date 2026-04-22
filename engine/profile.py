@@ -252,7 +252,7 @@ async def update_profile(
     if profile.blocked:
         raise HTTPException(status_code=403, detail="Account is blocked")
 
-    data = body.model_dump() if hasattr(body, "model_dump") else body.dict(exclude_unset=True)
+    data = body.model_dump(exclude_unset=True) if hasattr(body, "model_dump") else body.dict(exclude_unset=True)
     # Only allow updating non-admin fields via self; role/blocked/producer_tier set via User Management
     for k in ("role", "blocked", "producer_tier", "ai_credits"):
         data.pop(k, None)

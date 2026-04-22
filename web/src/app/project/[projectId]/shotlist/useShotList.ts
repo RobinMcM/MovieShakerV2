@@ -391,6 +391,25 @@ export function useShotList(projectId: string | null) {
     [scriptElements, updateTramLine]
   );
 
+  const loadTramLines = useCallback(async () => {
+    if (!selectedSceneId) return;
+    setTramLinesLoading(true);
+    try {
+      const res = await api.get<{ success: boolean; data: TramLineRow[] }>(
+        `api/tram-lines?scene_id=${selectedSceneId}`
+      );
+      const data = (res as { data?: TramLineRow[] }).data ?? [];
+      const lines = data
+        .map(rowToTramLine)
+        .sort((a, b) => lettersToNumber(a.lineNumber) - lettersToNumber(b.lineNumber));
+      setTramLines(lines);
+    } catch {
+      setTramLines([]);
+    } finally {
+      setTramLinesLoading(false);
+    }
+  }, [selectedSceneId]);
+
   const totalScenes = scenesData.length;
   const uniqueCharacters = new Set(
     scenesData.flatMap((item) => item.characters.map((c) => c.id))
@@ -422,5 +441,6 @@ export function useShotList(projectId: string | null) {
     updateTramLine,
     deleteTramLine,
     syncTramLineFromDOM,
+    loadTramLines,
   };
 }

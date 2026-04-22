@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
@@ -31,6 +31,7 @@ import {
   Trash2,
   Palette,
   Eye,
+  Bot,
 } from "lucide-react";
 import { useShotList } from "./useShotList";
 import {
@@ -45,6 +46,8 @@ import {
   extractTextFromDOMByTramlineBounds,
 } from "./useShotList";
 import { matchTextToElements } from "@/lib/scriptJsonUtils";
+import { placeSuggestedShots, type ShotSuggestion } from "@/utils/shotPlacement";
+import { api } from "@/lib/api";
 
 function parsePageNumber(pageNumber: string): { page: number; eighth: number } {
   const match = pageNumber.match(/Page\s+(\d+)\s+(\d+)\/8/i);
@@ -61,6 +64,7 @@ function ShotListContent() {
     loading,
     project,
     scenesData,
+    scriptId,
     selectedSceneId,
     sceneContent,
     isLoadingContent,
@@ -77,6 +81,7 @@ function ShotListContent() {
     updateTramLine,
     deleteTramLine,
     syncTramLineFromDOM,
+    loadTramLines,
   } = useShotList(projectId);
 
   const [isDrawingMode, setIsDrawingMode] = useState(false);
@@ -94,6 +99,12 @@ function ShotListContent() {
     description?: string;
     variant?: "default" | "destructive";
   } | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestResult, setSuggestResult] = useState<{
+    placed: number;
+    skipped: number;
+  } | null>(null);
+  const scriptContainerRef = useRef<HTMLDivElement>(null);
 
   const usedColors = useMemo(
     () => new Set(tramLines.map((l) => l.color)),
@@ -116,6 +127,9 @@ function ShotListContent() {
   const currentSceneIndex = selectedSceneId
     ? sortedScenesData.findIndex((s) => s.scene.id === selectedSceneId)
     : -1;
+
+  const currentScene =
+    currentSceneIndex >= 0 ? sortedScenesData[currentSceneIndex].scene : null;
 
   const handlePreviousScene = () => {
     if (currentSceneIndex <= 0) return;
@@ -316,6 +330,53 @@ function ShotListContent() {
     }
   };
 
+  async function handleSuggestShots() {
+    if (!currentScene || !scriptId) return;
+    setSuggesting(true);
+    setSuggestResult(null);
+    try {
+      const response = await api.post<{
+        script_id: string;
+        scene_number: number;
+        suggestions: ShotSuggestion[];
+      }>(
+        `scripts/${scriptId}/scenes/${currentScene.scene_number}/suggest-shots`,
+        {}
+      );
+      const { suggestions } = response;
+      const result = await placeSuggestedShots(
+        suggestions,
+        scriptContainerRef,
+        currentScene.id,
+        scriptId,
+        tramLines,
+        scriptElements,
+        (newLine) => {
+          setTramLines((prev) => [...prev, newLine]);
+        }
+      );
+      setSuggestResult(result);
+      await loadTramLines();
+    } catch (err) {
+      console.error("Suggest shots failed:", err);
+      setToastMessage({
+        title: "Error",
+        description:
+          err instanceof Error ? err.message : "Suggest shots failed",
+        variant: "destructive",
+      });
+    } finally {
+      setSuggesting(false);
+    }
+  }
+
+  useEffect(() => {
+    const handler = () => handleSuggestShots();
+    window.addEventListener("suggestShots", handler);
+    return () => window.removeEventListener("suggestShots", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentScene, scriptId, tramLines]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-accent/5">
@@ -463,7 +524,7 @@ function ShotListContent() {
                       <Card className="mb-4">
                         <CardContent className="py-4">
                           <div className="flex items-center justify-between flex-wrap gap-4">
-                            <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-4 flex-wrap">
                               <Button
                                 variant={isDrawingMode ? "default" : "outline"}
                                 size="sm"
@@ -483,6 +544,37 @@ function ShotListContent() {
                               {isDrawingMode && (
                                 <span className="text-sm text-muted-foreground">
                                   Click to add line • Drag handles to adjust
+                                </span>
+                              )}
+                              <button
+                                onClick={handleSuggestShots}
+                                disabled={suggesting || !currentScene}
+                                className={`
+                                  flex items-center gap-2 px-3 py-2 rounded-md
+                                  text-sm font-medium transition-colors
+                                  bg-teal-600 text-white hover:bg-teal-700
+                                  disabled:opacity-50 disabled:cursor-not-allowed
+                                `}
+                              >
+                                {suggesting ? (
+                                  <>
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    CoProducer thinking...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Bot className="h-4 w-4" />
+                                    {tramLines.length > 0
+                                      ? "Re-suggest shots"
+                                      : "Suggest shots"}
+                                  </>
+                                )}
+                              </button>
+                              {suggestResult && (
+                                <span className="text-xs text-muted-foreground">
+                                  {suggestResult.placed} shots placed
+                                  {suggestResult.skipped > 0 &&
+                                    `, ${suggestResult.skipped} skipped`}
                                 </span>
                               )}
                             </div>
@@ -583,6 +675,7 @@ function ShotListContent() {
                                   )}
                                 </div>
                                 <div
+                                  ref={scriptContainerRef}
                                   className="font-mono text-sm leading-relaxed p-4 sm:p-8 pl-20 sm:pl-32 relative z-[1] select-none"
                                   style={{
                                     userSelect: isDrawingMode ? "none" : "auto",
@@ -815,6 +908,9 @@ function TramLineMarker({
   ) => void;
   onLineClick: () => void;
 }) {
+  const isInsert =
+    line.shotType === "INSERT" || line.shotType === "insert";
+
   return (
     <div
       data-tramline-id={line.id}
@@ -826,6 +922,7 @@ function TramLineMarker({
         zIndex: isSelected ? 30 : 15,
         transform: isSelected ? "scale(1.05)" : "scale(1)",
         transition: "all 0.2s ease",
+        opacity: isInsert ? 0.75 : 1,
       }}
     >
       <div
@@ -861,11 +958,25 @@ function TramLineMarker({
           />
         </div>
       </div>
+      {isInsert && (
+        <div
+          className="absolute top-0 left-1/2 -translate-x-1/2 z-20 pointer-events-none"
+          style={{ fontSize: 9, opacity: 0.8, color: line.color, whiteSpace: "nowrap" }}
+        >
+          INSERT
+        </div>
+      )}
       <div
         className="h-full w-1 cursor-pointer transition-all"
         style={{
           backgroundColor: line.color,
-          border: isSelected ? "2px solid white" : "1px solid rgba(255,255,255,0.2)",
+          border: isInsert
+            ? isSelected
+              ? "2px dashed white"
+              : "1px dashed rgba(255,255,255,0.4)"
+            : isSelected
+              ? "2px solid white"
+              : "1px solid rgba(255,255,255,0.2)",
           opacity: isSelected ? 1 : 0.8,
         }}
         onClick={(e) => {

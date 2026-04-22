@@ -56,6 +56,7 @@ settings = load_settings()
 
 ANALYSIS_MODEL = "anthropic/claude-3.7-sonnet"
 DECISIONS_MODEL = "google/gemma-3-12b-it:free"
+SHOTLIST_MODEL = "anthropic/claude-3.7-sonnet"
 _ANALYSIS_LOCK_TTL = 120
 
 router = APIRouter(tags=["scripts"])
@@ -1500,6 +1501,162 @@ def get_scene_elements(
         raise HTTPException(status_code=404, detail="Scene not found")
 
     return SceneElementsResponse(scene_number=scene_number, elements=scene_elements)
+
+
+class ShotSuggestion(BaseModel):
+    line_number: str      # scene-prefixed label e.g. "1A", "7B"
+    color: str
+    shot_type: str
+    camera_direction: str
+    start_element_text: str
+    end_element_text: str
+    rationale: str        # one sentence explaining this shot choice
+    is_insert: bool       # True only for tight detail shots (props, hands, text on screen)
+    overlaps: List[str]   # line_number labels of shots this overlaps; [] if none
+
+
+class SuggestShotsResponse(BaseModel):
+    script_id: str
+    scene_number: int
+    suggestions: List[ShotSuggestion]
+
+
+_SUGGEST_SHOTS_UPPER_TYPES = frozenset({"scene_heading", "character", "transition"})
+
+
+def _render_element_text(el: dict) -> str:
+    """Return element text exactly as parseSceneContent renders it into data-line-text."""
+    el_type = (el.get("type") or "").strip().lower()
+    text = (el.get("text") or "").strip()
+    if not text:
+        return ""
+    if el_type in _SUGGEST_SHOTS_UPPER_TYPES:
+        return text.upper()
+    return text
+
+
+def _build_suggest_shots_user_prompt(scene_elements: list, scene_number: int) -> str:
+    lines = [
+        f"SCENE NUMBER: {scene_number}",
+        f"Use line_number prefix \"{scene_number}\" — e.g. \"{scene_number}A\", \"{scene_number}B\", \"{scene_number}C\"",
+        "",
+        "RENDERED SCENE ELEMENTS (exact data-line-text values as shown in the shotlist UI):",
+        "",
+    ]
+    for el in scene_elements:
+        el_type = (el.get("type") or "").strip().lower()
+        rendered = _render_element_text(el)
+        if rendered:
+            lines.append(f"[{el_type.upper()}] {rendered}")
+    lines += ["", "Propose shot tramlines for this scene. Return ONLY the JSON object."]
+    return "\n".join(lines)
+
+
+# POST /scripts/{script_id}/scenes/{scene_number}/suggest-shots
+@router.post(
+    "/scripts/{script_id}/scenes/{scene_number}/suggest-shots",
+    response_model=SuggestShotsResponse,
+)
+def suggest_shots(
+    script_id: str,
+    scene_number: int,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    from scripts.prompts.system_prompt_builder import SHOTLIST_SYSTEM_PROMPT
+
+    user_id = session.get_user_id()
+    script = _get_script_and_ensure_access(db, script_id, user_id)
+
+    parsed = _read_script_json(script)
+    if parsed is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Script JSON not found. Parse the script first.",
+        )
+
+    elements, _ = parsed
+    scene_elements: List[dict] = []
+    in_scene = False
+    for el in elements:
+        if el.get("type") == "scene_heading":
+            if el.get("scene_number") == scene_number:
+                in_scene = True
+            elif in_scene:
+                break
+        if in_scene:
+            scene_elements.append(el)
+
+    if not scene_elements:
+        raise HTTPException(status_code=404, detail="Scene not found")
+
+    user_prompt = _build_suggest_shots_user_prompt(scene_elements, scene_number)
+
+    try:
+        gw_response = _gateway_client().execute_text(
+            model=SHOTLIST_MODEL,
+            messages=[
+                {"role": "system", "content": SHOTLIST_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+    except GatewayClientError as exc:
+        raise HTTPException(status_code=502, detail=f"AI gateway error: {exc}")
+
+    raw_text = _extract_text_from_gateway(gw_response)
+    parsed_json = _extract_json_block(raw_text)
+    if not isinstance(parsed_json, dict):
+        raise HTTPException(
+            status_code=502,
+            detail="Gateway did not return a valid JSON object for shot suggestions",
+        )
+
+    raw_suggestions = parsed_json.get("suggestions")
+    if not isinstance(raw_suggestions, list):
+        raise HTTPException(
+            status_code=502,
+            detail="Gateway response missing 'suggestions' array",
+        )
+
+    suggestions: List[ShotSuggestion] = []
+    for item in raw_suggestions:
+        if not isinstance(item, dict):
+            continue
+        line_number = str(item.get("line_number") or "").strip()
+        color = str(item.get("color") or "").strip()
+        shot_type = str(item.get("shot_type") or "").strip()
+        camera_direction = str(item.get("camera_direction") or "").strip()
+        start_text = str(item.get("start_element_text") or "").strip()
+        end_text = str(item.get("end_element_text") or "").strip()
+        rationale = str(item.get("rationale") or "").strip()
+        is_insert = item.get("is_insert")
+        overlaps = item.get("overlaps")
+        # Required string fields must be non-empty
+        if not (line_number and color and shot_type and start_text and end_text):
+            continue
+        # is_insert and overlaps must be present and correctly typed;
+        # False and [] are valid values so we check type, not truthiness
+        if not isinstance(is_insert, bool) or not isinstance(overlaps, list):
+            continue
+        suggestions.append(
+            ShotSuggestion(
+                line_number=line_number,
+                color=color,
+                shot_type=shot_type,
+                camera_direction=camera_direction,
+                start_element_text=start_text,
+                end_element_text=end_text,
+                rationale=rationale,
+                is_insert=is_insert,
+                overlaps=[str(o) for o in overlaps if isinstance(o, str)],
+            )
+        )
+
+    return SuggestShotsResponse(
+        script_id=script_id,
+        scene_number=scene_number,
+        suggestions=suggestions,
+    )
 
 
 def _extract_decisions(

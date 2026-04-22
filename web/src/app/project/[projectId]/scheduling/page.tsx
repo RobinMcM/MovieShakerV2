@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2, Calendar, CalendarClock, X, Check } from "lucide-react";
 import { useScenes } from "./useScenes";
 import { SceneItem } from "./SceneItem";
+import { TramlineBoard } from "@/components/scheduling/TramlineBoard";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("en-GB", {
@@ -32,7 +33,7 @@ function SchedulingPageInner() {
     typeof params.projectId === "string"
       ? params.projectId
       : params.projectId?.[0];
-  const [viewMode, setViewMode] = useState<"list" | "schedule">("list");
+  const [viewMode, setViewMode] = useState<"list" | "schedule" | "tramline">("list");
   const [selectedSceneIds, setSelectedSceneIds] = useState<string[]>([]);
   const [groupLocationName, setGroupLocationName] = useState("");
 
@@ -41,6 +42,8 @@ function SchedulingPageInner() {
     project,
     scenesData,
     scriptPageCount,
+    scriptId,
+    reloadScenes,
     timeOfDayOptions,
     shootingDays,
     sceneCostsMap,
@@ -52,6 +55,13 @@ function SchedulingPageInner() {
     updateLocalSceneCharacter,
     bulkUpdateSceneLocations,
   } = useScenes(projectId ?? null);
+
+  // Reload scene data when CoProducer generates a schedule
+  useEffect(() => {
+    const handler = () => reloadScenes();
+    window.addEventListener("scheduleGenerated", handler);
+    return () => window.removeEventListener("scheduleGenerated", handler);
+  }, [reloadScenes]);
 
   const handleToggleSelect = (sceneId: string) => {
     setSelectedSceneIds((prev) =>
@@ -253,7 +263,7 @@ function SchedulingPageInner() {
                 <Tabs
                   value={viewMode}
                   onValueChange={(v) =>
-                    setViewMode(v as "list" | "schedule")
+                    setViewMode(v as "list" | "schedule" | "tramline")
                   }
                   className="w-full"
                 >
@@ -270,6 +280,12 @@ function SchedulingPageInner() {
                         className="rounded-full px-4 sm:px-8 py-2.5 text-sm font-semibold transition-all data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-md data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:bg-background/40 data-[state=inactive]:hover:text-foreground"
                       >
                         Schedule
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value="tramline"
+                        className="rounded-full px-4 sm:px-8 py-2.5 text-sm font-semibold transition-all data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-md data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:bg-background/40 data-[state=inactive]:hover:text-foreground"
+                      >
+                        Tramline
                       </TabsTrigger>
                     </TabsList>
                   </div>
@@ -526,6 +542,15 @@ function SchedulingPageInner() {
                         }
                       )}
                     </Accordion>
+                  </TabsContent>
+
+                  <TabsContent value="tramline" className="mt-0">
+                    <TramlineBoard
+                      scenesData={scenesData}
+                      scriptId={scriptId ?? ""}
+                      projectId={projectId ?? ""}
+                      projectName={project?.name ?? ""}
+                    />
                   </TabsContent>
                 </Tabs>
               )}

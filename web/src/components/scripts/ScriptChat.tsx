@@ -27,6 +27,7 @@ export interface ScriptChatProps {
     onAfterResponse?: () => void;
     ref?: Ref<ScriptChatHandle>;
     embedded?: boolean;
+    contextMode?: string;
 }
 
 interface ChatApiResponse {
@@ -139,7 +140,7 @@ function MessageBubble({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function ScriptChat({ scriptId, initialChatId, onAfterResponse, ref, embedded: _embedded }: ScriptChatProps) {
+export function ScriptChat({ scriptId, initialChatId, onAfterResponse, ref, embedded: _embedded, contextMode }: ScriptChatProps) {
     const router = useRouter();
     const pathname = usePathname();
 
@@ -235,7 +236,7 @@ export function ScriptChat({ scriptId, initialChatId, onAfterResponse, ref, embe
             try {
                 const res = await api.post<ChatApiResponse>(
                     `/scripts/${scriptId}/chat`,
-                    { message: trimmed, chat_id: chatId },
+                    { message: trimmed, chat_id: chatId, context_mode: contextMode ?? "scripts" },
                     90_000
                 );
 

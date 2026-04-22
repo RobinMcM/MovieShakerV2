@@ -1748,6 +1748,7 @@ def _build_script_chat_system_prompt(ctx: "ChatContext") -> str:  # type: ignore
 class ScriptChatBody(BaseModel):
     message: str
     chat_id: Optional[str] = None
+    context_mode: Optional[str] = None
 
 
 class ScriptChatResponse(BaseModel):
@@ -1816,7 +1817,7 @@ def script_chat(
 
     from scripts.prompts.system_prompt_builder import build_system_prompt
     system_prompt = build_system_prompt(
-        context_mode="scripts",
+        context_mode=body.context_mode or "scripts",
         context=ctx,
         db=db,
         user_id=user_id,
@@ -1910,6 +1911,205 @@ def get_script_messages(
         for row in rows
     ]
     return ScriptMessagesResponse(chat_id=chat_id, messages=messages)
+
+
+# ── Schedule endpoints ────────────────────────────────────────────────────────
+
+class ScheduleAssignment(BaseModel):
+    scene_number: int
+    shooting_day: int
+
+
+class ScheduleCommitBody(BaseModel):
+    assignments: List[ScheduleAssignment]
+
+
+# POST /scripts/{script_id}/schedule/commit
+@router.post("/scripts/{script_id}/schedule/commit")
+def commit_schedule(
+    script_id: str,
+    body: ScheduleCommitBody,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    _get_script_and_ensure_access(db, script_id, user_id)
+    committed = 0
+    for a in body.assignments:
+        result = db.execute(
+            text("""
+                UPDATE scenes
+                SET continuity_day = :shooting_day
+                WHERE script_id = :script_id
+                AND scene_number = :scene_number
+            """),
+            {
+                "shooting_day": a.shooting_day,
+                "script_id": str(uuid.UUID(script_id)),
+                "scene_number": a.scene_number,
+            },
+        )
+        committed += result.rowcount
+    db.commit()
+    return {"committed": committed, "script_id": script_id}
+
+
+# POST /scripts/{script_id}/schedule/generate
+@router.post("/scripts/{script_id}/schedule/generate")
+def generate_schedule(
+    script_id: str,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    _get_script_and_ensure_access(db, script_id, user_id)
+
+    rows = db.execute(
+        text("""
+            SELECT scene_number, heading, length_in_eighths,
+                   scene_location, location_type, is_night_shoot,
+                   has_stunts, has_vfx, characters
+            FROM scenes
+            WHERE script_id = :script_id
+            ORDER BY scene_number ASC
+        """),
+        {"script_id": str(uuid.UUID(script_id))},
+    ).fetchall()
+
+    scenes_data = []
+    for row in rows:
+        chars_raw = row[8]
+        if isinstance(chars_raw, str):
+            try:
+                chars = json.loads(chars_raw)
+            except Exception:
+                chars = []
+        elif isinstance(chars_raw, list):
+            chars = chars_raw
+        else:
+            chars = []
+        scenes_data.append({
+            "scene_number": row[0],
+            "heading": row[1],
+            "length_in_eighths": row[2],
+            "scene_location": row[3],
+            "location_type": row[4],
+            "is_night_shoot": row[5],
+            "has_stunts": row[6],
+            "has_vfx": row[7],
+            "characters": [
+                c.get("name", c) if isinstance(c, dict) else str(c)
+                for c in chars
+            ],
+        })
+
+    from scripts.prompts.system_prompt_builder import SCHEDULING_SYSTEM_PROMPT
+    user_prompt = (
+        f"Generate a shooting schedule for the following {len(scenes_data)} scenes. "
+        "Return ONLY a valid JSON array, no preamble.\n\n"
+        + json.dumps(scenes_data, indent=2)
+    )
+
+    try:
+        gw_response = _gateway_client().execute_text(
+            model=ANALYSIS_MODEL,
+            messages=[
+                {"role": "system", "content": SCHEDULING_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+    except GatewayClientError as exc:
+        raise HTTPException(status_code=502, detail=f"AI gateway error: {exc}")
+
+    raw_text = _extract_text_from_gateway(gw_response)
+    cleaned = raw_text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```[a-zA-Z]*\n?", "", cleaned)
+        cleaned = re.sub(r"\n?```$", "", cleaned.strip())
+
+    assignments_list: Optional[list] = None
+    try:
+        parsed = json.loads(cleaned)
+        if isinstance(parsed, list):
+            assignments_list = parsed
+    except (ValueError, TypeError):
+        pass
+
+    if assignments_list is None:
+        start = cleaned.find("[")
+        end = cleaned.rfind("]")
+        if start >= 0 and end > start:
+            try:
+                assignments_list = json.loads(cleaned[start : end + 1])
+            except (ValueError, TypeError):
+                pass
+
+    if not isinstance(assignments_list, list):
+        raise HTTPException(
+            status_code=502,
+            detail="Gateway did not return a valid JSON schedule array",
+        )
+
+    committed = 0
+    for a in assignments_list:
+        if not isinstance(a, dict):
+            continue
+        scene_number = a.get("scene_number")
+        shooting_day = a.get("shooting_day")
+        if scene_number is None or shooting_day is None:
+            continue
+        try:
+            result = db.execute(
+                text("""
+                    UPDATE scenes
+                    SET continuity_day = :shooting_day
+                    WHERE script_id = :script_id
+                    AND scene_number = :scene_number
+                """),
+                {
+                    "shooting_day": int(shooting_day),
+                    "script_id": str(uuid.UUID(script_id)),
+                    "scene_number": int(scene_number),
+                },
+            )
+            committed += result.rowcount
+        except Exception:
+            continue
+    db.commit()
+
+    updated_rows = db.execute(
+        text("""
+            SELECT id, scene_number, heading, page_number, length_in_eighths,
+                   shooting_day, time_of_day_id, continuity_day, scene_location,
+                   scene_details, location_details
+            FROM scenes
+            WHERE script_id = :script_id
+            ORDER BY scene_number ASC
+        """),
+        {"script_id": str(uuid.UUID(script_id))},
+    ).fetchall()
+
+    data = [
+        SceneResponse(
+            id=str(row[0]),
+            scene_number=row[1],
+            heading=row[2] or "",
+            page_number=row[3] or "",
+            length_in_eighths=row[4],
+            shooting_day=row[5],
+            time_of_day_id=row[6],
+            continuity_day=row[7],
+            scene_location=row[8],
+            scene_details=row[9],
+            location_details=row[10],
+        )
+        for row in updated_rows
+    ]
+    return {
+        "committed": committed,
+        "script_id": script_id,
+        "scenes": [d.model_dump() for d in data],
+    }
 
 
 # DELETE /scripts/{script_id}

@@ -12,11 +12,43 @@ MAX_PROMPT_TOKENS = 80_000
 MAX_SYSTEM_PROMPT_LENGTH = MAX_PROMPT_TOKENS * 4  # char ceiling (~320k)
 
 CONTEXT_MODE_TO_SELECTION_KEY: dict[str, str] = {
-    "scripts":  "movieshaker-scripts",
-    "budgets":  "movieshaker-budgets",
-    "schedule": "movieshaker-schedule",
-    "general":  "movieshaker-general",
+    "scripts":    "movieshaker-scripts",
+    "budgets":    "movieshaker-budgets",
+    "schedule":   "movieshaker-schedule",
+    "scheduling": "movieshaker-scheduling",
+    "shotlist":   "movieshaker-shotlist",
+    "general":    "movieshaker-general",
 }
+
+SCHEDULING_SYSTEM_PROMPT = """You are the CoProducer — the production scheduling \
+architect for this film. You own the schedule. \
+You speak with authority and precision.
+
+You have full knowledge of this script from your analysis. On this page you are \
+focused purely on the physical production — shoot days, locations, cast logistics, costs.
+
+Your principles:
+- Group scenes by location first — moving costs money
+- Protect the lead actor — minimise their shoot days
+- Night shoots cluster together or sit at end of week
+- Heavy VFX days need technical crew — flag them
+- Voice-only cast never need a call day
+- Always flag when a day exceeds 32 eighths
+
+When asked to generate a schedule:
+- Return ONLY a valid JSON array
+- No preamble, no explanation
+- Format: [{"scene_number": 1, "shooting_day": 1}, ...]
+- Assign every scene to a day
+- Leave nothing unscheduled
+
+When asked questions about the schedule:
+- Reference scene numbers and shooting days precisely
+- Quantify the impact of changes (cost, days, cast)
+- Be decisive — give a recommendation, not options
+- If the producer overrides you, adapt immediately
+
+You are in control. The producer is assessing."""
 
 
 def _estimate_tokens(s: str) -> int:
@@ -137,9 +169,11 @@ def build_system_prompt(
     )
 
     if not has_admin_config:
-        # Lazy import to avoid circular dep (context_assembler → router → here → router)
         from scripts.router import _build_script_chat_system_prompt
-        return _build_script_chat_system_prompt(context)
+        base = _build_script_chat_system_prompt(context)
+        if context_mode == "scheduling":
+            return SCHEDULING_SYSTEM_PROMPT + "\n\n" + base
+        return base
 
     layout_lines = _get_layout_field_lines(selection_key)
     prompt_override, override_mode = _get_user_override(db, user_id)

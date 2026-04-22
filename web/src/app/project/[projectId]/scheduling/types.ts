@@ -28,8 +28,12 @@ export interface Scene {
   time_of_day_notes?: string | null;
   shooting_day?: string | null;
   location_details?: string | null;
+  location_type?: string | null;
   scene_location?: string | null;
   scene_details?: string | null;
+  is_night_shoot?: boolean | null;
+  has_stunts?: boolean | null;
+  has_vfx?: boolean | null;
   scene_characters?: SceneCharacter[];
 }
 

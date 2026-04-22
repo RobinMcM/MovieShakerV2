@@ -70,6 +70,12 @@ export default function ProjectLayout({
         window.localStorage.setItem(COPRODUCER_OPEN_KEY, coproducerOpen ? "true" : "false");
     }, [coproducerOpen]);
 
+    useEffect(() => {
+        const handler = () => { setCoproducerOpen(true); };
+        window.addEventListener("openCoproducer", handler);
+        return () => window.removeEventListener("openCoproducer", handler);
+    }, []);
+
     function handleCoproducerActivate() {
         if (coproducerActive) {
             setCoproducerActive(false);
@@ -92,14 +98,30 @@ export default function ProjectLayout({
     // Context detection for CoProducer sidebar
     const contextMode = pathname?.includes("/script/")
         ? "scripts"
+        : pathname?.includes("/scheduling")
+        ? "scheduling"
+        : pathname?.includes("/shotlist")
+        ? "shotlist"
         : pathname?.includes("/budget")
         ? "budgets"
-        : pathname?.includes("/schedule")
-        ? "schedule"
         : "general";
+
+    const [schedulingScriptId, setSchedulingScriptId] = useState<string | undefined>(undefined);
+
+    useEffect(() => {
+        if (contextMode !== "scheduling" || !projectId) return;
+        api.get<{ scripts: { id: string; is_current: boolean }[] }>(`/projects/${projectId}/scripts`)
+            .then((res) => {
+                const current = res.scripts?.find((s) => s.is_current);
+                if (current) setSchedulingScriptId(current.id);
+            })
+            .catch(() => {});
+    }, [contextMode, projectId]);
 
     const contextId = pathname?.includes("/script/")
         ? pathname.split("/script/")[1]?.split("/")[0]
+        : contextMode === "scheduling"
+        ? schedulingScriptId
         : undefined;
 
     if (!projectId) {

@@ -52,6 +52,8 @@ export function useScenes(projectId: string | null) {
   const [project, setProject] = useState<Project | null>(null);
   const [scenesData, setScenesData] = useState<SceneWithCharacters[]>([]);
   const [scriptPageCount, setScriptPageCount] = useState<number>(0);
+  const [currentScriptId, setCurrentScriptId] = useState<string | null>(null);
+  const [reloadTrigger, setReloadTrigger] = useState(0);
   const [timeOfDayOptions, setTimeOfDayOptions] = useState<TimeOfDay[]>([]);
   const [shootingDays, setShootingDays] = useState<string[]>([]);
   const [sceneCostsMap, setSceneCostsMap] = useState<Map<string, number>>(
@@ -121,10 +123,12 @@ export function useScenes(projectId: string | null) {
         if (!currentScript) {
           setScenesData([]);
           setScriptPageCount(0);
+          setCurrentScriptId(null);
           return;
         }
 
         setScriptPageCount(currentScript.page_count ?? 0);
+        setCurrentScriptId(currentScript.id);
 
         const [scenesRes, sceneCharsRes, charsRes] = await Promise.all([
           api.get<{ success: boolean; data: SceneResponse[] }>(
@@ -216,7 +220,7 @@ export function useScenes(projectId: string | null) {
       loadTimeOfDayOptions(),
     ])
       .finally(() => setLoading(false));
-  }, [projectId, loadProject, loadScenesAndCharacters, loadTimeOfDayOptions]);
+  }, [projectId, loadProject, loadScenesAndCharacters, loadTimeOfDayOptions, reloadTrigger]);
 
   const updateLocalScene = useCallback((sceneId: string, updates: Partial<Scene>) => {
     setScenesData((prev) =>
@@ -301,6 +305,8 @@ export function useScenes(projectId: string | null) {
     project,
     scenesData,
     scriptPageCount,
+    scriptId: currentScriptId,
+    reloadScenes: () => setReloadTrigger((t) => t + 1),
     timeOfDayOptions,
     shootingDays,
     sceneCostsMap,

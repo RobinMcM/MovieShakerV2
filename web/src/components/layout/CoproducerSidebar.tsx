@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ChevronDown, ChevronUp, PanelRightClose, PanelRightOpen } from "lucide-react";
-import { ScriptChat } from "@/components/scripts/ScriptChat";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronUp, Loader2, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { ScriptChat, type ScriptChatHandle } from "@/components/scripts/ScriptChat";
 import { api } from "@/lib/api";
 
 interface CoproducerSidebarProps {
@@ -18,6 +18,8 @@ const CONTEXT_LABELS: Record<string, string> = {
     scripts: "Scripts",
     budgets: "Budgets",
     schedule: "Schedule",
+    scheduling: "Scheduling",
+    shotlist: "Shot List",
     general: "General",
 };
 
@@ -40,6 +42,53 @@ export function CoproducerSidebar({
     const [promptOverrideMode, setPromptOverrideMode] = useState<"append" | "prepend">("append");
     const [saving, setSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
+
+    // Opening-message state — keyed by contextMode so switching pages resets it
+    const [openingDismissed, setOpeningDismissed] = useState<Record<string, boolean>>({});
+    const [generating, setGenerating] = useState(false);
+    const [generateError, setGenerateError] = useState<string | null>(null);
+    const chatRef = useRef<ScriptChatHandle>(null);
+    const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+
+    const showOpening = (contextMode === "scheduling" || contextMode === "shotlist")
+        && !!contextId
+        && !openingDismissed[contextMode];
+
+    // Send pendingMessage once opening is dismissed and chat ref is ready
+    useEffect(() => {
+        if (!pendingMessage || showOpening) return;
+        const t = setTimeout(() => {
+            chatRef.current?.sendMessage(pendingMessage);
+            setPendingMessage(null);
+        }, 150);
+        return () => clearTimeout(t);
+    }, [pendingMessage, showOpening]);
+
+    async function handleGenerate() {
+        if (!contextId) return;
+        setGenerating(true);
+        setGenerateError(null);
+        try {
+            await api.post(`/scripts/${contextId}/schedule/generate`, {}, 120_000);
+            window.dispatchEvent(new Event("scheduleGenerated"));
+            setOpeningDismissed((prev) => ({ ...prev, [contextMode]: true }));
+        } catch {
+            setGenerateError("Generate failed — please try again.");
+        } finally {
+            setGenerating(false);
+        }
+    }
+
+    function handleShowBreakdown() {
+        setOpeningDismissed((prev) => ({ ...prev, [contextMode]: true }));
+        setPendingMessage(
+            "Give me a breakdown of the shoot schedule by location with cast requirements and eighths per group"
+        );
+    }
+
+    function handleShotlistBreakdown() {
+        setOpeningDismissed((prev) => ({ ...prev, [contextMode]: true }));
+    }
 
     useEffect(() => {
         api.get<PromptOverrideResponse>("/profile/prompt-override")
@@ -121,10 +170,70 @@ export function CoproducerSidebar({
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 min-h-0 overflow-hidden">
-                    {contextMode === "scripts" && contextId ? (
-                        <ScriptChat scriptId={contextId} embedded={true} />
-                    ) : (
+                <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+                    {/* Scheduling opening message */}
+                    {contextMode === "scheduling" && contextId && showOpening && (
+                        <div className="flex flex-col gap-4 p-5">
+                            <p className="text-sm text-foreground leading-relaxed">
+                                I&apos;m your production scheduler. I&apos;ve read the script
+                                and I&apos;m ready to build your shoot schedule.
+                                Want me to generate it now?
+                            </p>
+                            {generateError && (
+                                <p className="text-xs text-destructive">{generateError}</p>
+                            )}
+                            <div className="flex gap-2 flex-wrap">
+                                <button
+                                    type="button"
+                                    onClick={handleGenerate}
+                                    disabled={generating}
+                                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
+                                >
+                                    {generating && <Loader2 className="h-3 w-3 animate-spin" />}
+                                    Generate schedule
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleShowBreakdown}
+                                    className="text-xs px-3 py-1.5 rounded-md border border-border bg-background hover:bg-accent transition-colors"
+                                >
+                                    Show me the breakdown
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Shotlist opening message */}
+                    {contextMode === "shotlist" && contextId && showOpening && (
+                        <div className="flex flex-col gap-4 p-5">
+                            <p className="text-sm text-foreground leading-relaxed">
+                                I&apos;m your shot designer. Select a scene and I&apos;ll
+                                suggest camera setups and tram line placements based on
+                                the dialogue and action.
+                            </p>
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={handleShotlistBreakdown}
+                                    className="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                                >
+                                    Let&apos;s start
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Chat — shown for scripts, and for scheduling/shotlist once opening dismissed */}
+                    {(contextMode === "scripts" ||
+                      ((contextMode === "scheduling" || contextMode === "shotlist") && !showOpening))
+                     && contextId ? (
+                        <ScriptChat
+                            ref={chatRef}
+                            scriptId={contextId}
+                            embedded={true}
+                            contextMode={contextMode}
+                        />
+                    ) : !showOpening && (
                         <div className="flex items-center justify-center h-full p-6 text-center">
                             <p className="text-sm text-muted-foreground">
                                 CoProducer is ready. Navigate to a script to begin.

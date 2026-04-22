@@ -75,7 +75,7 @@ function extractTextBetweenElements(
 
 export async function placeSuggestedShots(
   suggestions: ShotSuggestion[],
-  containerRef: RefObject<HTMLElement>,
+  containerRef: RefObject<HTMLElement | null>,
   sceneId: string,
   // scriptId is kept in signature for API symmetry but not sent to POST /api/tram-lines
   // (engine CreateTramLineBody does not accept script_id)

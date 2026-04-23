@@ -204,6 +204,20 @@ def _migrate_characters_objects_fields():
                     logger.warning("Migration characters %s: %s", col, e)
 
 
+def _migrate_characters_object_type():
+    """Add object_type and scene_tags to characters table if missing."""
+    with engine.connect() as conn:
+        with conn.begin():
+            for stmt in [
+                "ALTER TABLE characters ADD COLUMN IF NOT EXISTS object_type VARCHAR(50) DEFAULT 'actor_full'",
+                "ALTER TABLE characters ADD COLUMN IF NOT EXISTS scene_tags JSONB DEFAULT '[]'",
+            ]:
+                try:
+                    conn.execute(text(stmt))
+                except Exception as e:
+                    logger.warning("Migration characters object_type/scene_tags: %s", e)
+
+
 def _migrate_email_tracking_tables():
     """Ensure webhook/email tracking indexes and constraints exist."""
     with engine.connect() as conn:
@@ -429,6 +443,7 @@ def init_db():
     _migrate_scenes_scene_cost_columns()
     _migrate_characters_cast_tier()
     _migrate_characters_objects_fields()
+    _migrate_characters_object_type()
     _migrate_email_tracking_tables()
     _migrate_chatbot_prompt_config_table()
     _migrate_user_profile_prompt_override()

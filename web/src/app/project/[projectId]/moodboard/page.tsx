@@ -25,6 +25,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   User,
+  Bot,
   ChevronLeft,
   ChevronRight,
   Plus,
@@ -84,6 +85,9 @@ function MoodBoardContent() {
   const [canvasNote, setCanvasNote] = useState("");
   const [canvasAspectRatio, setCanvasAspectRatio] = useState("16:9");
   const [isScriptCollapsed, setIsScriptCollapsed] = useState(false);
+  const [generatingMoodboard, setGeneratingMoodboard] = useState(false);
+  const [generateResult, setGenerateResult] = useState<string | null>(null);
+  const [generateError, setGenerateError] = useState<string | null>(null);
   const canvasRef = useRef<DrawingCanvasRef>(null);
 
   useEffect(() => {
@@ -191,6 +195,32 @@ function MoodBoardContent() {
   const handleNewCanvas = () => {
     setIsNewCanvas(true);
     setCurrentCanvasIndex(compositions.length);
+  };
+
+  const handleGenerateMoodboard = async () => {
+    if (!selectedTramLine || !selectedTramLineId) return;
+    const scriptId = selectedTramLine.scenes?.script_id;
+    const sceneNumber = selectedTramLine.scenes?.scene_number;
+    if (!scriptId || sceneNumber == null) return;
+    setGeneratingMoodboard(true);
+    setGenerateResult(null);
+    setGenerateError(null);
+    try {
+      const res = await api.post<{ shots_generated: number; shots_skipped: number }>(
+        `scripts/${scriptId}/scenes/${sceneNumber}/generate-moodboard`,
+        {},
+        90_000,
+      );
+      const generated = (res as { shots_generated?: number }).shots_generated ?? 0;
+      setGenerateResult(`${generated} shot${generated === 1 ? "" : "s"} generated`);
+      await loadCompositions(selectedTramLineId);
+      setIsNewCanvas(false);
+      setCurrentCanvasIndex(0);
+    } catch {
+      setGenerateError("Generation failed — please try again.");
+    } finally {
+      setGeneratingMoodboard(false);
+    }
   };
 
   const handleVisualize = async () => {
@@ -367,6 +397,22 @@ function MoodBoardContent() {
                           <Plus className="h-4 w-4" /> Add
                         </Button>
                         <div className="hidden sm:block w-px h-6 bg-border mx-1" />
+                        <Button
+                          variant="default"
+                          size="sm"
+                          className="bg-teal-600 hover:bg-teal-700 text-white border-0"
+                          onClick={handleGenerateMoodboard}
+                          disabled={generatingMoodboard || !selectedTramLineId}
+                          title="CoProducer: generate moodboard images for all shots in this scene"
+                        >
+                          {generatingMoodboard ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          ) : (
+                            <Bot className="h-4 w-4 mr-2" />
+                          )}
+                          {generatingMoodboard ? "CoProducer thinking..." : "Generate moodboard"}
+                        </Button>
+                        <div className="hidden sm:block w-px h-6 bg-border mx-1" />
                         <Button variant="default" size="sm" className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white border-0" onClick={handleVisualize} disabled={!selectedTramLineId}>
                           <Sparkles className="h-4 w-4 mr-2" /> Visualize
                         </Button>
@@ -413,6 +459,12 @@ function MoodBoardContent() {
                       />
                       <p className="text-xs text-muted-foreground italic">Notes are saved when you save the canvas (Save in the toolbar above).</p>
                     </div>
+                    {generateResult && (
+                      <p className="text-xs text-teal-600 dark:text-teal-400 font-medium">{generateResult}</p>
+                    )}
+                    {generateError && (
+                      <p className="text-xs text-destructive">{generateError}</p>
+                    )}
                   </CardContent>
                 </Card>
 

@@ -102,6 +102,8 @@ export default function ProjectLayout({
         ? "scheduling"
         : pathname?.includes("/shotlist")
         ? "shotlist"
+        : pathname?.includes("/moodboard")
+        ? "moodboard"
         : pathname?.includes("/budget")
         ? "budgets"
         : "general";
@@ -122,6 +124,8 @@ export default function ProjectLayout({
         ? pathname.split("/script/")[1]?.split("/")[0]
         : contextMode === "scheduling"
         ? schedulingScriptId
+        : contextMode === "moodboard"
+        ? (projectId ?? undefined)
         : undefined;
 
     if (!projectId) {

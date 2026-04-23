@@ -20,6 +20,7 @@ const CONTEXT_LABELS: Record<string, string> = {
     schedule: "Schedule",
     scheduling: "Scheduling",
     shotlist: "Shot List",
+    moodboard: "Moodboard",
     general: "General",
 };
 
@@ -50,7 +51,7 @@ export function CoproducerSidebar({
     const chatRef = useRef<ScriptChatHandle>(null);
     const [pendingMessage, setPendingMessage] = useState<string | null>(null);
 
-    const showOpening = (contextMode === "scheduling" || contextMode === "shotlist")
+    const showOpening = (contextMode === "scheduling" || contextMode === "shotlist" || contextMode === "moodboard")
         && !!contextId
         && !openingDismissed[contextMode];
 
@@ -234,9 +235,29 @@ export function CoproducerSidebar({
                         </div>
                     )}
 
-                    {/* Chat — shown for scripts, and for scheduling/shotlist once opening dismissed */}
+                    {/* Moodboard opening message */}
+                    {contextMode === "moodboard" && contextId && showOpening && (
+                        <div className="flex flex-col gap-4 p-5">
+                            <p className="text-sm text-foreground leading-relaxed">
+                                I&apos;m your visual director. Select a scene and I&apos;ll
+                                generate the complete moodboard from your shot list and
+                                character references.
+                            </p>
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setOpeningDismissed((prev) => ({ ...prev, [contextMode]: true }))}
+                                    className="text-xs px-3 py-1.5 rounded-md bg-teal-600 text-white hover:bg-teal-700 transition-colors"
+                                >
+                                    Generate moodboard for this scene
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Chat — shown for scripts, and for scheduling/shotlist/moodboard once opening dismissed */}
                     {(contextMode === "scripts" ||
-                      ((contextMode === "scheduling" || contextMode === "shotlist") && !showOpening))
+                      ((contextMode === "scheduling" || contextMode === "shotlist" || contextMode === "moodboard") && !showOpening))
                      && contextId ? (
                         <ScriptChat
                             ref={chatRef}

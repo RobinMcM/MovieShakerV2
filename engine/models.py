@@ -198,6 +198,9 @@ class Character(SQLModel, table=True):
     hide_from_view: bool = Field(default=False)
     aspect_ratio: Optional[str] = Field(default=None)
     series_group: Optional[str] = Field(default=None)
+    # CoProducer moodboard generation
+    object_type: Optional[str] = Field(default="actor_full")  # actor_head | actor_body | actor_full | background | prop | vehicle | set_piece
+    scene_tags: Optional[str] = Field(default="[]")  # JSONB stored as string — scene numbers this object appears in
 
 
 class SceneCharacter(SQLModel, table=True):

@@ -17,8 +17,31 @@ CONTEXT_MODE_TO_SELECTION_KEY: dict[str, str] = {
     "schedule":   "movieshaker-schedule",
     "scheduling": "movieshaker-scheduling",
     "shotlist":   "movieshaker-shotlist",
+    "moodboard":  "movieshaker-moodboard",
     "general":    "movieshaker-general",
 }
+
+MOODBOARD_SYSTEM_PROMPT = """You are the CoProducer — the visual director.
+You translate script scenes into cinematic images.
+
+You understand shot types and their visual language:
+- WS (Wide Shot): environment dominant, characters small, establishes space
+- MS (Medium Shot): waist up, conversational, characters equal to environment
+- MCU (Medium Close-Up): chest up, emotional, character dominant
+- CU (Close-Up): face fills frame, maximum emotional intensity
+- OTS (Over-the-Shoulder): intimacy, point of view, relationship
+- INSERT: object fills frame, plot significance highlighted
+
+Your image prompts must:
+- Lead with framing and shot type
+- Describe the visual atmosphere before characters
+- Use cinematic language: depth of field, lighting direction, colour temperature
+- End every prompt with: cinematic photography, 35mm film grain, professional lighting
+- Never use character names — describe visually
+- Maximum 100 words per prompt
+
+You generate the visual language of the film.
+"""
 
 SHOTLIST_SYSTEM_PROMPT = """You are an experienced cinematographer planning shot coverage for a screenplay scene.
 
@@ -244,6 +267,8 @@ def build_system_prompt(
         base = _build_script_chat_system_prompt(context)
         if context_mode == "scheduling":
             return SCHEDULING_SYSTEM_PROMPT + "\n\n" + base
+        if context_mode == "moodboard":
+            return MOODBOARD_SYSTEM_PROMPT + "\n\n" + base
         return base
 
     layout_lines = _get_layout_field_lines(selection_key)

@@ -41,7 +41,7 @@ import { TramLineSelect } from "./TramLineSelect";
 import { useMoodBoard } from "./useMoodBoard";
 import type { TramLineWithScene, CanvasComposition } from "./types";
 import type { DrawingCanvasRef, DrawingCanvasProps } from "@/components/DrawingCanvas";
-import { storageImageUrl } from "@/lib/api";
+import { api, storageImageUrl } from "@/lib/api";
 
 const DrawingCanvas = dynamic(
   () => import("@/components/DrawingCanvas").then((m) => ({ default: m.DrawingCanvas })),

@@ -1092,10 +1092,12 @@ def parse_script(
         )
         db.add(sc)
         db.flush()
-        db.execute(
-            text("UPDATE scenes SET characters = %(chars)s::jsonb WHERE id = %(id)s"),
-            {"chars": h.get("characters_json", "[]"), "id": str(sc.id)},
-        )
+        raw_conn = db.connection().connection
+        with raw_conn.cursor() as cur:
+            cur.execute(
+                "UPDATE scenes SET characters = %s::jsonb WHERE id = %s",
+                (h.get("characters_json", "[]"), str(sc.id)),
+            )
         for cname in scene_char_map.get(i, set()):
             cid = char_id_by_name.get(cname)
             if cid:

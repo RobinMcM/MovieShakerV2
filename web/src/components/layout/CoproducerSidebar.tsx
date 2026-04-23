@@ -91,6 +91,17 @@ export function CoproducerSidebar({
     }
 
     useEffect(() => {
+        const handler = (e: Event) => {
+            const msg = (e as CustomEvent<{ message: string }>).detail?.message;
+            if (!msg) return;
+            setOpeningDismissed((prev) => ({ ...prev, [contextMode]: true }));
+            setPendingMessage(msg);
+        };
+        window.addEventListener("coproducerSendMessage", handler);
+        return () => window.removeEventListener("coproducerSendMessage", handler);
+    }, [contextMode]);
+
+    useEffect(() => {
         api.get<PromptOverrideResponse>("/profile/prompt-override")
             .then((data) => {
                 setPromptOverride(data.prompt_override || "");

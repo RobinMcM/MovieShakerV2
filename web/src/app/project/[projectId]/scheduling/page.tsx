@@ -285,7 +285,7 @@ function SchedulingPageInner() {
                         value="tramline"
                         className="rounded-full px-4 sm:px-8 py-2.5 text-sm font-semibold transition-all data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-md data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:bg-background/40 data-[state=inactive]:hover:text-foreground"
                       >
-                        Tramline
+                        Filming
                       </TabsTrigger>
                     </TabsList>
                   </div>

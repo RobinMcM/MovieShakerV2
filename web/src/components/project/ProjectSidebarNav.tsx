@@ -116,40 +116,6 @@ export function ProjectSidebarNav({
                     </nav>
 
                     <div className="mt-5 pt-4 border-t">
-                        <div className="space-y-1">
-                            <button
-                                type="button"
-                                onClick={handleCoproducerClick}
-                                className={cn(
-                                    "w-full flex items-center justify-between rounded-md px-2.5 py-2 text-sm transition-colors",
-                                    coproducerActive
-                                        ? "bg-primary/15 text-primary font-medium"
-                                        : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                                )}
-                            >
-                                <span className="flex items-center gap-2">
-                                    <Bot className="h-4 w-4" />
-                                    CoProducer
-                                </span>
-                                <span
-                                    className={cn(
-                                        "text-xs px-2 py-0.5 rounded-full",
-                                        hasCredits
-                                            ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                                            : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
-                                    )}
-                                >
-                                    {aiCredits === null
-                                        ? "…"
-                                        : hasCredits
-                                        ? `${aiCredits} credits`
-                                        : "Buy Credits"}
-                                </span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="mt-5 pt-4 border-t">
                         <button
                             type="button"
                             onClick={() => setScriptsExpanded((v) => !v)}

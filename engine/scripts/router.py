@@ -1086,9 +1086,16 @@ def parse_script(
             page_number=h.get("page_number", ""),
             length_in_eighths=h.get("length_in_eighths", 1),
             scene_number=h.get("scene_number", i + 1),
+            scene_location=h.get("scene_location") or None,
+            location_type=h.get("location_type") or None,
+            location_details=h.get("location_details") or None,
         )
         db.add(sc)
         db.flush()
+        db.execute(
+            text("UPDATE scenes SET characters = :chars::jsonb WHERE id = :id"),
+            {"chars": h.get("characters_json", "[]"), "id": str(sc.id)},
+        )
         for cname in scene_char_map.get(i, set()):
             cid = char_id_by_name.get(cname)
             if cid:
@@ -1109,6 +1116,10 @@ def parse_script(
         io.BytesIO(json_bytes),
         len(json_bytes),
     )
+
+    script.file_path = f"{script.user_id}/{script.project_id}/{script.id}/script.json"
+    db.add(script)
+    db.commit()
 
     return {
         "success": True,

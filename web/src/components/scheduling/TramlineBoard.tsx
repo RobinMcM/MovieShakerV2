@@ -175,6 +175,11 @@ export function TramlineBoard({
     [selectedSceneId, scenesData]
   );
 
+  function handleCoproducerMessage(message: string) {
+    window.dispatchEvent(new Event("openCoproducer"));
+    window.dispatchEvent(new CustomEvent("coproducerSendMessage", { detail: { message } }));
+  }
+
   async function handleCommit() {
     if (!scriptId) return;
     setCommitting(true);
@@ -536,24 +541,62 @@ export function TramlineBoard({
       )}
 
       {/* CoProducer bar */}
-      <div className="rounded-lg bg-teal-600 dark:bg-teal-700 p-3 flex items-center gap-3">
-        <Bot className="h-4 w-4 text-white shrink-0" />
-        <p className="text-xs text-white flex-1">
-          {heaviestDay
-            ? `Day ${heaviestDay.day} is heavy at ${heaviestDay.eighths} eighths — CoProducer can rebalance.`
-            : days.length > 0
-            ? `${days.length} shooting days · ${scenesData.length} scenes · ${totalEighths} eighths.`
-            : "Ask CoProducer to generate your shooting schedule."}
-        </p>
-        <button
-          type="button"
-          onClick={() =>
-            window.dispatchEvent(new Event("openCoproducer"))
-          }
-          className="shrink-0 text-xs font-medium text-white border border-white/40 px-2.5 py-1 rounded hover:bg-white/10 transition-colors"
-        >
-          Ask CoProducer ↗
-        </button>
+      <div className="rounded-lg bg-teal-600 dark:bg-teal-700 p-3 flex flex-col gap-2">
+        <div className="flex items-center gap-3">
+          <Bot className="h-4 w-4 text-white shrink-0" />
+          <p className="text-xs text-white flex-1">
+            {heaviestDay
+              ? `Day ${heaviestDay.day} is carrying ${heaviestDay.eighths} eighths — that's ${(heaviestDay.eighths / 8).toFixed(1)} pages in one day. Want me to rebalance?`
+              : days.length > 0
+              ? "Schedule looks balanced — no day exceeds 32 eighths. Ready to commit."
+              : "Ask CoProducer to generate your shooting schedule."}
+          </p>
+        </div>
+        <div className="flex gap-2 flex-wrap pl-7">
+          {heaviestDay ? (
+            <>
+              <button
+                type="button"
+                onClick={() =>
+                  handleCoproducerMessage(
+                    `Day ${heaviestDay.day} is at ${heaviestDay.eighths} eighths which is too heavy. Please rebalance the schedule — split the heaviest day and update the shooting day assignments across all scenes.`
+                  )
+                }
+                className="text-xs font-medium text-white border border-white/40 px-2.5 py-1 rounded hover:bg-white/10 transition-colors"
+              >
+                Rebalance schedule
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  handleCoproducerMessage(
+                    "Give me a breakdown of each shooting day with total eighths, scene count, and which scenes are assigned to each day."
+                  )
+                }
+                className="text-xs font-medium text-white border border-white/40 px-2.5 py-1 rounded hover:bg-white/10 transition-colors"
+              >
+                Show me the breakdown
+              </button>
+            </>
+          ) : days.length > 0 ? (
+            <button
+              type="button"
+              onClick={handleCommit}
+              disabled={committing || commitDone}
+              className="text-xs font-medium text-white border border-white/40 px-2.5 py-1 rounded hover:bg-white/10 transition-colors disabled:opacity-60"
+            >
+              {commitDone ? "Committed ✓" : committing ? "Committing…" : "Commit schedule"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new Event("openCoproducer"))}
+              className="text-xs font-medium text-white border border-white/40 px-2.5 py-1 rounded hover:bg-white/10 transition-colors"
+            >
+              Ask CoProducer ↗
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Toast */}

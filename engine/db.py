@@ -392,6 +392,20 @@ def _drop_all_foreign_key_constraints():
         "ALTER TABLE script_analysis DROP CONSTRAINT IF EXISTS script_analysis_script_id_fkey",
         "ALTER TABLE production_decisions DROP CONSTRAINT IF EXISTS production_decisions_script_id_fkey",
         "ALTER TABLE production_decisions DROP CONSTRAINT IF EXISTS production_decisions_chat_id_fkey",
+        # Budget tables
+        "ALTER TABLE budget_line_item DROP CONSTRAINT IF EXISTS budget_line_item_budget_id_fkey",
+        "ALTER TABLE budget DROP CONSTRAINT IF EXISTS budget_project_id_fkey",
+        # Mood board tables
+        "ALTER TABLE mood_board_canvas_compositions DROP CONSTRAINT IF EXISTS mood_board_canvas_compositions_tram_line_id_fkey",
+        "ALTER TABLE mood_board_image_history DROP CONSTRAINT IF EXISTS mood_board_image_history_tram_line_id_fkey",
+        "ALTER TABLE mood_board_video_history DROP CONSTRAINT IF EXISTS mood_board_video_history_tram_line_id_fkey",
+        "ALTER TABLE mood_board_compiled_videos DROP CONSTRAINT IF EXISTS mood_board_compiled_videos_tram_line_id_fkey",
+        "ALTER TABLE mood_board_compiled_videos DROP CONSTRAINT IF EXISTS mood_board_compiled_videos_project_id_fkey",
+        "ALTER TABLE mood_board_compiled_videos DROP CONSTRAINT IF EXISTS mood_board_compiled_videos_video_history_id_fkey",
+        # Gateway usage events
+        "ALTER TABLE gateway_usage_events DROP CONSTRAINT IF EXISTS gateway_usage_events_project_id_fkey",
+        "ALTER TABLE gateway_usage_events DROP CONSTRAINT IF EXISTS gateway_usage_events_tram_line_id_fkey",
+        "ALTER TABLE gateway_usage_events DROP CONSTRAINT IF EXISTS gateway_usage_events_video_history_id_fkey",
     ]
     for sql in constraints:
         with engine.connect() as conn:

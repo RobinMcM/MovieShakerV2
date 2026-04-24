@@ -2,6 +2,7 @@ import json
 import uuid
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import text
 from sqlmodel import Session, select
 from typing import List, Optional
 from pydantic import BaseModel
@@ -327,12 +328,35 @@ def delete_project(
         
     from models import (
         Script, Scene, SceneCharacter, SceneCost, Character,
-        TramLine, Budget, BudgetLineItem, SceneCostConfig,
+        TramLine, SceneCostConfig,
         MoodBoardComposition, MoodBoardImageHistory, FilmInABoxItem,
     )
     from storage import delete_script_dir
 
     project_uuid = uuid.UUID(project_id)
+    pid = str(project_uuid)
+
+    # Delete tables that reference tram_lines or video_history at project scope.
+    # These are not reachable via the scene ORM loop below, so raw SQL is used
+    # to guarantee correct FK ordering before tram_lines and script rows are removed.
+    db.execute(
+        text("DELETE FROM gateway_usage_events WHERE project_id = :pid"),
+        {"pid": pid},
+    )
+    db.execute(
+        text("DELETE FROM mood_board_compiled_videos WHERE project_id = :pid"),
+        {"pid": pid},
+    )
+    db.execute(
+        text(
+            "DELETE FROM mood_board_video_history WHERE tram_line_id IN ("
+            "  SELECT tl.id FROM tram_lines tl"
+            "  JOIN scenes s ON tl.scene_id = s.id"
+            "  WHERE s.script_id IN (SELECT id FROM script WHERE project_id = :pid)"
+            ")"
+        ),
+        {"pid": pid},
+    )
 
     # Scripts → scenes → scene dependents (deepest FK level first)
     scripts = db.exec(select(Script).where(Script.project_id == project_uuid)).all()
@@ -360,12 +384,18 @@ def delete_project(
             pass
     db.flush()
 
-    # Budget → line items
-    budgets = db.exec(select(Budget).where(Budget.project_id == project_uuid)).all()
-    for budget in budgets:
-        for row in db.exec(select(BudgetLineItem).where(BudgetLineItem.budget_id == budget.id)).all():
-            db.delete(row)
-        db.delete(budget)
+    # Budget → line items (raw SQL guarantees child-before-parent FK ordering)
+    db.execute(
+        text(
+            "DELETE FROM budget_line_item"
+            " WHERE budget_id IN (SELECT id FROM budget WHERE project_id = :pid)"
+        ),
+        {"pid": pid},
+    )
+    db.execute(
+        text("DELETE FROM budget WHERE project_id = :pid"),
+        {"pid": pid},
+    )
 
     # Scene cost config (unique per project)
     for row in db.exec(select(SceneCostConfig).where(SceneCostConfig.project_id == project_uuid)).all():

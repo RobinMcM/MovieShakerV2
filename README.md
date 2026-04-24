@@ -178,6 +178,45 @@ See `DEPLOYMENT_RULES.md` and `scripts/go-live/RUNBOOK.md`.
 pytest engine/tests -q
 ```
 
+## Database — Purge All Data
+
+Run in dependency order to avoid FK violations:
+
+```sql
+-- Delete in dependency order
+DELETE FROM mood_board_image_history;
+DELETE FROM gateway_usage_events;
+DELETE FROM mood_board_video_history;
+DELETE FROM mood_board_compiled_videos;
+DELETE FROM tram_lines;
+DELETE FROM mood_board_canvas_compositions;
+DELETE FROM production_decisions;
+DELETE FROM script_messages;
+DELETE FROM script_chats;
+DELETE FROM script_analysis;
+DELETE FROM scene_cost;
+DELETE FROM scenes;
+DELETE FROM scene_characters;
+DELETE FROM characters;
+DELETE FROM scripts;
+```
+
+### Delete specific scripts and their characters
+
+```sql
+DELETE FROM characters
+WHERE script_id IN (
+  '2c0ed027-e22e-4e70-83b3-b2dda539a219',
+  '233d53dc-e82f-4c93-8220-95c255f9bd7e'
+);
+
+DELETE FROM scripts
+WHERE id IN (
+  '2c0ed027-e22e-4e70-83b3-b2dda539a219',
+  '233d53dc-e82f-4c93-8220-95c255f9bd7e'
+);
+```
+
 ## Troubleshooting
 
 **Node version**: use Node 20 (`nvm use 20`)

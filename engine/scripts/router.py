@@ -581,6 +581,32 @@ def get_script_file(
         )
 
 
+# GET /scripts/{script_id}/pdf
+@router.get("/scripts/{script_id}/pdf")
+def get_script_pdf(
+    script_id: str,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    script = _get_script_and_ensure_access(db, script_id, user_id)
+    pdf_key = relative_file_path(script.user_id, str(script.project_id), str(script.id), "script.pdf")
+    if uses_spaces():
+        stream_result = get_script_file_stream(pdf_key)
+        if stream_result is None:
+            raise HTTPException(status_code=404, detail="Script PDF not found")
+        body, _ = stream_result
+        return Response(
+            content=body,
+            media_type="application/pdf",
+            headers={"Content-Disposition": 'inline; filename="script.pdf"'},
+        )
+    path = get_script_file_path(pdf_key)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Script PDF not found")
+    return FileResponse(path, media_type="application/pdf", filename="script.pdf")
+
+
 # GET /scripts/{script_id}/scenes
 @router.get("/scripts/{script_id}/scenes")
 def get_script_scenes(

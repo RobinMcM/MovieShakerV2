@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
 import { AppHeader } from "@/components/Header";
@@ -69,8 +69,6 @@ function ScriptManagementPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
-    const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-    const [pdfLoadError, setPdfLoadError] = useState<string | null>(null);
     const [loadedScenes, setLoadedScenes] = useState<SceneRow[]>([]);
     const [loadedCharacters, setLoadedCharacters] = useState<string[]>([]);
     const [sceneCharacters, setSceneCharacters] = useState<Map<string, string[]>>(new Map());
@@ -79,8 +77,6 @@ function ScriptManagementPage() {
     const [unlockConfirmation, setUnlockConfirmation] = useState("");
     const [reparseConfirmDialogOpen, setReparseConfirmDialogOpen] = useState(false);
     const [reparseConfirmation, setReparseConfirmation] = useState("");
-    const pdfBlobUrlRef = useRef<string | null>(null);
-
     const loadScript = useCallback(async () => {
         if (!scriptId) return;
         try {
@@ -146,34 +142,6 @@ function ScriptManagementPage() {
         if (!scriptId || !script) return;
         loadScenesAndCharacters();
     }, [scriptId, script, loadScenesAndCharacters]);
-
-    useEffect(() => {
-        if (!scriptId || !script) return;
-        setPdfLoadError(null);
-        setPdfUrl(null);
-        if (pdfBlobUrlRef.current) {
-            URL.revokeObjectURL(pdfBlobUrlRef.current);
-            pdfBlobUrlRef.current = null;
-        }
-        (async () => {
-            try {
-                const r = await fetch(`${API_URL}/scripts/${scriptId}/file`, { credentials: "include" });
-                if (!r.ok) throw new Error("Failed to load PDF");
-                const blob = await r.blob();
-                const url = URL.createObjectURL(blob);
-                pdfBlobUrlRef.current = url;
-                setPdfUrl(url);
-            } catch (e) {
-                setPdfLoadError(e instanceof Error ? e.message : "Failed to load PDF");
-            }
-        })();
-        return () => {
-            if (pdfBlobUrlRef.current) {
-                URL.revokeObjectURL(pdfBlobUrlRef.current);
-                pdfBlobUrlRef.current = null;
-            }
-        };
-    }, [scriptId, script?.id]);
 
     const handleSetCurrent = async () => {
         if (!scriptId) return;
@@ -343,6 +311,13 @@ function ScriptManagementPage() {
                                         <button
                                             type="button"
                                             className="text-primary hover:underline"
+                                            onClick={() => window.open(`${API_URL}/scripts/${scriptId}/pdf`, "_blank")}
+                                        >
+                                            <FileText className="h-3 w-3 inline mr-1" /> View Script (PDF)
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="text-primary hover:underline"
                                             onClick={() => {
                                                 const u = `${API_URL}/scripts/${scriptId}/file?variant=json`;
                                                 window.open(u, "_blank");
@@ -400,51 +375,6 @@ function ScriptManagementPage() {
                         </CardContent>
                     </Card>
 
-                    {pdfLoadError && !pdfUrl && (
-                        <Card className="border-destructive/50">
-                            <CardContent className="py-6">
-                                <p className="text-destructive text-sm">Failed to load PDF viewer: {pdfLoadError}</p>
-                            </CardContent>
-                        </Card>
-                    )}
-
-                    {pdfUrl && (
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Script Viewer</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <Accordion type="single" collapsible defaultValue="viewer">
-                                    <AccordionItem value="viewer">
-                                        <AccordionTrigger>
-                                            <span className="font-semibold">PDF Viewer</span>
-                                        </AccordionTrigger>
-                                        <AccordionContent>
-                                            <div className="w-full min-h-[240px] h-[min(70vh,800px)] sm:h-[800px] border rounded-lg overflow-hidden bg-muted">
-                                                <iframe
-                                                    src={`${pdfUrl}#toolbar=1&navpanes=1&scrollbar=1`}
-                                                    className="w-full h-full"
-                                                    title="Script PDF Viewer"
-                                                    allow="fullscreen"
-                                                />
-                                            </div>
-                                            <p className="text-xs text-muted-foreground mt-2">
-                                                <a
-                                                    href={pdfUrl}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="text-primary hover:underline"
-                                                >
-                                                    Open in new tab
-                                                </a>
-                                            </p>
-                                        </AccordionContent>
-                                    </AccordionItem>
-                                </Accordion>
-                            </CardContent>
-                        </Card>
-                    )}
-
                     <Card>
                         <CardHeader>
                             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -452,7 +382,7 @@ function ScriptManagementPage() {
                                     Scene Headings & Characters
                                     {parsingScenes && <Loader2 className="h-4 w-4 animate-spin" />}
                                 </CardTitle>
-                                {script.is_current && pdfUrl && (
+                                {script.is_current && (
                                     <div className="flex flex-col items-center gap-2">
                                         <div className="flex items-center gap-2">
                                             <Button
@@ -499,8 +429,6 @@ function ScriptManagementPage() {
                                 <p className="text-muted-foreground">
                                     Set this script as current to parse scenes and characters.
                                 </p>
-                            ) : !pdfUrl ? (
-                                <p className="text-muted-foreground">Load the script viewer first to enable parsing.</p>
                             ) : parsingScenes ? (
                                 <p className="text-muted-foreground">Parsing script...</p>
                             ) : loadedScenes.length > 0 || loadedCharacters.length > 0 ? (
@@ -575,11 +503,7 @@ function ScriptManagementPage() {
                                 </div>
                             ) : (
                                 <p className="text-muted-foreground">
-                                    {script.is_current && pdfUrl
-                                        ? 'Click "Parse Script" to extract scene headings and character names.'
-                                        : script.is_current
-                                          ? "Load the script viewer first to enable parsing."
-                                          : "Set this script as current to parse scenes and characters."}
+                                    {'Click "Parse Script" to extract scene headings and character names.'}
                                 </p>
                             )}
                         </CardContent>

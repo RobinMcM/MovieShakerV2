@@ -24,7 +24,7 @@ interface ProjectItem {
 }
 
 interface ProjectSidebarNavProps {
-    projectId: string;
+    projectId?: string;
     scripts: ScriptItem[];
     scriptsLoading?: boolean;
     aiCredits: number | null;
@@ -67,15 +67,18 @@ export function ProjectSidebarNav({
 
     const scriptLinks = useMemo(
         () =>
-            scripts
-                .slice(0, 8)
-                .map((s) => ({ ...s, href: `/project/${projectId}/script/${s.id}` })),
+            projectId
+                ? scripts
+                    .slice(0, 8)
+                    .map((s) => ({ ...s, href: `/project/${projectId}/script/${s.id}` }))
+                : [],
         [scripts, projectId]
     );
 
     const hasCredits = aiCredits !== null && aiCredits > 0;
 
     function handleCoproducerClick() {
+        if (!projectId) return;
         if (hasCredits) {
             onCoproducerActivate();
         } else {
@@ -110,36 +113,41 @@ export function ProjectSidebarNav({
                                ${isVisible ? "translate-x-0" : "-translate-x-full"}`}>
                 {/* Scrollable nav area */}
                 <div className="flex-1 min-h-0 overflow-y-auto pt-5 pb-4 px-3">
-                    <div className="flex items-center gap-2 px-2 mb-4">
-                        <FolderKanban className="h-5 w-5 text-primary" />
-                        <h2 className="text-sm font-semibold">Project Navigation</h2>
-                    </div>
 
-                    <nav className="space-y-1">
-                        {PROJECT_TOOL_NAV.map((item) => {
-                            const href = item.href(projectId);
-                            const isActive = pathname === href;
-                            const Icon = item.icon;
-                            return (
-                                <Link
-                                    key={item.id}
-                                    href={href}
-                                    className={cn(
-                                        "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors",
-                                        isActive
-                                            ? "bg-primary/15 text-primary font-medium"
-                                            : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                                    )}
-                                >
-                                    <Icon className="h-4 w-4" />
-                                    <span>{item.label}</span>
-                                </Link>
-                            );
-                        })}
-                    </nav>
+                    {/* Project Navigation — only when a project is selected */}
+                    {projectId && (
+                        <>
+                            <div className="flex items-center gap-2 px-2 mb-4">
+                                <FolderKanban className="h-5 w-5 text-primary" />
+                                <h2 className="text-sm font-semibold">Project Navigation</h2>
+                            </div>
+                            <nav className="space-y-1">
+                                {PROJECT_TOOL_NAV.map((item) => {
+                                    const href = item.href(projectId);
+                                    const isActive = pathname === href;
+                                    const Icon = item.icon;
+                                    return (
+                                        <Link
+                                            key={item.id}
+                                            href={href}
+                                            className={cn(
+                                                "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors",
+                                                isActive
+                                                    ? "bg-primary/15 text-primary font-medium"
+                                                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                                            )}
+                                        >
+                                            <Icon className="h-4 w-4" />
+                                            <span>{item.label}</span>
+                                        </Link>
+                                    );
+                                })}
+                            </nav>
+                        </>
+                    )}
 
                     {/* Projects section */}
-                    <div className="mt-5 pt-4 border-t">
+                    <div className={cn("pt-4 border-t", projectId ? "mt-5" : "mt-0 border-t-0")}>
                         <button
                             type="button"
                             onClick={() => setProjectsExpanded((v) => !v)}
@@ -212,82 +220,91 @@ export function ProjectSidebarNav({
 
                         {scriptsExpanded && (
                             <div className="mt-1 space-y-1">
-                                {scriptsLoading && (
+                                {!projectId ? (
+                                    <p className="text-xs text-muted-foreground px-2.5 py-1">
+                                        Select a project to view scripts.
+                                    </p>
+                                ) : scriptsLoading ? (
                                     <p className="text-xs text-muted-foreground px-2.5 py-1">
                                         Loading scripts...
                                     </p>
-                                )}
-                                {!scriptsLoading && scriptLinks.length === 0 && (
+                                ) : scriptLinks.length === 0 ? (
                                     <p className="text-xs text-muted-foreground px-2.5 py-1">
                                         No scripts available.
                                     </p>
+                                ) : (
+                                    scriptLinks.map((s) => {
+                                        const isActive = pathname === s.href;
+                                        return (
+                                            <Link
+                                                key={s.id}
+                                                href={s.href}
+                                                className={cn(
+                                                    "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs transition-colors",
+                                                    isActive
+                                                        ? "bg-primary/15 text-primary font-medium"
+                                                        : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                                                )}
+                                                title={s.name}
+                                            >
+                                                <span className="truncate flex-1">{s.name}</span>
+                                                {s.is_current && (
+                                                    <span className="shrink-0 text-[10px] px-1 py-0.5 rounded bg-primary/20 text-primary font-medium leading-none">
+                                                        Current
+                                                    </span>
+                                                )}
+                                            </Link>
+                                        );
+                                    })
                                 )}
-                                {scriptLinks.map((s) => {
-                                    const isActive = pathname === s.href;
-                                    return (
-                                        <Link
-                                            key={s.id}
-                                            href={s.href}
-                                            className={cn(
-                                                "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs transition-colors",
-                                                isActive
-                                                    ? "bg-primary/15 text-primary font-medium"
-                                                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                                            )}
-                                            title={s.name}
-                                        >
-                                            <span className="truncate flex-1">{s.name}</span>
-                                            {s.is_current && (
-                                                <span className="shrink-0 text-[10px] px-1 py-0.5 rounded bg-primary/20 text-primary font-medium leading-none">
-                                                    Current
-                                                </span>
-                                            )}
-                                        </Link>
-                                    );
-                                })}
-                                <Link
-                                    href={`/project/${projectId}/scripts`}
-                                    className={cn(
-                                        "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs transition-colors font-medium",
-                                        pathname === `/project/${projectId}/scripts`
-                                            ? "bg-primary/15 text-primary"
-                                            : "text-primary/80 hover:bg-accent hover:text-foreground"
-                                    )}
-                                >
-                                    <Upload className="h-3 w-3" />
-                                    Upload Script
-                                </Link>
+                                {projectId && (
+                                    <Link
+                                        href={`/project/${projectId}/scripts`}
+                                        className={cn(
+                                            "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs transition-colors font-medium",
+                                            pathname === `/project/${projectId}/scripts`
+                                                ? "bg-primary/15 text-primary"
+                                                : "text-primary/80 hover:bg-accent hover:text-foreground"
+                                        )}
+                                    >
+                                        <Upload className="h-3 w-3" />
+                                        Upload Script
+                                    </Link>
+                                )}
                             </div>
                         )}
                     </div>
 
-                    <div className="mt-5 pt-4 border-t">
-                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground px-2.5 mb-2">
-                            Additional Tools
-                        </p>
-                        <div className="space-y-1">
-                            {PROJECT_EXTERNAL_NAV.map((item) => {
-                                const href = item.href(projectId);
-                                const isActive = pathname === href;
-                                const Icon = item.icon;
-                                return (
-                                    <Link
-                                        key={item.id}
-                                        href={href}
-                                        className={cn(
-                                            "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors",
-                                            isActive
-                                                ? "bg-primary/15 text-primary font-medium"
-                                                : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                                        )}
-                                    >
-                                        <Icon className="h-4 w-4" />
-                                        <span>{item.label}</span>
-                                    </Link>
-                                );
-                            })}
+                    {/* Additional Tools — only when a project is selected */}
+                    {projectId && (
+                        <div className="mt-5 pt-4 border-t">
+                            <p className="text-[11px] uppercase tracking-wide text-muted-foreground px-2.5 mb-2">
+                                Additional Tools
+                            </p>
+                            <div className="space-y-1">
+                                {PROJECT_EXTERNAL_NAV.map((item) => {
+                                    const href = item.href(projectId);
+                                    const isActive = pathname === href;
+                                    const Icon = item.icon;
+                                    return (
+                                        <Link
+                                            key={item.id}
+                                            href={href}
+                                            className={cn(
+                                                "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors",
+                                                isActive
+                                                    ? "bg-primary/15 text-primary font-medium"
+                                                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                                            )}
+                                        >
+                                            <Icon className="h-4 w-4" />
+                                            <span>{item.label}</span>
+                                        </Link>
+                                    );
+                                })}
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
 
                 {/* CoProducer button — pinned at bottom */}
@@ -295,9 +312,12 @@ export function ProjectSidebarNav({
                     <button
                         type="button"
                         onClick={handleCoproducerClick}
+                        disabled={!projectId}
                         className={cn(
                             "w-full flex items-center rounded-md border text-sm overflow-hidden transition-colors",
-                            coproducerActive && hasCredits
+                            !projectId
+                                ? "border-border text-muted-foreground/50 cursor-default"
+                                : coproducerActive && hasCredits
                                 ? "border-primary/30 bg-primary/10 text-primary"
                                 : "border-border text-muted-foreground hover:text-foreground hover:bg-accent"
                         )}
@@ -308,13 +328,20 @@ export function ProjectSidebarNav({
                         </span>
                         <span className="w-px self-stretch bg-border/60 shrink-0" />
                         <span className="px-2.5 py-2 text-xs shrink-0">
-                            {aiCredits === null
+                            {!projectId
+                                ? "—"
+                                : aiCredits === null
                                 ? "…"
                                 : hasCredits
                                 ? `${aiCredits} credits`
                                 : "Buy Credits"}
                         </span>
                     </button>
+                    {!projectId && (
+                        <p className="mt-1.5 text-[11px] text-center text-muted-foreground/60 px-1">
+                            Select a project to begin
+                        </p>
+                    )}
                 </div>
             </aside>
 

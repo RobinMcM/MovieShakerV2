@@ -86,9 +86,6 @@ export function Header() {
                 <div className="w-full sm:w-auto flex items-center justify-end gap-2 sm:gap-3">
                     {hasSession ? (
                         <>
-                            <Link href="/projects">
-                                <Button variant="ghost" size="sm">Projects</Button>
-                            </Link>
                             <Button
                                 variant="ghost"
                                 size="icon"

@@ -1,20 +1,26 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, ChevronDown, ChevronRight, FileText, FolderKanban, PanelLeftClose, PanelLeftOpen, Upload } from "lucide-react";
+import { Bot, ChevronDown, ChevronRight, FileText, FolderKanban, PanelLeftClose, PanelLeftOpen, Plus, Upload } from "lucide-react";
 import {
     PROJECT_EXTERNAL_NAV,
     PROJECT_TOOL_NAV,
 } from "@/app/project/[projectId]/projectNav";
 import { cn } from "@/lib/utils";
 import { CoProducerModal } from "@/components/CoProducerModal";
+import { api } from "@/lib/api";
 
 interface ScriptItem {
     id: string;
     name: string;
     is_current: boolean;
+}
+
+interface ProjectItem {
+    id: string;
+    name: string;
 }
 
 interface ProjectSidebarNavProps {
@@ -40,7 +46,24 @@ export function ProjectSidebarNav({
 }: ProjectSidebarNavProps) {
     const pathname = usePathname();
     const [scriptsExpanded, setScriptsExpanded] = useState(true);
+    const [projectsExpanded, setProjectsExpanded] = useState(true);
+    const [projects, setProjects] = useState<ProjectItem[]>([]);
     const [modalOpen, setModalOpen] = useState(false);
+
+    useEffect(() => {
+        let cancelled = false;
+        api.get<ProjectItem[]>("/projects/")
+            .then((data) => {
+                if (cancelled) return;
+                const list = Array.isArray(data) ? data : [];
+                setProjects(list);
+                setProjectsExpanded(list.length <= 3);
+            })
+            .catch(() => {
+                if (!cancelled) setProjects([]);
+            });
+        return () => { cancelled = true; };
+    }, []);
 
     const scriptLinks = useMemo(
         () =>
@@ -115,6 +138,61 @@ export function ProjectSidebarNav({
                         })}
                     </nav>
 
+                    {/* Projects section */}
+                    <div className="mt-5 pt-4 border-t">
+                        <button
+                            type="button"
+                            onClick={() => setProjectsExpanded((v) => !v)}
+                            className="w-full flex items-center justify-between rounded-md px-2.5 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+                        >
+                            <span className="flex items-center gap-2">
+                                <FolderKanban className="h-4 w-4" />
+                                Projects
+                            </span>
+                            {projectsExpanded ? (
+                                <ChevronDown className="h-4 w-4" />
+                            ) : (
+                                <ChevronRight className="h-4 w-4" />
+                            )}
+                        </button>
+
+                        {projectsExpanded && (
+                            <div className="mt-1 space-y-1">
+                                {projects.length === 0 && (
+                                    <p className="text-xs text-muted-foreground px-2.5 py-1">
+                                        No projects found.
+                                    </p>
+                                )}
+                                {projects.map((p) => {
+                                    const isActive = p.id === projectId;
+                                    return (
+                                        <Link
+                                            key={p.id}
+                                            href={`/project/${p.id}`}
+                                            className={cn(
+                                                "block rounded-md px-2.5 py-1.5 text-xs transition-colors truncate",
+                                                isActive
+                                                    ? "bg-primary/15 text-primary font-medium"
+                                                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                                            )}
+                                            title={p.name}
+                                        >
+                                            {p.name}
+                                        </Link>
+                                    );
+                                })}
+                                <Link
+                                    href="/projects"
+                                    className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs transition-colors font-medium text-primary/80 hover:bg-accent hover:text-foreground"
+                                >
+                                    <Plus className="h-3 w-3" />
+                                    New Project
+                                </Link>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Scripts section */}
                     <div className="mt-5 pt-4 border-t">
                         <button
                             type="button"
@@ -134,18 +212,6 @@ export function ProjectSidebarNav({
 
                         {scriptsExpanded && (
                             <div className="mt-1 space-y-1">
-                                <Link
-                                    href={`/project/${projectId}/scripts`}
-                                    className={cn(
-                                        "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs transition-colors font-medium",
-                                        pathname === `/project/${projectId}/scripts`
-                                            ? "bg-primary/15 text-primary"
-                                            : "text-primary/80 hover:bg-accent hover:text-foreground"
-                                    )}
-                                >
-                                    <Upload className="h-3 w-3" />
-                                    Upload / Manage Scripts
-                                </Link>
                                 {scriptsLoading && (
                                     <p className="text-xs text-muted-foreground px-2.5 py-1">
                                         Loading scripts...
@@ -163,18 +229,34 @@ export function ProjectSidebarNav({
                                             key={s.id}
                                             href={s.href}
                                             className={cn(
-                                                "block rounded-md px-2.5 py-1.5 text-xs transition-colors truncate",
+                                                "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs transition-colors",
                                                 isActive
                                                     ? "bg-primary/15 text-primary font-medium"
                                                     : "text-muted-foreground hover:bg-accent hover:text-foreground"
                                             )}
                                             title={s.name}
                                         >
-                                            {s.is_current ? "Current: " : ""}
-                                            {s.name}
+                                            <span className="truncate flex-1">{s.name}</span>
+                                            {s.is_current && (
+                                                <span className="shrink-0 text-[10px] px-1 py-0.5 rounded bg-primary/20 text-primary font-medium leading-none">
+                                                    Current
+                                                </span>
+                                            )}
                                         </Link>
                                     );
                                 })}
+                                <Link
+                                    href={`/project/${projectId}/scripts`}
+                                    className={cn(
+                                        "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs transition-colors font-medium",
+                                        pathname === `/project/${projectId}/scripts`
+                                            ? "bg-primary/15 text-primary"
+                                            : "text-primary/80 hover:bg-accent hover:text-foreground"
+                                    )}
+                                >
+                                    <Upload className="h-3 w-3" />
+                                    Upload Script
+                                </Link>
                             </div>
                         )}
                     </div>

@@ -16,7 +16,6 @@ from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import text
 from sqlmodel import Session, select
 
 from config import load_settings
@@ -214,14 +213,15 @@ def generate_scene_moodboard(
         raise HTTPException(status_code=403, detail="Not a member of this project")
 
     # Fetch scene
-    scene_row = db.execute(
-        text(
+    raw_conn = db.connection().connection
+    with raw_conn.cursor() as cur:
+        cur.execute(
             "SELECT id, scene_number, scene_location, location_type, heading "
             "FROM scenes "
-            "WHERE script_id = %(script_id)s AND scene_number = %(scene_number)s"
-        ),
-        {"script_id": script_uuid, "scene_number": scene_number},
-    ).first()
+            "WHERE script_id = %s AND scene_number = %s",
+            (str(script_uuid), scene_number),
+        )
+        scene_row = cur.fetchone()
     if not scene_row:
         raise HTTPException(status_code=404, detail="Scene not found")
 
@@ -259,61 +259,57 @@ def generate_scene_moodboard(
     # Fetch character reference images
     character_images: dict[str, str] = {}
     for name in all_names:
-        row = db.execute(
-            text(
+        with raw_conn.cursor() as cur:
+            cur.execute(
                 "SELECT name, character_image_url FROM characters "
-                "WHERE script_id = %(script_id)s AND UPPER(name) = %(name)s "
+                "WHERE script_id = %s AND UPPER(name) = %s "
                 "AND character_image_url IS NOT NULL AND character_image_url != '' "
-                "LIMIT 1"
-            ),
-            {"script_id": script_uuid, "name": name},
-        ).first()
+                "LIMIT 1",
+                (str(script_uuid), name),
+            )
+            row = cur.fetchone()
         if row:
             character_images[name] = row[1]
 
     # Fetch background image for this location/scene
     background_url: Optional[str] = None
     scene_num_json = json.dumps([scene_number])
-    location_pattern = f"%{scene['scene_location']}%" if scene["scene_location"] else "%%"
-    bg_row = db.execute(
-        text(
+    location_pattern = f"%{scene['scene_location']}%" if scene["scene_location"] else "%"
+    with raw_conn.cursor() as cur:
+        cur.execute(
             "SELECT character_image_url FROM characters "
-            "WHERE script_id = %(script_id)s AND object_type = 'background' "
-            "AND (scene_tags = '[]'::jsonb OR scene_tags @> %(scene_num_arr)s::jsonb) "
-            "ORDER BY CASE WHEN name ILIKE %(location_name)s THEN 0 ELSE 1 END "
-            "LIMIT 1"
-        ),
-        {
-            "script_id": script_uuid,
-            "scene_num_arr": scene_num_json,
-            "location_name": location_pattern,
-        },
-    ).first()
+            "WHERE script_id = %s AND object_type = 'background' "
+            "AND (scene_tags = '[]'::jsonb OR scene_tags @> %s::jsonb) "
+            "ORDER BY CASE WHEN name ILIKE %s THEN 0 ELSE 1 END "
+            "LIMIT 1",
+            (str(script_uuid), scene_num_json, location_pattern),
+        )
+        bg_row = cur.fetchone()
     if bg_row:
         background_url = bg_row[0]
 
     # Fetch props/vehicles/set pieces tagged for this scene
     props = []
-    prop_rows = db.execute(
-        text(
+    with raw_conn.cursor() as cur:
+        cur.execute(
             "SELECT name, character_image_url, object_type FROM characters "
-            "WHERE script_id = %(script_id)s "
+            "WHERE script_id = %s "
             "AND object_type IN ('prop', 'vehicle', 'set_piece') "
-            "AND (scene_tags = '[]'::jsonb OR scene_tags @> %(scene_num_arr)s::jsonb)"
-        ),
-        {"script_id": script_uuid, "scene_num_arr": scene_num_json},
-    ).all()
+            "AND (scene_tags = '[]'::jsonb OR scene_tags @> %s::jsonb)",
+            (str(script_uuid), scene_num_json),
+        )
+        prop_rows = cur.fetchall()
     for pr in prop_rows:
         props.append({"name": pr[0], "character_image_url": pr[1], "object_type": pr[2]})
 
     # Get user model preferences
-    profile_row = db.execute(
-        text(
+    with raw_conn.cursor() as cur:
+        cur.execute(
             "SELECT model_fiab_text, model_object_image FROM user_profile "
-            "WHERE user_id = %(user_id)s"
-        ),
-        {"user_id": user_id},
-    ).first()
+            "WHERE user_id = %s",
+            (user_id,),
+        )
+        profile_row = cur.fetchone()
     text_model = "anthropic/claude-3.7-sonnet"
     image_model: Optional[str] = None
     if profile_row:

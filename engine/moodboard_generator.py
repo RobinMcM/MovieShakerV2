@@ -218,7 +218,7 @@ def generate_scene_moodboard(
         text(
             "SELECT id, scene_number, scene_location, location_type, heading "
             "FROM scenes "
-            "WHERE script_id = :script_id AND scene_number = :scene_number"
+            "WHERE script_id = %(script_id)s AND scene_number = %(scene_number)s"
         ),
         {"script_id": script_uuid, "scene_number": scene_number},
     ).first()
@@ -262,7 +262,7 @@ def generate_scene_moodboard(
         row = db.execute(
             text(
                 "SELECT name, character_image_url FROM characters "
-                "WHERE script_id = :script_id AND UPPER(name) = :name "
+                "WHERE script_id = %(script_id)s AND UPPER(name) = %(name)s "
                 "AND character_image_url IS NOT NULL AND character_image_url != '' "
                 "LIMIT 1"
             ),
@@ -278,9 +278,9 @@ def generate_scene_moodboard(
     bg_row = db.execute(
         text(
             "SELECT character_image_url FROM characters "
-            "WHERE script_id = :script_id AND object_type = 'background' "
-            "AND (scene_tags = '[]'::jsonb OR scene_tags @> :scene_num_arr::jsonb) "
-            "ORDER BY CASE WHEN name ILIKE :location_name THEN 0 ELSE 1 END "
+            "WHERE script_id = %(script_id)s AND object_type = 'background' "
+            "AND (scene_tags = '[]'::jsonb OR scene_tags @> %(scene_num_arr)s::jsonb) "
+            "ORDER BY CASE WHEN name ILIKE %(location_name)s THEN 0 ELSE 1 END "
             "LIMIT 1"
         ),
         {
@@ -297,9 +297,9 @@ def generate_scene_moodboard(
     prop_rows = db.execute(
         text(
             "SELECT name, character_image_url, object_type FROM characters "
-            "WHERE script_id = :script_id "
+            "WHERE script_id = %(script_id)s "
             "AND object_type IN ('prop', 'vehicle', 'set_piece') "
-            "AND (scene_tags = '[]'::jsonb OR scene_tags @> :scene_num_arr::jsonb)"
+            "AND (scene_tags = '[]'::jsonb OR scene_tags @> %(scene_num_arr)s::jsonb)"
         ),
         {"script_id": script_uuid, "scene_num_arr": scene_num_json},
     ).all()
@@ -310,7 +310,7 @@ def generate_scene_moodboard(
     profile_row = db.execute(
         text(
             "SELECT model_fiab_text, model_object_image FROM user_profile "
-            "WHERE user_id = :user_id"
+            "WHERE user_id = %(user_id)s"
         ),
         {"user_id": user_id},
     ).first()

@@ -370,6 +370,15 @@ function ShotListContent() {
     }
   }
 
+  async function handleClearShots() {
+    if (!confirm('Delete all shots for this scene?')) return;
+    for (const line of tramLines) {
+      await deleteTramLine(line.id);
+    }
+    setTramLines([]);
+    setSuggestResult(null);
+  }
+
   useEffect(() => {
     const handler = () => handleSuggestShots();
     window.addEventListener("suggestShots", handler);
@@ -570,6 +579,21 @@ function ShotListContent() {
                                   </>
                                 )}
                               </button>
+                              {tramLines.length > 0 && (
+                                <button
+                                  onClick={handleClearShots}
+                                  disabled={suggesting}
+                                  className={`
+                                    flex items-center gap-2 px-3 py-2 rounded-md
+                                    text-sm font-medium transition-colors
+                                    bg-destructive text-destructive-foreground hover:bg-destructive/90
+                                    disabled:opacity-50 disabled:cursor-not-allowed
+                                  `}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                  Clear shots
+                                </button>
+                              )}
                               {suggestResult && (
                                 <span className="text-xs text-muted-foreground">
                                   {suggestResult.placed} shots placed
@@ -844,12 +868,7 @@ function ShotListContent() {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleDeleteLine(line.id)}
-                                disabled={!isDrawingMode}
-                                title={
-                                  isDrawingMode
-                                    ? "Delete line"
-                                    : "Enable drawing to delete"
-                                }
+                                title="Delete line"
                                 className="text-muted-foreground hover:text-destructive"
                               >
                                 <Trash2 className="h-4 w-4" />

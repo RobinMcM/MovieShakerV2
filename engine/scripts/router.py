@@ -1058,6 +1058,16 @@ def parse_script(
     script_uuid = script.id
 
     from models import SceneCost
+    db.execute(
+        text(
+            "DELETE FROM tram_lines "
+            "WHERE scene_id IN ("
+            "  SELECT id FROM scenes "
+            "  WHERE script_id = :script_id"
+            ")"
+        ),
+        {"script_id": str(script_uuid)},
+    )
     existing_scenes = list(db.exec(select(Scene).where(Scene.script_id == script_uuid)).all())
     for scene in existing_scenes:
         for sc in db.exec(select(SceneCharacter).where(SceneCharacter.scene_id == scene.id)).all():

@@ -30,7 +30,12 @@ interface TramLineRow {
 }
 
 function normalise(text: string): string {
-  return text.trim().replace(/\s+/g, " ");
+  return text
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/…/g, "...")
+    .replace(/[^a-zA-Z0-9 ]/g, "")
+    .toLowerCase();
 }
 
 function extractTextBetweenElements(

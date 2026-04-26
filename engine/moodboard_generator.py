@@ -15,7 +15,8 @@ from io import BytesIO
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
+from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from config import load_settings
@@ -30,6 +31,94 @@ from supertokens_python.recipe.session.framework.fastapi import verify_session
 router = APIRouter(tags=["moodboard"])
 logger = logging.getLogger(__name__)
 settings = load_settings()
+
+PASS_PROMPTS = {
+    "sketch": {
+        "label": "Pencil Sketch",
+        "pass": 1,
+        "style": (
+            "Simple pencil sketch, "
+            "hand-drawn gestural lines, "
+            "black pencil on white paper background, "
+            "film production storyboard aesthetic, "
+            "rough sketch style, no colour, "
+            "no shading, minimal detail, "
+            "character silhouettes with initials "
+            "on face to identify each person, "
+            "blocking diagram feel"
+        ),
+    },
+    "draft": {
+        "label": "Ink Draft",
+        "pass": 2,
+        "style": (
+            "Clean ink line drawing, "
+            "more defined than a sketch, "
+            "bold confident lines, "
+            "characters recognisable and detailed, "
+            "basic shadow hatching suggested, "
+            "black ink on white paper, "
+            "graphic novel panel aesthetic, "
+            "no colour"
+        ),
+    },
+    "tonal": {
+        "label": "Tonal Study",
+        "pass": 3,
+        "style": (
+            "Greyscale tonal study, "
+            "light and shadow fully defined, "
+            "cinematic lighting direction clear, "
+            "characters have volume and form, "
+            "environment detailed and atmospheric, "
+            "no colour, rich greyscale values, "
+            "film noir aesthetic"
+        ),
+    },
+    "colour": {
+        "label": "Colour Study",
+        "pass": 4,
+        "style": (
+            "Flat colour illustration, "
+            "bold colour palette, "
+            "cinematic colour grading, "
+            "mood and atmosphere through colour, "
+            "stylised not photorealistic, "
+            "concept art aesthetic, "
+            "characters and environment fully rendered in colour"
+        ),
+    },
+    "cinematic": {
+        "label": "Cinematic",
+        "pass": 5,
+        "style": (
+            "Photorealistic cinematic frame, "
+            "professional film lighting, "
+            "shallow depth of field, "
+            "35mm film grain, "
+            "colour graded, "
+            "high production value, "
+            "indistinguishable from a film still, "
+            "professional cinematography"
+        ),
+    },
+    "reference": {
+        "label": "Reference Shot",
+        "pass": 6,
+        "style": (
+            "Photorealistic film reference, "
+            "exact character likenesses, "
+            "approved costume and makeup, "
+            "production accurate locations, "
+            "final pre-visualisation quality, "
+            "ready for Visualize pipeline"
+        ),
+    },
+}
+
+
+class GenerateMoodboardRequest(BaseModel):
+    pass_type: str = "sketch"
 
 
 def _gateway_client() -> GatewayClient:
@@ -124,27 +213,28 @@ def _generate_shot_image(
     gateway: GatewayClient,
     text_model: str,
     image_model: Optional[str],
+    pass_type: str = "sketch",
 ) -> Optional[str]:
     """
     Build an AI prompt for a shot then call FAL for the image.
     Returns image URL on success, None on any failure (caller skips the shot).
     """
     char_names = (tram_line.character_names or "").strip()
+    style = PASS_PROMPTS.get(pass_type, PASS_PROMPTS["sketch"])["style"]
 
     user_msg = (
-        "Write a FAL.ai image generation prompt for this film shot:\n\n"
+        "Write a FAL.ai image generation prompt for this film shot.\n\n"
         f"Scene: {scene.get('heading', '')}\n"
         f"Shot type: {tram_line.shot_type or 'MS'}\n"
         f"Camera direction: {tram_line.camera_direction or ''}\n"
         f"Characters in frame: {char_names}\n"
         f"Location: {scene.get('scene_location', '')} ({scene.get('location_type', '')})\n\n"
-        "Rules:\n"
-        "- Start with the shot type and framing\n"
-        "- Describe the location atmosphere\n"
-        "- Describe character positions and expressions\n"
-        "- End with: cinematic photography, film grain, professional lighting, photorealistic\n"
-        "- Maximum 100 words\n"
-        "- No character names — describe appearance only"
+        "Return ONLY:\n"
+        "1. Shot framing and camera angle\n"
+        "2. Character positions, expressions, and blocking\n"
+        "3. Location atmosphere and setting detail\n"
+        "Maximum 80 words. Do not include style directives.\n"
+        "No character names — describe appearance only."
     )
 
     prompt: Optional[str] = None
@@ -167,10 +257,12 @@ def _generate_shot_image(
     except Exception as exc:
         logger.warning("Prompt generation failed for tram line %s: %s", tram_line.id, exc)
 
-    if not prompt:
+    if prompt:
+        prompt = f"{prompt}\n{style}"
+    else:
         prompt = (
-            f"{tram_line.shot_type or 'Medium shot'}, {scene.get('heading', '')}, "
-            "cinematic photography, film grain, professional lighting, photorealistic"
+            f"{tram_line.shot_type or 'Medium shot'}, {scene.get('heading', '')},\n"
+            f"{style}"
         )
 
     try:
@@ -190,10 +282,14 @@ def _generate_shot_image(
 def generate_scene_moodboard(
     script_id: str,
     scene_number: int,
+    request: Optional[GenerateMoodboardRequest] = Body(default=None),
     session: SessionContainer = Depends(verify_session()),
     db: Session = Depends(get_session),
 ):
     user_id = session.get_user_id()
+    pass_type = (request.pass_type if request else None) or "sketch"
+    if pass_type not in PASS_PROMPTS:
+        pass_type = "sketch"
 
     # Verify script + project membership
     try:
@@ -335,6 +431,7 @@ def generate_scene_moodboard(
             gateway=gateway,
             text_model=text_model,
             image_model=image_model,
+            pass_type=pass_type,
         )
 
         if not image_url:
@@ -388,6 +485,8 @@ def generate_scene_moodboard(
             "snapshot_path": path_key,
             "note": tl.camera_direction or "",
             "mode": "snapshot",
+            "pass_type": pass_type,
+            "pass": PASS_PROMPTS.get(pass_type, PASS_PROMPTS["sketch"])["pass"],
         }
         comp_data_json = json.dumps(composition_payload)
 

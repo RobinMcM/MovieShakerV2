@@ -55,6 +55,15 @@ const CANVAS_ASPECT_RATIO_OPTIONS = [
   { value: "2.39:1", label: "Cinematic (2.39:1) - film style" },
 ];
 
+const PASS_OPTIONS = [
+  { value: "sketch",    label: "✏️ Pencil Sketch",  pass: 1 },
+  { value: "draft",     label: "🖊️ Ink Draft",       pass: 2 },
+  { value: "tonal",     label: "◑ Tonal Study",      pass: 3 },
+  { value: "colour",    label: "🎨 Colour Study",     pass: 4 },
+  { value: "cinematic", label: "🎬 Cinematic",        pass: 5 },
+  { value: "reference", label: "📷 Reference Shot",   pass: 6 },
+];
+
 function getSceneNumber(tramLine: TramLineWithScene): string | number {
   return tramLine.scenes?.scene_number ?? "?";
 }
@@ -88,6 +97,7 @@ function MoodBoardContent() {
   const [generatingMoodboard, setGeneratingMoodboard] = useState(false);
   const [generateResult, setGenerateResult] = useState<string | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [passType, setPassType] = useState("sketch");
   const canvasRef = useRef<DrawingCanvasRef>(null);
 
   useEffect(() => {
@@ -140,6 +150,12 @@ function MoodBoardContent() {
   }, [project?.aspect_ratio]);
 
   const selectedTramLine = tramLines.find((t) => t.id === selectedTramLineId);
+
+  const passLabel = !isNewCanvas && currentComposition?.composition_data
+    ? PASS_OPTIONS.find(
+        (o) => o.value === (currentComposition.composition_data as { pass_type?: string }).pass_type
+      )?.label ?? null
+    : null;
 
   const handleCanvasSave = useCallback(
     async (blob: Blob, compositionData: Record<string, unknown>) => {
@@ -208,7 +224,7 @@ function MoodBoardContent() {
     try {
       const res = await api.post<{ shots_generated: number; shots_skipped: number }>(
         `scripts/${scriptId}/scenes/${sceneNumber}/generate-moodboard`,
-        {},
+        { pass_type: passType },
         90_000,
       );
       const generated = (res as { shots_generated?: number }).shots_generated ?? 0;
@@ -392,6 +408,11 @@ function MoodBoardContent() {
                           Moodboard {displayCanvasNumber}
                           {totalCanvases > 0 ? ` / ${isNewCanvas ? totalCanvases + 1 : totalCanvases}` : ""}
                         </span>
+                        {passLabel && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                            {passLabel}
+                          </span>
+                        )}
                         <Button variant="outline" size="sm" onClick={handleNextCanvas} disabled={isNewCanvas || currentCanvasIndex >= compositions.length - 1}>
                           <ChevronRight className="h-4 w-4" />
                         </Button>
@@ -399,21 +420,37 @@ function MoodBoardContent() {
                           <Plus className="h-4 w-4" /> Add
                         </Button>
                         <div className="hidden sm:block w-px h-6 bg-border mx-1" />
-                        <Button
-                          variant="default"
-                          size="sm"
-                          className="bg-teal-600 hover:bg-teal-700 text-white border-0"
-                          onClick={handleGenerateMoodboard}
-                          disabled={generatingMoodboard || !selectedTramLineId}
-                          title="CoProducer: generate moodboard images for all shots in this scene"
-                        >
-                          {generatingMoodboard ? (
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          ) : (
-                            <Bot className="h-4 w-4 mr-2" />
-                          )}
-                          {generatingMoodboard ? "CoProducer thinking..." : "Generate moodboard"}
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={passType}
+                            onChange={(e) => setPassType(e.target.value)}
+                            disabled={generatingMoodboard}
+                            className="text-sm border rounded-md px-2 py-1.5 bg-background text-foreground border-border"
+                          >
+                            {PASS_OPTIONS.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            className="bg-teal-600 hover:bg-teal-700 text-white border-0"
+                            onClick={handleGenerateMoodboard}
+                            disabled={generatingMoodboard || !selectedTramLineId}
+                            title="CoDesigner: generate moodboard images for all shots in this scene"
+                          >
+                            {generatingMoodboard ? (
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            ) : (
+                              <Bot className="h-4 w-4 mr-2" />
+                            )}
+                            {generatingMoodboard
+                              ? `Generating ${PASS_OPTIONS.find((o) => o.value === passType)?.label}...`
+                              : `Generate — ${PASS_OPTIONS.find((o) => o.value === passType)?.label}`}
+                          </Button>
+                        </div>
                         <div className="hidden sm:block w-px h-6 bg-border mx-1" />
                         <Button variant="default" size="sm" className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white border-0" onClick={handleVisualize} disabled={!selectedTramLineId}>
                           <Sparkles className="h-4 w-4 mr-2" /> Visualize
@@ -422,6 +459,14 @@ function MoodBoardContent() {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    <p className="text-xs text-muted-foreground">
+                      Pass {PASS_OPTIONS.find((o) => o.value === passType)?.pass} of 6 —{" "}
+                      {passType === "sketch"
+                        ? "Start here to approve composition"
+                        : passType === "reference"
+                        ? "Final quality for Visualize"
+                        : "Build on approved composition"}
+                    </p>
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-muted-foreground">Canvas Aspect Ratio</label>
                       <Select value={canvasAspectRatio} onValueChange={setCanvasAspectRatio}>

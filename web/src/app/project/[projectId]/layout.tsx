@@ -108,6 +108,20 @@ export default function ProjectLayout({
         ? "budgets"
         : "general";
 
+    const activeAgent = pathname?.includes("/script/")
+        ? "CoWriter"
+        : pathname?.includes("/shotlist")
+        ? "CoDirector"
+        : pathname?.includes("/moodboard")
+        ? "CoDirector"
+        : pathname?.includes("/visualize")
+        ? "CoDirector"
+        : pathname?.includes("/objects")
+        ? "CoWriter"
+        : pathname?.includes("/film-in-a-box")
+        ? "CoWriter"
+        : "CoProducer";
+
     const [schedulingScriptId, setSchedulingScriptId] = useState<string | undefined>(undefined);
 
     useEffect(() => {
@@ -143,6 +157,7 @@ export default function ProjectLayout({
                 onCoproducerActivate={handleCoproducerActivate}
                 isVisible={desktopNavVisible}
                 onToggle={() => setDesktopNavVisible((prev: boolean) => !prev)}
+                activeAgent={activeAgent}
             />
             <ProjectMobileNav projectId={projectId} scripts={scripts} scriptsLoading={loading} />
             <div className={cn(desktopNavVisible && "md:pl-64")}>{children}</div>

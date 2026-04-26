@@ -76,7 +76,7 @@ Camera, lens, and movement specifications.
 AI-powered scene visualization.
 Image-to-video generation via FAL models through openrouter-gateway.
 
-### Film in a Box
+### CoWriter
 AI-assisted script and film generation.
 Powered by OpenRouter text models via openrouter-gateway.
 

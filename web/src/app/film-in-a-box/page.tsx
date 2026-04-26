@@ -312,7 +312,7 @@ function FilmInABoxPage() {
 
             <main className="flex-1 container mx-auto px-4 py-8 space-y-6">
                 <div className="text-right">
-                    <h1 className="text-2xl font-bold">a Film in a Box</h1>
+                    <h1 className="text-2xl font-bold">CoWriter</h1>
                     <p className="text-sm text-muted-foreground">AI-Powered Production Planning Suite</p>
                 </div>
 

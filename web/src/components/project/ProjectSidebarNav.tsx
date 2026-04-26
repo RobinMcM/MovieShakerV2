@@ -32,6 +32,7 @@ interface ProjectSidebarNavProps {
     onCoproducerActivate: () => void;
     isVisible: boolean;
     onToggle: () => void;
+    activeAgent?: string;
 }
 
 export function ProjectSidebarNav({
@@ -43,6 +44,7 @@ export function ProjectSidebarNav({
     onCoproducerActivate,
     isVisible,
     onToggle,
+    activeAgent = "CoProducer",
 }: ProjectSidebarNavProps) {
     const pathname = usePathname();
     const [scriptsExpanded, setScriptsExpanded] = useState(true);
@@ -324,7 +326,7 @@ export function ProjectSidebarNav({
                     >
                         <span className="flex items-center gap-2 px-2.5 py-2 flex-1 min-w-0">
                             <Bot className="h-4 w-4 shrink-0" />
-                            <span className="truncate">CoProducer</span>
+                            <span className="truncate">{activeAgent}</span>
                         </span>
                         <span className="w-px self-stretch bg-border/60 shrink-0" />
                         <span className="px-2.5 py-2 text-xs shrink-0">

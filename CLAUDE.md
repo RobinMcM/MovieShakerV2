@@ -161,7 +161,7 @@ tests/
 | Shotlist | `/project/[id]/shotlist` | `scripts.py` | |
 | Objects | `/project/[id]/objects` | N/A | |
 | Visualize | `/project/[id]/visualize` | `visualize_config.py` | ✅ image-to-video |
-| Film in a Box | `/project/[id]/film-in-a-box` | `film_in_a_box.py` | ✅ text gen |
+| CoWriter | `/project/[id]/film-in-a-box` | `film_in_a_box.py` | ✅ text gen |
 | Film Festival | `/project/[id]/the-film-festival` | `film_in_a_box.py` | ✅ text gen |
 | Submit Funding | `/project/[id]/submit-funding` | TBD | |
 | AI Assistant | (chatbot embed) | `ai_assistant.py` | ✅ chat |

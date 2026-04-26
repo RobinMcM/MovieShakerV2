@@ -531,7 +531,7 @@ function ProfilePage() {
 
                 <Card className="mt-6">
                     <CardHeader>
-                        <CardTitle className="text-lg">a Film in a Box Model Choice</CardTitle>
+                        <CardTitle className="text-lg">CoWriter Model Choice</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="space-y-2">
@@ -551,7 +551,7 @@ function ProfilePage() {
                         </div>
 
                         <div className="space-y-2">
-                            <Label>Model for a Film in a Box (Text)</Label>
+                            <Label>Model for CoWriter (Text)</Label>
                             <Select value={fiabCostSort} onValueChange={(value) => setFiabCostSort(value as "desc" | "asc")}>
                                 <SelectTrigger>
                                     <SelectValue />
@@ -595,7 +595,7 @@ function ProfilePage() {
                                     Saving…
                                 </>
                             ) : (
-                                "Save a Film in a Box model"
+                                "Save CoWriter model"
                             )}
                         </Button>
                     </CardContent>

@@ -401,7 +401,7 @@ def delete_project(
     for row in db.exec(select(SceneCostConfig).where(SceneCostConfig.project_id == project_uuid)).all():
         db.delete(row)
 
-    # Film in a Box items
+    # CoWriter items
     for row in db.exec(select(FilmInABoxItem).where(FilmInABoxItem.project_id == project_uuid)).all():
         db.delete(row)
 

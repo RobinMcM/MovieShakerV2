@@ -214,7 +214,7 @@ function ProjectsPage() {
                         <div className="flex flex-col sm:flex-row w-full sm:w-auto items-stretch sm:items-center gap-2">
                             <Button size="lg" variant="outline" className="w-full sm:w-auto" asChild>
                                 <Link href="/film-in-a-box">
-                                    <Clapperboard className="mr-2 h-4 w-4" /> a Film in a Box
+                                    <Clapperboard className="mr-2 h-4 w-4" /> CoWriter
                                 </Link>
                             </Button>
                             <DialogTrigger asChild>
@@ -372,7 +372,7 @@ function ProjectsPage() {
                         <div className="flex flex-col sm:flex-row justify-center gap-2">
                             <Button onClick={() => setIsDialogOpen(true)} variant="outline" className="w-full sm:w-auto">Create Project</Button>
                             <Button variant="outline" className="w-full sm:w-auto" asChild>
-                                <Link href="/film-in-a-box">a Film in a Box</Link>
+                                <Link href="/film-in-a-box">CoWriter</Link>
                             </Button>
                         </div>
                     </div>

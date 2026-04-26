@@ -381,7 +381,7 @@ class GatewayUsageEvent(SQLModel, table=True):
 
 
 class FilmInABoxItem(SQLModel, table=True):
-    """Saved Film in a Box generations (project-scoped or standalone history)."""
+    """Saved CoWriter generations (project-scoped or standalone history)."""
     __tablename__ = "film_in_a_box_item"
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     user_id: str = Field(index=True)

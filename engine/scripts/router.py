@@ -191,7 +191,7 @@ class CharacterResponse(BaseModel):
     aspect_ratio: Optional[str] = None
     series_group: Optional[str] = None
     object_type: Optional[str] = None
-    scene_tags: Optional[str] = None
+    scene_tags: Optional[list] = None
 
 
 class SceneCharacterResponse(BaseModel):

@@ -190,6 +190,8 @@ class CharacterResponse(BaseModel):
     hide_from_view: Optional[bool] = None
     aspect_ratio: Optional[str] = None
     series_group: Optional[str] = None
+    object_type: Optional[str] = None
+    scene_tags: Optional[str] = None
 
 
 class SceneCharacterResponse(BaseModel):
@@ -668,6 +670,8 @@ def get_script_characters(
             hide_from_view=getattr(c, "hide_from_view", False),
             aspect_ratio=getattr(c, "aspect_ratio", None),
             series_group=getattr(c, "series_group", None),
+            object_type=getattr(c, "object_type", None),
+            scene_tags=getattr(c, "scene_tags", None),
         )
         for c in characters
     ]
@@ -680,6 +684,7 @@ class CreateCharacterBody(BaseModel):
     casting_notes: Optional[str] = None
     aspect_ratio: Optional[str] = None
     series_group: Optional[str] = None
+    object_type: Optional[str] = None
 
 
 # POST /scripts/{script_id}/characters
@@ -703,6 +708,7 @@ def create_script_character(
         casting_notes=body.casting_notes.strip() if body.casting_notes else None,
         aspect_ratio=body.aspect_ratio or None,
         series_group=body.series_group or None,
+        object_type=body.object_type or None,
     )
     db.add(character)
     db.commit()
@@ -719,6 +725,8 @@ def create_script_character(
             hide_from_view=character.hide_from_view,
             aspect_ratio=character.aspect_ratio,
             series_group=character.series_group,
+            object_type=getattr(character, "object_type", None),
+            scene_tags=getattr(character, "scene_tags", None),
         ),
     }
 
@@ -2028,7 +2036,7 @@ def script_chat(
     # Classify the message to select the correct agent prompt.
     # If the frontend already knows the agent, skip the classifier entirely.
     # Timeout is 5 s — failure silently falls back to "coproducer".
-    _VALID_AGENTS = {"cowriter", "coproducer", "codirector"}
+    _VALID_AGENTS = {"cowriter", "coproducer", "codirector", "codesigner"}
     agent = "coproducer"
     if body.active_agent and body.active_agent.lower() in _VALID_AGENTS:
         agent = body.active_agent.lower()

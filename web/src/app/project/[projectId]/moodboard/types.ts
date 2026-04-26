@@ -69,4 +69,6 @@ export interface CharacterMood {
   hide_from_view?: boolean;
   aspect_ratio?: string | null;
   series_group?: string | null;
+  object_type?: string | null;
+  scene_tags?: string | null;
 }

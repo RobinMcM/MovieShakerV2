@@ -19,6 +19,7 @@ const AGENT_CONFIG: Record<string, { icon: string; description: string }> = {
     CoWriter:   { icon: "✍️",  description: "Script & Story" },
     CoProducer: { icon: "🎬", description: "Production" },
     CoDirector: { icon: "🎥", description: "Visual Direction" },
+    CoDesigner: { icon: "🎨", description: "Visual Identity" },
 };
 
 const CONTEXT_LABELS: Record<string, string> = {
@@ -28,6 +29,7 @@ const CONTEXT_LABELS: Record<string, string> = {
     scheduling: "Scheduling",
     shotlist: "Shot List",
     moodboard: "Moodboard",
+    objects: "Objects",
     general: "General",
 };
 
@@ -60,7 +62,7 @@ export function CoproducerSidebar({
     const chatRef = useRef<ScriptChatHandle>(null);
     const [pendingMessage, setPendingMessage] = useState<string | null>(null);
 
-    const showOpening = (contextMode === "scheduling" || contextMode === "shotlist" || contextMode === "moodboard")
+    const showOpening = (contextMode === "scheduling" || contextMode === "shotlist" || contextMode === "moodboard" || contextMode === "objects")
         && !!contextId
         && !openingDismissed[contextMode];
 
@@ -268,9 +270,68 @@ export function CoproducerSidebar({
                         </div>
                     )}
 
-                    {/* Chat — shown for scripts, and for scheduling/shotlist/moodboard once opening dismissed */}
+                    {/* CoDesigner opening message */}
+                    {contextMode === "objects" && contextId && showOpening && (
+                        <div className="flex flex-col gap-4 p-5">
+                            <p className="text-sm text-foreground leading-relaxed">
+                                I&apos;m CoDesigner — your visual identity guardian. I manage
+                                how everything looks in your film.
+                            </p>
+                            <p className="text-sm text-foreground leading-relaxed">
+                                I can:
+                            </p>
+                            <ul className="text-sm text-muted-foreground space-y-1 pl-1">
+                                <li>· Generate background sketches for each location</li>
+                                <li>· Identify props and artifacts that need continuity tracking</li>
+                                <li>· Ensure your characters look consistent across every scene</li>
+                            </ul>
+                            <p className="text-sm text-foreground leading-relaxed">
+                                What would you like to work on?
+                            </p>
+                            <div className="flex gap-2 flex-wrap">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setOpeningDismissed((prev) => ({ ...prev, [contextMode]: true }));
+                                        setPendingMessage(
+                                            "Read the script and identify all unique locations. Generate a pencil sketch background for each one."
+                                        );
+                                    }}
+                                    className="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                                >
+                                    Generate backgrounds
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setOpeningDismissed((prev) => ({ ...prev, [contextMode]: true }));
+                                        setPendingMessage(
+                                            "Read the action lines in the script and identify all physical objects that appear in multiple scenes or are plot-significant. List them with the scenes they appear in."
+                                        );
+                                    }}
+                                    className="text-xs px-3 py-1.5 rounded-md border border-border bg-background hover:bg-accent transition-colors"
+                                >
+                                    Identify artifacts
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setOpeningDismissed((prev) => ({ ...prev, [contextMode]: true }));
+                                        setPendingMessage(
+                                            "Review all approved character images and backgrounds. Flag any that are missing or inconsistent with the script descriptions."
+                                        );
+                                    }}
+                                    className="text-xs px-3 py-1.5 rounded-md border border-border bg-background hover:bg-accent transition-colors"
+                                >
+                                    Check visual consistency
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Chat — shown for scripts, and for scheduling/shotlist/moodboard/objects once opening dismissed */}
                     {(contextMode === "scripts" ||
-                      ((contextMode === "scheduling" || contextMode === "shotlist" || contextMode === "moodboard") && !showOpening))
+                      ((contextMode === "scheduling" || contextMode === "shotlist" || contextMode === "moodboard" || contextMode === "objects") && !showOpening))
                      && contextId ? (
                         <ScriptChat
                             ref={chatRef}

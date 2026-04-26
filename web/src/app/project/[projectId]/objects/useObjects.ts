@@ -20,12 +20,28 @@ export interface ObjectImageModelOption {
   default_for_media_type?: string | null;
 }
 
+const CHARACTER_OBJECT_TYPES = new Set([
+  "actor_full",
+  "actor_body",
+  "actor_head",
+  "principal",
+  "supporting",
+  "voice",
+  "entity",
+]);
+
+const ARTIFACT_OBJECT_TYPES = new Set([
+  "prop",
+  "vehicle",
+  "set_piece",
+  "artifact",
+]);
+
 export function useObjects(projectId: string | null) {
   const [loading, setLoading] = useState(false);
   const [project, setProject] = useState<ProjectObjects | null>(null);
   const [currentScriptId, setCurrentScriptId] = useState<string | null>(null);
   const [characters, setCharacters] = useState<CharacterMood[]>([]);
-  const [sceneCharacterIds, setSceneCharacterIds] = useState<Set<string>>(new Set());
   const [objectImageModels, setObjectImageModels] = useState<ObjectImageModelOption[]>([]);
 
   const loadProject = useCallback(async (pid: string) => {
@@ -58,26 +74,17 @@ export function useObjects(projectId: string | null) {
       if (!current) {
         setCurrentScriptId(null);
         setCharacters([]);
-        setSceneCharacterIds(new Set());
         return;
       }
       setCurrentScriptId(current.id);
-      const [charsRes, sceneCharsRes] = await Promise.all([
-        api.get<{ success: boolean; data: CharacterMood[] }>(`scripts/${current.id}/characters`),
-        api.get<{ success: boolean; data: { character_id: string }[] }>(
-          `scripts/${current.id}/scene-characters`
-        ),
-      ]);
+      const charsRes = await api.get<{ success: boolean; data: CharacterMood[] }>(
+        `scripts/${current.id}/characters`
+      );
       const data = (charsRes as { data?: CharacterMood[] }).data ?? [];
       setCharacters(data);
-      const ids = new Set(
-        ((sceneCharsRes as { data?: { character_id: string }[] }).data ?? []).map((r) => r.character_id)
-      );
-      setSceneCharacterIds(ids);
     } catch {
       setCurrentScriptId(null);
       setCharacters([]);
-      setSceneCharacterIds(new Set());
     }
   }, []);
 
@@ -99,7 +106,6 @@ export function useObjects(projectId: string | null) {
       setProject(null);
       setCurrentScriptId(null);
       setCharacters([]);
-      setSceneCharacterIds(new Set());
       return;
     }
     setLoading(true);
@@ -109,9 +115,21 @@ export function useObjects(projectId: string | null) {
     void loadConfigModels();
   }, [projectId, loadProject, loadScriptsAndCharacters, loadConfigModels]);
 
-  const objects = useMemo(() => {
-    return characters.filter((c) => !sceneCharacterIds.has(c.id));
-  }, [characters, sceneCharacterIds]);
+  // Categorise by object_type. Legacy records with no object_type fall into the Characters tab.
+  const characterObjects = useMemo(() => {
+    return characters.filter((c: CharacterMood) => {
+      if (!c.object_type) return true;
+      return CHARACTER_OBJECT_TYPES.has(c.object_type);
+    });
+  }, [characters]);
+
+  const backgroundObjects = useMemo(() => {
+    return characters.filter((c: CharacterMood) => c.object_type === "background");
+  }, [characters]);
+
+  const artifactObjects = useMemo(() => {
+    return characters.filter((c: CharacterMood) => c.object_type != null && ARTIFACT_OBJECT_TYPES.has(c.object_type!));
+  }, [characters]);
 
   const refetch = useCallback(() => {
     if (projectId) {
@@ -127,6 +145,7 @@ export function useObjects(projectId: string | null) {
     async (params: {
       name: string;
       type: "character" | "object" | "scene";
+      object_type?: string;
       casting_notes?: string;
       aspect_ratio?: string;
       series_group?: string;
@@ -137,6 +156,7 @@ export function useObjects(projectId: string | null) {
         {
           name: params.name.trim(),
           type: params.type,
+          object_type: params.object_type || null,
           casting_notes: params.casting_notes?.trim() || null,
           aspect_ratio: params.aspect_ratio || null,
           series_group: params.series_group || null,
@@ -144,7 +164,7 @@ export function useObjects(projectId: string | null) {
       );
       const data = (res as { data?: CharacterMood }).data;
       if (data) {
-        setCharacters((prev) => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)));
+        setCharacters((prev: CharacterMood[]) => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)));
       }
       return data;
     },
@@ -152,19 +172,16 @@ export function useObjects(projectId: string | null) {
   );
 
   const updateObject = useCallback(
-    async (characterId: string, updates: { casting_notes?: string; aspect_ratio?: string; hide_from_view?: boolean }) => {
+    async (characterId: string, updates: {
+      casting_notes?: string;
+      aspect_ratio?: string;
+      hide_from_view?: boolean;
+      object_type?: string;
+    }) => {
       await api.put(`characters/${characterId}`, updates);
-      setCharacters((prev) =>
-        prev.map((c) =>
-          c.id === characterId
-            ? {
-                ...c,
-                ...updates,
-                casting_notes: updates.casting_notes !== undefined ? updates.casting_notes : c.casting_notes,
-                aspect_ratio: updates.aspect_ratio !== undefined ? updates.aspect_ratio : c.aspect_ratio,
-                hide_from_view: updates.hide_from_view !== undefined ? updates.hide_from_view : c.hide_from_view,
-              }
-            : c
+      setCharacters((prev: CharacterMood[]) =>
+        prev.map((c: CharacterMood) =>
+          c.id === characterId ? { ...c, ...updates } : c
         )
       );
     },
@@ -173,7 +190,7 @@ export function useObjects(projectId: string | null) {
 
   const deleteObject = useCallback(async (characterId: string) => {
     await api.delete(`characters/${characterId}`);
-    setCharacters((prev) => prev.filter((c) => c.id !== characterId));
+    setCharacters((prev: CharacterMood[]) => prev.filter((c: CharacterMood) => c.id !== characterId));
   }, []);
 
   const uploadImage = useCallback(async (characterId: string, file: File) => {
@@ -186,8 +203,8 @@ export function useObjects(projectId: string | null) {
     );
     const url = (res as { character_image_url?: string }).character_image_url;
     if (url) {
-      setCharacters((prev) =>
-        prev.map((c) => (c.id === characterId ? { ...c, character_image_url: url } : c))
+      setCharacters((prev: CharacterMood[]) =>
+        prev.map((c: CharacterMood) => (c.id === characterId ? { ...c, character_image_url: url } : c))
       );
     }
     return url;
@@ -198,13 +215,30 @@ export function useObjects(projectId: string | null) {
       const res = await api.post<{
         success: boolean;
         data: CharacterMood;
-        gateway?: {
-          request_body?: Record<string, unknown>;
-          model_used?: string | null;
-        };
+        gateway?: { request_body?: Record<string, unknown>; model_used?: string | null };
       }>(
         `api/characters/${characterId}/generate-image`,
+        { prompt: prompt.trim(), aspect_ratio: aspectRatio || null, model: model || null }
+      );
+      const data = (res as { data?: CharacterMood }).data;
+      if (data) {
+        setCharacters((prev: CharacterMood[]) => prev.map((c: CharacterMood) => (c.id === characterId ? { ...c, ...data } : c)));
+      }
+      return res;
+    },
+    []
+  );
+
+  const generateSketch = useCallback(
+    async (scriptId: string, characterId: string, prompt: string, aspectRatio?: string, model?: string | null) => {
+      const res = await api.post<{
+        success: boolean;
+        data: CharacterMood;
+        gateway?: { request_body?: Record<string, unknown>; model_used?: string | null };
+      }>(
+        `scripts/${scriptId}/backgrounds/generate-sketch`,
         {
+          character_id: characterId,
           prompt: prompt.trim(),
           aspect_ratio: aspectRatio || null,
           model: model || null,
@@ -212,7 +246,7 @@ export function useObjects(projectId: string | null) {
       );
       const data = (res as { data?: CharacterMood }).data;
       if (data) {
-        setCharacters((prev) => prev.map((c) => (c.id === characterId ? { ...c, ...data } : c)));
+        setCharacters((prev: CharacterMood[]) => prev.map((c: CharacterMood) => (c.id === characterId ? { ...c, ...data } : c)));
       }
       return res;
     },
@@ -224,12 +258,15 @@ export function useObjects(projectId: string | null) {
     project,
     currentScriptId,
     objectImageModels,
-    objects,
+    characterObjects,
+    backgroundObjects,
+    artifactObjects,
     refetch,
     createObject,
     updateObject,
     deleteObject,
     uploadImage,
     generateImage,
+    generateSketch,
   };
 }

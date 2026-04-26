@@ -104,8 +104,6 @@ function ShotListContent() {
     placed: number;
     skipped: number;
   } | null>(null);
-  const [generatingBlocking, setGeneratingBlocking] = useState(false);
-  const [blockingResult, setBlockingResult] = useState<string | null>(null);
   const scriptContainerRef = useRef<HTMLDivElement>(null);
 
   const usedColors = useMemo(
@@ -381,28 +379,6 @@ function ShotListContent() {
     setSuggestResult(null);
   }
 
-  async function handleGenerateBlocking() {
-    if (!currentScene || !scriptId) return;
-    setGeneratingBlocking(true);
-    setBlockingResult(null);
-    try {
-      const res = await api.post<{ diagrams_generated: number }>(
-        `scripts/${scriptId}/scenes/${currentScene.scene_number}/generate-blocking`,
-        {}
-      );
-      const n = res.diagrams_generated ?? 0;
-      setBlockingResult(`${n} blocking diagram${n === 1 ? "" : "s"} generated`);
-    } catch (err) {
-      setToastMessage({
-        title: "Error",
-        description: err instanceof Error ? err.message : "Blocking generation failed",
-        variant: "destructive",
-      });
-    } finally {
-      setGeneratingBlocking(false);
-    }
-  }
-
   useEffect(() => {
     const handler = () => handleSuggestShots();
     window.addEventListener("suggestShots", handler);
@@ -618,35 +594,11 @@ function ShotListContent() {
                                   Clear shots
                                 </button>
                               )}
-                              {tramLines.length > 0 && (
-                                <button
-                                  onClick={handleGenerateBlocking}
-                                  disabled={generatingBlocking || suggesting || !currentScene}
-                                  className={`
-                                    flex items-center gap-2 px-3 py-2 rounded-md
-                                    text-sm font-medium transition-colors
-                                    bg-indigo-600 text-white hover:bg-indigo-700
-                                    disabled:opacity-50 disabled:cursor-not-allowed
-                                  `}
-                                >
-                                  {generatingBlocking ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <Camera className="h-4 w-4" />
-                                  )}
-                                  {generatingBlocking ? "Generating..." : "Generate blocking"}
-                                </button>
-                              )}
                               {suggestResult && (
                                 <span className="text-xs text-muted-foreground">
                                   {suggestResult.placed} shots placed
                                   {suggestResult.skipped > 0 &&
                                     `, ${suggestResult.skipped} skipped`}
-                                </span>
-                              )}
-                              {blockingResult && (
-                                <span className="text-xs text-muted-foreground">
-                                  {blockingResult}
                                 </span>
                               )}
                             </div>

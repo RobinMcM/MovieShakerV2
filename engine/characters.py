@@ -59,6 +59,7 @@ class CharacterUpdateBody(BaseModel):
     aspect_ratio: Optional[str] = None
     hide_from_view: Optional[bool] = None
     character_image_url: Optional[str] = None
+    object_type: Optional[str] = None
 
 
 class GenerateCharacterImageBody(BaseModel):
@@ -330,6 +331,8 @@ def update_character(
         character.hide_from_view = body.hide_from_view
     if body.character_image_url is not None:
         character.character_image_url = body.character_image_url or None
+    if body.object_type is not None:
+        character.object_type = body.object_type or None
     db.add(character)
     db.commit()
     db.refresh(character)
@@ -345,6 +348,8 @@ def update_character(
             "hide_from_view": character.hide_from_view,
             "aspect_ratio": character.aspect_ratio,
             "series_group": getattr(character, "series_group", None),
+            "object_type": getattr(character, "object_type", None),
+            "scene_tags": getattr(character, "scene_tags", None),
         },
     }
 

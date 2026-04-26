@@ -19,6 +19,137 @@ Every change carries production risk. Treat accordingly.
 - **AI Gateway**: `https://models.rapidmvp.io` (openrouter-gateway)
 - **Media Processing**: `https://media.rapidmvp.io` (media-handler)
 
+## Core Architecture — Single Source of Truth
+
+### The Fundamental Principle
+script.json (stored in DO Spaces) is the 
+single source of truth for the script.
+
+It is NOT just a copy of the screenplay.
+It is the ENRICHED screenplay — every entity 
+that appears in the script carries its 
+database GUID embedded directly in the JSON.
+
+### Why This Matters
+When an agent works on Scene 47 it reads 
+the scene elements from script.json.
+It sees KADE with his GUID embedded.
+It fetches KADE's exact approved image 
+from the database using that GUID.
+No name matching. No searching. No ambiguity.
+Always the correct KADE. Every time.
+
+### The Three Layers
+
+LAYER 1 — script.json (DO Spaces)
+  The enriched screenplay.
+  Source of truth for story AND identity.
+  Every character element has: guid
+  Every scene_heading characters array 
+  has objects with: name + guid
+  Every action line has: entities array
+  with guid for each named entity.
+  NEVER query the database for identity
+  when the script.json has the GUID.
+  
+  Example character element:
+  {
+    "type": "character",
+    "text": "KADE",
+    "guid": "3f4a1b2c-uuid"
+  }
+  
+  Example scene_heading:
+  {
+    "type": "scene_heading",
+    "characters": [
+      {"name": "KADE", "guid": "3f4a1b2c-uuid"},
+      {"name": "COMMS OFFICER", "guid": "7a9b3d4e-uuid"}
+    ]
+  }
+  
+  Example action line:
+  {
+    "type": "action",
+    "text": "TALON-7 descends into the docking bay",
+    "entities": [
+      {"text": "TALON-7", "guid": "5e2d7c3f-uuid", 
+       "type": "vehicle"}
+    ]
+  }
+
+LAYER 2 — PostgreSQL (database)
+  Stores all actual data.
+  characters table: images, descriptions, type
+  scenes table: production enrichment
+  tram_lines: shot coverage
+  The database is queried USING the GUID
+  from the script.json — never by name.
+
+LAYER 3 — The scene microcosm
+  When working inside a scene, everything
+  needed is self-contained.
+  The scene elements carry their GUIDs.
+  One fetch per GUID gets the full entity.
+  No joins, no name lookups, no ambiguity.
+
+### The Parse Pipeline
+1. PDF uploaded → stored as script.pdf
+2. Parse endpoint runs:
+   a. Extracts all elements via pdfminer
+   b. Identifies unique character names
+   c. Inserts Character rows → gets UUIDs
+   d. Builds name → GUID map
+   e. Walks every element in the JSON
+   f. Embeds GUIDs on character elements,
+      scene_heading characters arrays,
+      and action line entities
+   g. Re-writes enriched script.json to Spaces
+   h. Updates scenes.characters JSONB with GUIDs
+3. file_path points to enriched script.json
+4. All downstream features read from this file
+
+### What Agents Must Do
+When any agent (CoWriter, CoProducer, 
+CoDirector) needs to identify an entity:
+
+  CORRECT:
+    Read GUID from script.json element
+    SELECT * FROM characters WHERE id = guid
+    
+  WRONG:
+    SELECT * FROM characters WHERE name = 'KADE'
+    (name matching is fragile and ambiguous)
+
+### The Moodboard Microcosm
+When generating a moodboard for a scene:
+  1. Read scene elements from script.json
+  2. Collect GUIDs from character elements
+     and scene_heading characters array
+  3. Fetch character_image_url for each GUID
+  4. Place exact approved images in the frame
+  5. Never generate a generic character —
+     always use the GUID-identified image
+
+### Repair Guide
+If character GUIDs are missing from script.json:
+  → Re-run POST /scripts/{id}/parse
+  → This re-embeds all GUIDs from the 
+    current characters table
+  → Safe to run multiple times — GUIDs 
+    are stable (same name = same UUID)
+
+If a new character appears in a scene rewrite:
+  → Parse endpoint creates new Character row
+  → New UUID assigned
+  → script.json updated with new GUID
+  → All downstream features work immediately
+
+If scenes.characters JSONB has empty GUIDs:
+  → Characters table was empty during parse
+  → Re-parse after confirming characters 
+    table has rows for this script_id
+
 ## Structure
 
 ### Web (`web/src/`)

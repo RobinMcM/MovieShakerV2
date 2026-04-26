@@ -104,12 +104,16 @@ export default function ProjectLayout({
         ? "shotlist"
         : pathname?.includes("/moodboard")
         ? "moodboard"
+        : pathname?.includes("/objects")
+        ? "objects"
         : pathname?.includes("/budget")
         ? "budgets"
         : "general";
 
     const activeAgent = pathname?.includes("/script/")
         ? "CoWriter"
+        : pathname?.includes("/scheduling")
+        ? "CoProducer"
         : pathname?.includes("/shotlist")
         ? "CoDirector"
         : pathname?.includes("/moodboard")
@@ -117,9 +121,11 @@ export default function ProjectLayout({
         : pathname?.includes("/visualize")
         ? "CoDirector"
         : pathname?.includes("/objects")
-        ? "CoWriter"
+        ? "CoDesigner"
         : pathname?.includes("/film-in-a-box")
         ? "CoWriter"
+        : pathname?.includes("/budgeting")
+        ? "CoProducer"
         : "CoProducer";
 
     const [schedulingScriptId, setSchedulingScriptId] = useState<string | undefined>(undefined);

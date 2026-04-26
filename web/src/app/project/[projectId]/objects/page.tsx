@@ -36,12 +36,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Loader2,
   Plus,
@@ -67,22 +62,24 @@ const PROJECT_ASPECT_RATIO_OPTIONS = [
 ];
 
 function getAspectRatioClass(aspectRatio: string | null | undefined): string {
-  if (!aspectRatio) return "aspect-square";
   switch (aspectRatio) {
-    case "1:1":
-      return "aspect-square";
-    case "16:9":
-      return "aspect-[16/9]";
-    case "9:16":
-      return "aspect-[9/16]";
-    case "4:3":
-      return "aspect-[4/3]";
-    case "3:4":
-      return "aspect-[3/4]";
-    case "2.39:1":
-      return "aspect-[2.39/1]";
-    default:
-      return "aspect-square";
+    case "1:1": return "aspect-square";
+    case "16:9": return "aspect-[16/9]";
+    case "9:16": return "aspect-[9/16]";
+    case "4:3": return "aspect-[4/3]";
+    case "3:4": return "aspect-[3/4]";
+    case "2.39:1": return "aspect-[2.39/1]";
+    default: return "aspect-square";
+  }
+}
+
+function parseSceneTags(sceneTags: string | null | undefined): string[] {
+  if (!sceneTags) return [];
+  try {
+    const parsed = JSON.parse(sceneTags);
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
   }
 }
 
@@ -94,6 +91,7 @@ function ObjectCard({
   onTriggerFileInput,
   uploadingId,
   setToastMessage,
+  showSceneTags = false,
 }: {
   object: CharacterMood;
   onUpdate: (id: string, u: { casting_notes?: string; aspect_ratio?: string; hide_from_view?: boolean }) => Promise<void>;
@@ -102,10 +100,12 @@ function ObjectCard({
   onTriggerFileInput: (id: string) => void;
   uploadingId: string | null;
   setToastMessage: (m: { title: string; description?: string; variant?: "default" | "destructive" } | null) => void;
+  showSceneTags?: boolean;
 }) {
   const [description, setDescription] = useState(object.casting_notes ?? object.name);
   const [isGenerating, setIsGenerating] = useState(false);
   const imageUrl = storageImageUrl(object.character_image_url) ?? object.character_image_url ?? null;
+  const sceneTags = showSceneTags ? parseSceneTags(object.scene_tags) : [];
 
   useEffect(() => {
     setDescription(object.casting_notes ?? object.name);
@@ -145,10 +145,24 @@ function ObjectCard({
     <Card className="flex flex-col">
       <CardHeader>
         <div className="flex flex-col items-start gap-1">
-          <span className="text-xs uppercase tracking-wide text-muted-foreground">
-            {object.type ? object.type.charAt(0).toUpperCase() + object.type.slice(1) : "Object"}
-          </span>
+          {object.object_type && (
+            <span className="text-xs uppercase tracking-wide text-muted-foreground">
+              {object.object_type.replace(/_/g, " ")}
+            </span>
+          )}
           <CardTitle className="text-xl w-full break-words">{object.name}</CardTitle>
+          {showSceneTags && sceneTags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {sceneTags.map((tag) => (
+                <span
+                  key={tag}
+                  className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border"
+                >
+                  Sc {tag}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex items-center justify-between gap-2 pt-2">
           <div className="flex items-center gap-2">
@@ -179,11 +193,7 @@ function ObjectCard({
       <CardContent className="flex-1 flex flex-col gap-4">
         <div className={`${getAspectRatioClass(object.aspect_ratio)} bg-muted rounded-lg overflow-hidden relative`}>
           {imageUrl ? (
-            <img
-              src={imageUrl}
-              alt={object.name}
-              className="w-full h-full object-cover"
-            />
+            <img src={imageUrl} alt={object.name} className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground py-8">
               <ImageIcon className="h-12 w-12 mb-2" />
@@ -201,27 +211,21 @@ function ObjectCard({
             {uploadingId === object.id ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <>
-                <Upload className="h-4 w-4 mr-1" />
-                Upload
-              </>
+              <><Upload className="h-4 w-4 mr-1" />Upload</>
             )}
           </Button>
           <Button size="sm" onClick={handleGenerate} disabled={isGenerating}>
             {isGenerating ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <>
-                <Sparkles className="h-4 w-4 mr-1" />
-                Generate
-              </>
+              <><Sparkles className="h-4 w-4 mr-1" />Generate</>
             )}
           </Button>
         </div>
         <div className="flex flex-col gap-2">
           <Label>Description (AI prompt)</Label>
           <Textarea
-            placeholder="Describe the object for AI image generation..."
+            placeholder="Describe for AI image generation..."
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             onBlur={handleBlur}
@@ -233,6 +237,162 @@ function ObjectCard({
   );
 }
 
+function EmptyState({ label }: { label: string }) {
+  return (
+    <Card>
+      <CardContent className="py-12 text-center text-muted-foreground">
+        No {label} yet. Click Add to create one.
+      </CardContent>
+    </Card>
+  );
+}
+
+function ObjectGrid({
+  items,
+  emptyLabel,
+  onUpdate,
+  onDelete,
+  onGenerate,
+  onTriggerFileInput,
+  uploadingId,
+  setToastMessage,
+  showSceneTags = false,
+}: {
+  items: CharacterMood[];
+  emptyLabel: string;
+  onUpdate: (id: string, u: { casting_notes?: string; aspect_ratio?: string; hide_from_view?: boolean }) => Promise<void>;
+  onDelete: (obj: CharacterMood) => void;
+  onGenerate: (id: string, prompt: string, aspectRatio?: string | null) => Promise<void>;
+  onTriggerFileInput: (id: string) => void;
+  uploadingId: string | null;
+  setToastMessage: (m: { title: string; description?: string; variant?: "default" | "destructive" } | null) => void;
+  showSceneTags?: boolean;
+}) {
+  if (items.length === 0) return <EmptyState label={emptyLabel} />;
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+      {items.map((obj) => (
+        <ObjectCard
+          key={obj.id}
+          object={obj}
+          onUpdate={onUpdate}
+          onDelete={onDelete}
+          onGenerate={onGenerate}
+          onTriggerFileInput={onTriggerFileInput}
+          uploadingId={uploadingId}
+          setToastMessage={setToastMessage}
+          showSceneTags={showSceneTags}
+        />
+      ))}
+    </div>
+  );
+}
+
+type TabKey = "characters" | "backgrounds" | "artifacts";
+
+const TAB_CONFIG: Record<TabKey, { label: string; addLabel: string; objectType: string; type: "character" | "object"; defaultAspect: string }> = {
+  characters: { label: "Characters", addLabel: "Add Character", objectType: "principal", type: "character", defaultAspect: "1:1" },
+  backgrounds: { label: "Backgrounds", addLabel: "Add Background", objectType: "background", type: "object", defaultAspect: "16:9" },
+  artifacts: { label: "Artifacts", addLabel: "Add Artifact", objectType: "prop", type: "object", defaultAspect: "1:1" },
+};
+
+function CreateDialog({
+  tab,
+  currentScriptId,
+  onCreate,
+}: {
+  tab: TabKey;
+  currentScriptId: string | null;
+  onCreate: (params: { name: string; type: "character" | "object"; object_type: string; casting_notes?: string; aspect_ratio?: string }) => Promise<void>;
+}) {
+  const config = TAB_CONFIG[tab];
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [aspectRatio, setAspectRatio] = useState(config.defaultAspect);
+  const [isCreating, setIsCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleCreate = async () => {
+    if (!name.trim()) { setError("Name is required"); return; }
+    setIsCreating(true);
+    setError(null);
+    try {
+      await onCreate({
+        name: name.trim(),
+        type: config.type,
+        object_type: config.objectType,
+        casting_notes: description.trim() || undefined,
+        aspect_ratio: aspectRatio,
+      });
+      setOpen(false);
+      setName("");
+      setDescription("");
+      setAspectRatio(config.defaultAspect);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create");
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setName(""); setDescription(""); setAspectRatio(config.defaultAspect); setError(null); } }}>
+      <DialogTrigger asChild>
+        <Button disabled={!currentScriptId} size="sm">
+          <Plus className="h-4 w-4 mr-1" />
+          {config.addLabel}
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{config.addLabel}</DialogTitle>
+          <DialogDescription>
+            Add a {config.label.toLowerCase().slice(0, -1)} to maintain consistent visual identity across your production.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label>Name *</Label>
+            <Input
+              placeholder={tab === "characters" ? "e.g., Detective Kane" : tab === "backgrounds" ? "e.g., Police Station Interior" : "e.g., Red Sports Car"}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Description</Label>
+            <Textarea
+              placeholder="Describe appearance for AI image generation..."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="min-h-[60px]"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Aspect Ratio</Label>
+            <Select value={aspectRatio} onValueChange={setAspectRatio}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {PROJECT_ASPECT_RATIO_OPTIONS.map((r) => (
+                  <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={handleCreate} disabled={isCreating}>
+            {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ObjectsContent() {
   const params = useParams();
   const projectId = (params?.projectId as string) ?? null;
@@ -241,8 +401,9 @@ function ObjectsContent() {
     project,
     currentScriptId,
     objectImageModels,
-    objects,
-    refetch,
+    characterObjects,
+    backgroundObjects,
+    artifactObjects,
     createObject,
     updateObject,
     deleteObject,
@@ -250,13 +411,8 @@ function ObjectsContent() {
     generateImage,
   } = useObjects(projectId);
 
+  const [activeTab, setActiveTab] = useState<TabKey>("characters");
   const [searchTerm, setSearchTerm] = useState("");
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newDescription, setNewDescription] = useState("");
-  const [newAspectRatio, setNewAspectRatio] = useState("16:9");
-  const [newType, setNewType] = useState<"character" | "object" | "scene">("object");
-  const [isCreating, setIsCreating] = useState(false);
   const [selectedImageModel, setSelectedImageModel] = useState<string | null>(null);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<{
@@ -267,17 +423,6 @@ function ObjectsContent() {
   const [deleteTarget, setDeleteTarget] = useState<CharacterMood | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const fileTargetIdRef = useRef<string | null>(null);
-
-  const filteredObjects = useMemo(() => {
-    return objects.filter((obj) => {
-      const matchesSearch = obj.name.toLowerCase().includes(searchTerm.toLowerCase());
-      return matchesSearch;
-    });
-  }, [objects, searchTerm]);
-
-  const characterObjects = filteredObjects.filter((o) => o.type === "character");
-  const objectItems = filteredObjects.filter((o) => o.type === "object");
-  const sceneObjects = filteredObjects.filter((o) => o.type === "scene");
 
   useEffect(() => {
     if (!Array.isArray(objectImageModels) || objectImageModels.length === 0) {
@@ -292,34 +437,31 @@ function ObjectsContent() {
     setSelectedImageModel(defaultModel);
   }, [objectImageModels, selectedImageModel]);
 
-  const handleCreate = async () => {
-    if (!newName.trim()) {
-      setToastMessage({ title: "Name is required", variant: "destructive" });
-      return;
-    }
-    setIsCreating(true);
-    try {
-      await createObject({
-        name: newName.trim(),
-        type: newType,
-        casting_notes: newDescription.trim() || undefined,
-        aspect_ratio: newAspectRatio,
-      });
-      setIsCreateDialogOpen(false);
-      setNewName("");
-      setNewDescription("");
-      setNewAspectRatio("16:9");
-      setNewType("object");
-      setToastMessage({ title: "Item created" });
-    } catch (e) {
-      setToastMessage({
-        title: "Failed to create",
-        description: e instanceof Error ? e.message : undefined,
-        variant: "destructive",
-      });
-    } finally {
-      setIsCreating(false);
-    }
+  const allObjects = useMemo(
+    () => [...characterObjects, ...backgroundObjects, ...artifactObjects],
+    [characterObjects, backgroundObjects, artifactObjects]
+  );
+
+  const filtered = useMemo(() => {
+    const term = searchTerm.toLowerCase();
+    const filter = (list: CharacterMood[]) =>
+      term ? list.filter((o) => o.name.toLowerCase().includes(term)) : list;
+    return {
+      characters: filter(characterObjects),
+      backgrounds: filter(backgroundObjects),
+      artifacts: filter(artifactObjects),
+    };
+  }, [characterObjects, backgroundObjects, artifactObjects, searchTerm]);
+
+  const handleCreate = async (params: {
+    name: string;
+    type: "character" | "object";
+    object_type: string;
+    casting_notes?: string;
+    aspect_ratio?: string;
+  }) => {
+    await createObject({ ...params });
+    setToastMessage({ title: "Item created" });
   };
 
   const handleDeleteClick = (obj: CharacterMood) => setDeleteTarget(obj);
@@ -334,33 +476,20 @@ function ObjectsContent() {
     }
   };
 
-  const handleUpload = async (characterId: string, file: File): Promise<string | undefined> => {
+  const handleUpload = async (characterId: string, file: File) => {
     setUploadingId(characterId);
     try {
-      const url = await uploadImage(characterId, file);
+      await uploadImage(characterId, file);
       setToastMessage({ title: "Image uploaded" });
-      return url;
     } catch {
       setToastMessage({ title: "Failed to upload image", variant: "destructive" });
-      return undefined;
     } finally {
       setUploadingId(null);
     }
   };
 
   const handleGenerate = async (characterId: string, prompt: string, aspectRatio?: string | null) => {
-    const result = await generateImage(
-      characterId,
-      prompt,
-      aspectRatio ?? undefined,
-      selectedImageModel
-    );
-    if ((result as { gateway?: { request_body?: unknown } })?.gateway?.request_body) {
-      console.log(
-        "[objects.generate-image] gateway request body",
-        (result as { gateway?: { request_body?: unknown } }).gateway?.request_body
-      );
-    }
+    await generateImage(characterId, prompt, aspectRatio ?? undefined, selectedImageModel);
   };
 
   const triggerFileInput = (objectId: string) => {
@@ -374,6 +503,15 @@ function ObjectsContent() {
     if (file && id) handleUpload(id, file);
     e.target.value = "";
     fileTargetIdRef.current = null;
+  };
+
+  const gridProps = {
+    onUpdate: updateObject,
+    onDelete: handleDeleteClick,
+    onGenerate: handleGenerate,
+    onTriggerFileInput: triggerFileInput,
+    uploadingId,
+    setToastMessage,
   };
 
   if (loading) {
@@ -397,105 +535,19 @@ function ObjectsContent() {
             Back
           </Link>
         </div>
+
         {project && (
           <div className="mb-8">
             <h1 className="text-3xl font-bold mb-2">{project.title ?? project.name}</h1>
           </div>
         )}
 
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold flex items-center gap-2">
-            <Palette className="h-6 w-6 text-primary" />
-            Objects
-          </h2>
-          <Dialog
-            open={isCreateDialogOpen}
-            onOpenChange={(open) => {
-              setIsCreateDialogOpen(open);
-              if (!open) {
-                setNewName("");
-                setNewDescription("");
-                setNewAspectRatio("16:9");
-                setNewType("object");
-              }
-            }}
-          >
-            <DialogTrigger asChild>
-              <Button disabled={!currentScriptId}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Item
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create New Item</DialogTitle>
-                <DialogDescription>
-                  Add a character, object, or scene to maintain consistent likeness across your production.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>Type</Label>
-                  <Select
-                    value={newType}
-                    onValueChange={(v: "character" | "object" | "scene") => setNewType(v)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="character">Person</SelectItem>
-                      <SelectItem value="object">Prop</SelectItem>
-                      <SelectItem value="scene">Scene</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Name *</Label>
-                  <Input
-                    placeholder="e.g., John Doe, Red Ferrari"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Description</Label>
-                  <Textarea
-                    placeholder="Describe appearance for AI or reference..."
-                    value={newDescription}
-                    onChange={(e) => setNewDescription(e.target.value)}
-                    className="min-h-[60px]"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Aspect Ratio</Label>
-                  <Select value={newAspectRatio} onValueChange={setNewAspectRatio}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PROJECT_ASPECT_RATIO_OPTIONS.map((r) => (
-                        <SelectItem key={r.value} value={r.value}>
-                          {r.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleCreate} disabled={isCreating}>
-                  {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create"}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+        <div className="flex items-center gap-2 mb-6">
+          <Palette className="h-6 w-6 text-primary" />
+          <h2 className="text-2xl font-bold">Objects</h2>
         </div>
 
-        {objects.length > 0 && (
+        {allObjects.length > 0 && (
           <div className="mb-6 flex flex-col sm:flex-row gap-4">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -509,13 +561,9 @@ function ObjectsContent() {
             <div className="sm:w-[360px]">
               <Select
                 value={selectedImageModel || "__none__"}
-                onValueChange={(value) =>
-                  setSelectedImageModel(value === "__none__" ? null : value)
-                }
+                onValueChange={(value) => setSelectedImageModel(value === "__none__" ? null : value)}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Text-to-Image model" />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Text-to-Image model" /></SelectTrigger>
                 <SelectContent>
                   {objectImageModels.length === 0 ? (
                     <SelectItem value="__none__">No models available</SelectItem>
@@ -524,8 +572,7 @@ function ObjectsContent() {
                       .filter((model) => (model.status || "active") !== "deprecated")
                       .map((model) => (
                         <SelectItem key={`obj-model-${model.id}`} value={model.id}>
-                          {model.name || model.id}
-                          {model.provider ? ` (${model.provider})` : ""}
+                          {model.name || model.id}{model.provider ? ` (${model.provider})` : ""}
                         </SelectItem>
                       ))
                   )}
@@ -543,88 +590,51 @@ function ObjectsContent() {
           onChange={onFileChange}
         />
 
-        {objects.length === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center text-muted-foreground">
-              No objects yet. Click Add Item to create props and items for your film.
-            </CardContent>
-          </Card>
-        ) : filteredObjects.length === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <p className="text-muted-foreground">No objects match your search.</p>
-              <Button variant="outline" className="mt-4" onClick={() => { setSearchTerm(""); }}>
-                Clear filters
-              </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          <Accordion type="multiple" defaultValue={["characters", "objects", "scenes"]} className="space-y-4">
-            {characterObjects.length > 0 && (
-              <AccordionItem value="characters">
-                <AccordionTrigger>Characters ({characterObjects.length})</AccordionTrigger>
-                <AccordionContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pt-4">
-                    {characterObjects.map((obj) => (
-                      <ObjectCard
-                        key={obj.id}
-                        object={obj}
-                        onUpdate={updateObject}
-                        onDelete={handleDeleteClick}
-                        onGenerate={handleGenerate}
-                        onTriggerFileInput={triggerFileInput}
-                        uploadingId={uploadingId}
-                        setToastMessage={setToastMessage}
-                      />
-                    ))}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            )}
-            {objectItems.length > 0 && (
-              <AccordionItem value="objects">
-                <AccordionTrigger>Objects ({objectItems.length})</AccordionTrigger>
-                <AccordionContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pt-4">
-                    {objectItems.map((obj) => (
-                      <ObjectCard
-                        key={obj.id}
-                        object={obj}
-                        onUpdate={updateObject}
-                        onDelete={handleDeleteClick}
-                        onGenerate={handleGenerate}
-                        onTriggerFileInput={triggerFileInput}
-                        uploadingId={uploadingId}
-                        setToastMessage={setToastMessage}
-                      />
-                    ))}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            )}
-            {sceneObjects.length > 0 && (
-              <AccordionItem value="scenes">
-                <AccordionTrigger>Scenes ({sceneObjects.length})</AccordionTrigger>
-                <AccordionContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pt-4">
-                    {sceneObjects.map((obj) => (
-                      <ObjectCard
-                        key={obj.id}
-                        object={obj}
-                        onUpdate={updateObject}
-                        onDelete={handleDeleteClick}
-                        onGenerate={handleGenerate}
-                        onTriggerFileInput={triggerFileInput}
-                        uploadingId={uploadingId}
-                        setToastMessage={setToastMessage}
-                      />
-                    ))}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            )}
-          </Accordion>
-        )}
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)}>
+          <div className="flex items-center justify-between mb-4">
+            <TabsList>
+              <TabsTrigger value="characters">
+                Characters {characterObjects.length > 0 && <span className="ml-1.5 text-xs opacity-70">({characterObjects.length})</span>}
+              </TabsTrigger>
+              <TabsTrigger value="backgrounds">
+                Backgrounds {backgroundObjects.length > 0 && <span className="ml-1.5 text-xs opacity-70">({backgroundObjects.length})</span>}
+              </TabsTrigger>
+              <TabsTrigger value="artifacts">
+                Artifacts {artifactObjects.length > 0 && <span className="ml-1.5 text-xs opacity-70">({artifactObjects.length})</span>}
+              </TabsTrigger>
+            </TabsList>
+            <CreateDialog
+              tab={activeTab}
+              currentScriptId={currentScriptId}
+              onCreate={handleCreate}
+            />
+          </div>
+
+          <TabsContent value="characters">
+            <ObjectGrid
+              items={filtered.characters}
+              emptyLabel="characters"
+              showSceneTags={true}
+              {...gridProps}
+            />
+          </TabsContent>
+
+          <TabsContent value="backgrounds">
+            <ObjectGrid
+              items={filtered.backgrounds}
+              emptyLabel="backgrounds"
+              {...gridProps}
+            />
+          </TabsContent>
+
+          <TabsContent value="artifacts">
+            <ObjectGrid
+              items={filtered.artifacts}
+              emptyLabel="artifacts"
+              {...gridProps}
+            />
+          </TabsContent>
+        </Tabs>
 
         {toastMessage && (
           <div
@@ -651,7 +661,10 @@ function ObjectsContent() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDeleteConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              <AlertDialogAction
+                onClick={handleDeleteConfirm}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
                 Delete
               </AlertDialogAction>
             </AlertDialogFooter>

@@ -12,7 +12,14 @@ interface CoproducerSidebarProps {
     contextId?: string;
     userModel: string;
     coproducerActive?: boolean;
+    activeAgent?: string;
 }
+
+const AGENT_CONFIG: Record<string, { icon: string; description: string }> = {
+    CoWriter:   { icon: "✍️",  description: "Script & Story" },
+    CoProducer: { icon: "🎬", description: "Production" },
+    CoDirector: { icon: "🎥", description: "Visual Direction" },
+};
 
 const CONTEXT_LABELS: Record<string, string> = {
     scripts: "Scripts",
@@ -35,8 +42,10 @@ export function CoproducerSidebar({
     contextMode,
     contextId,
     coproducerActive = false,
+    activeAgent = "CoProducer",
 }: CoproducerSidebarProps) {
     const contextLabel = CONTEXT_LABELS[contextMode] ?? "General";
+    const agentConfig = AGENT_CONFIG[activeAgent] ?? AGENT_CONFIG.CoProducer;
 
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [promptOverride, setPromptOverride] = useState("");
@@ -175,8 +184,12 @@ export function CoproducerSidebar({
             >
                 {/* Header */}
                 <div className="flex items-center px-4 py-3 border-b shrink-0">
-                    <span className="text-sm font-semibold">CoProducer</span>
-                    <span className="ml-3 text-[10px] uppercase tracking-wide bg-muted text-muted-foreground px-2 py-0.5 rounded-full">
+                    <span className="mr-2 text-base leading-none">{agentConfig.icon}</span>
+                    <div className="flex flex-col min-w-0">
+                        <span className="text-sm font-semibold leading-tight">{activeAgent}</span>
+                        <span className="text-[10px] text-muted-foreground leading-tight">{agentConfig.description}</span>
+                    </div>
+                    <span className="ml-auto text-[10px] uppercase tracking-wide bg-muted text-muted-foreground px-2 py-0.5 rounded-full shrink-0">
                         {contextLabel}
                     </span>
                 </div>
@@ -187,8 +200,8 @@ export function CoproducerSidebar({
                     {contextMode === "scheduling" && contextId && showOpening && (
                         <div className="flex flex-col gap-4 p-5">
                             <p className="text-sm text-foreground leading-relaxed">
-                                I&apos;m your production scheduler. I&apos;ve read the script
-                                and I&apos;m ready to build your shoot schedule.
+                                I&apos;m {activeAgent}, your production scheduler. I&apos;ve read
+                                the script and I&apos;m ready to build your shoot schedule.
                                 Want me to generate it now?
                             </p>
                             {generateError && (
@@ -219,9 +232,9 @@ export function CoproducerSidebar({
                     {contextMode === "shotlist" && contextId && showOpening && (
                         <div className="flex flex-col gap-4 p-5">
                             <p className="text-sm text-foreground leading-relaxed">
-                                I&apos;m your shot designer. Select a scene and I&apos;ll
-                                suggest camera setups and tram line placements based on
-                                the dialogue and action.
+                                I&apos;m {activeAgent}, your shot designer. Select a scene
+                                and I&apos;ll suggest camera setups and tram line placements
+                                based on the dialogue and action.
                             </p>
                             <div className="flex gap-2">
                                 <button
@@ -239,9 +252,9 @@ export function CoproducerSidebar({
                     {contextMode === "moodboard" && contextId && showOpening && (
                         <div className="flex flex-col gap-4 p-5">
                             <p className="text-sm text-foreground leading-relaxed">
-                                I&apos;m your visual director. Select a scene and I&apos;ll
-                                generate the complete moodboard from your shot list and
-                                character references.
+                                I&apos;m {activeAgent}, your visual director. Select a scene
+                                and I&apos;ll generate the complete moodboard from your shot
+                                list and character references.
                             </p>
                             <div className="flex gap-2">
                                 <button
@@ -268,7 +281,7 @@ export function CoproducerSidebar({
                     ) : !showOpening && (
                         <div className="flex items-center justify-center h-full p-6 text-center">
                             <p className="text-sm text-muted-foreground">
-                                CoProducer is ready. Navigate to a script to begin.
+                                {activeAgent} is ready. Navigate to a script to begin.
                             </p>
                         </div>
                     )}
@@ -281,7 +294,7 @@ export function CoproducerSidebar({
                         onClick={() => setSettingsOpen((prev) => !prev)}
                         className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
                     >
-                        <span>Personalise CoProducer</span>
+                        <span>Personalise {activeAgent}</span>
                         {settingsOpen
                             ? <ChevronUp className="h-3.5 w-3.5" />
                             : <ChevronDown className="h-3.5 w-3.5" />

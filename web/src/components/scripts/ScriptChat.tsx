@@ -28,6 +28,7 @@ export interface ScriptChatProps {
     ref?: Ref<ScriptChatHandle>;
     embedded?: boolean;
     contextMode?: string;
+    activeAgent?: string;
 }
 
 interface ChatApiResponse {
@@ -141,7 +142,7 @@ function MessageBubble({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function ScriptChat({ scriptId, initialChatId, onAfterResponse, ref, embedded: _embedded, contextMode }: ScriptChatProps) {
+export function ScriptChat({ scriptId, initialChatId, onAfterResponse, ref, embedded: _embedded, contextMode, activeAgent }: ScriptChatProps) {
     const router = useRouter();
     const pathname = usePathname();
 
@@ -237,7 +238,7 @@ export function ScriptChat({ scriptId, initialChatId, onAfterResponse, ref, embe
             try {
                 const res = await api.post<ChatApiResponse>(
                     `/scripts/${scriptId}/chat`,
-                    { message: trimmed, chat_id: chatId, context_mode: contextMode ?? "scripts", page_path: window.location.pathname },
+                    { message: trimmed, chat_id: chatId, context_mode: contextMode ?? "scripts", page_path: window.location.pathname, active_agent: activeAgent ?? "CoProducer" },
                     90_000
                 );
 

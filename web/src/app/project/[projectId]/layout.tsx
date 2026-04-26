@@ -168,6 +168,7 @@ export default function ProjectLayout({
                 contextId={contextId}
                 userModel={userModel}
                 coproducerActive={coproducerActive}
+                activeAgent={activeAgent}
             />
         </>
     );

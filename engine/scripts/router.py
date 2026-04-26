@@ -1957,6 +1957,7 @@ class ScriptChatBody(BaseModel):
     chat_id: Optional[str] = None
     context_mode: Optional[str] = None
     page_path: Optional[str] = ""
+    active_agent: Optional[str] = None
 
 
 class ScriptChatResponse(BaseModel):
@@ -2025,26 +2026,31 @@ def script_chat(
     log_routing_decision(message, model, routing_reason)
 
     # Classify the message to select the correct agent prompt.
+    # If the frontend already knows the agent, skip the classifier entirely.
     # Timeout is 5 s — failure silently falls back to "coproducer".
+    _VALID_AGENTS = {"cowriter", "coproducer", "codirector"}
     agent = "coproducer"
-    try:
-        classify_resp = httpx.post(
-            f"{settings.gateway_base_url}/api/classify",
-            json={
-                "message": body.message,
-                "context_mode": body.context_mode or "scripts",
-                "page_path": body.page_path or "",
-            },
-            headers={
-                "X-Internal-API-Key": settings.gateway_internal_api_key,
-                "Content-Type": "application/json",
-            },
-            timeout=5.0,
-        )
-        if classify_resp.status_code == 200:
-            agent = classify_resp.json().get("agent", "coproducer")
-    except Exception:
-        pass  # classifier unavailable — chat continues with default
+    if body.active_agent and body.active_agent.lower() in _VALID_AGENTS:
+        agent = body.active_agent.lower()
+    else:
+        try:
+            classify_resp = httpx.post(
+                f"{settings.gateway_base_url}/api/classify",
+                json={
+                    "message": body.message,
+                    "context_mode": body.context_mode or "scripts",
+                    "page_path": body.page_path or "",
+                },
+                headers={
+                    "X-Internal-API-Key": settings.gateway_internal_api_key,
+                    "Content-Type": "application/json",
+                },
+                timeout=5.0,
+            )
+            if classify_resp.status_code == 200:
+                agent = classify_resp.json().get("agent", "coproducer")
+        except Exception:
+            pass  # classifier unavailable — chat continues with default
 
     from scripts.prompts.system_prompt_builder import build_system_prompt
     system_prompt = build_system_prompt(

@@ -35,6 +35,7 @@ interface ChatApiResponse {
     chat_id: string;
     scene_refs: number[];
     model_used: string;
+    agent?: string;
 }
 
 interface MessagesApiResponse {
@@ -236,7 +237,7 @@ export function ScriptChat({ scriptId, initialChatId, onAfterResponse, ref, embe
             try {
                 const res = await api.post<ChatApiResponse>(
                     `/scripts/${scriptId}/chat`,
-                    { message: trimmed, chat_id: chatId, context_mode: contextMode ?? "scripts" },
+                    { message: trimmed, chat_id: chatId, context_mode: contextMode ?? "scripts", page_path: window.location.pathname },
                     90_000
                 );
 

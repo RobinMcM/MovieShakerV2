@@ -9,6 +9,7 @@ import json
 import logging
 import re
 import uuid
+import httpx
 from datetime import datetime
 from typing import List, Optional, Tuple
 
@@ -1955,6 +1956,7 @@ class ScriptChatBody(BaseModel):
     message: str
     chat_id: Optional[str] = None
     context_mode: Optional[str] = None
+    page_path: Optional[str] = ""
 
 
 class ScriptChatResponse(BaseModel):
@@ -1962,6 +1964,7 @@ class ScriptChatResponse(BaseModel):
     chat_id: str
     scene_refs: list
     model_used: str
+    agent: str = "coproducer"
 
 
 class ScriptMessageItem(BaseModel):
@@ -2021,12 +2024,35 @@ def script_chat(
     model, routing_reason = select_model(message, ctx, user_model)
     log_routing_decision(message, model, routing_reason)
 
+    # Classify the message to select the correct agent prompt.
+    # Timeout is 5 s — failure silently falls back to "coproducer".
+    agent = "coproducer"
+    try:
+        classify_resp = httpx.post(
+            f"{settings.gateway_base_url}/api/classify",
+            json={
+                "message": body.message,
+                "context_mode": body.context_mode or "scripts",
+                "page_path": body.page_path or "",
+            },
+            headers={
+                "X-Internal-API-Key": settings.gateway_internal_api_key,
+                "Content-Type": "application/json",
+            },
+            timeout=5.0,
+        )
+        if classify_resp.status_code == 200:
+            agent = classify_resp.json().get("agent", "coproducer")
+    except Exception:
+        pass  # classifier unavailable — chat continues with default
+
     from scripts.prompts.system_prompt_builder import build_system_prompt
     system_prompt = build_system_prompt(
         context_mode=body.context_mode or "scripts",
         context=ctx,
         db=db,
         user_id=user_id,
+        agent=agent,
     )
     gateway_messages = [{"role": "system", "content": system_prompt}]
     for h in history:
@@ -2077,6 +2103,7 @@ def script_chat(
         chat_id=chat_id,
         scene_refs=scene_refs,
         model_used=model,
+        agent=agent,
     )
 
 

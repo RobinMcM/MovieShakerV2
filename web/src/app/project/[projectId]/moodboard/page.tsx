@@ -42,6 +42,7 @@ import { useMoodBoard } from "./useMoodBoard";
 import type { TramLineWithScene, CanvasComposition } from "./types";
 import type { DrawingCanvasRef, DrawingCanvasProps } from "@/components/DrawingCanvas";
 import { api, storageImageUrl } from "@/lib/api";
+import { BlockingDiagram } from "@/components/moodboard/BlockingDiagram";
 
 const DrawingCanvas = dynamic(
   () => import("@/components/DrawingCanvas").then((m) => ({ default: m.DrawingCanvas })),
@@ -88,6 +89,7 @@ function MoodBoardContent() {
   const [generatingMoodboard, setGeneratingMoodboard] = useState(false);
   const [generateResult, setGenerateResult] = useState<string | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [ideasMode, setIdeasMode] = useState<"canvas" | "blocking">("canvas");
   const canvasRef = useRef<DrawingCanvasRef>(null);
 
   useEffect(() => {
@@ -118,6 +120,7 @@ function MoodBoardContent() {
     setCurrentCanvasIndex(0);
     setIsNewCanvas(false);
     setCanvasNote("");
+    setIdeasMode("canvas");
   }, [selectedTramLineId]);
 
   useEffect(() => {
@@ -140,6 +143,17 @@ function MoodBoardContent() {
   }, [project?.aspect_ratio]);
 
   const selectedTramLine = tramLines.find((t) => t.id === selectedTramLineId);
+
+  const blockingComposition = compositions.find(
+    (c) => c.composition_data?.["mode"] === "blocking"
+  );
+  const blockingData = (blockingComposition?.composition_data ?? null) as {
+    mode: string;
+    shot_type: string;
+    line_label: string;
+    characters: Array<{ name: string; x: number; y: number; scale: number; color: string; flip: boolean }>;
+    svg_content: string;
+  } | null;
 
   const handleCanvasSave = useCallback(
     async (blob: Blob, compositionData: Record<string, unknown>) => {
@@ -381,89 +395,131 @@ function MoodBoardContent() {
                 <Card>
                   <CardHeader>
                     <div className="flex items-center justify-between flex-wrap gap-2">
-                      <CardTitle className="text-base text-muted-foreground">Ideas & Notes</CardTitle>
+                      <div className="flex items-center gap-2">
+                        <CardTitle className="text-base text-muted-foreground">Ideas & Notes</CardTitle>
+                        <div className="flex rounded-md border border-border overflow-hidden text-xs shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setIdeasMode("canvas")}
+                            className={`px-3 py-1 transition-colors ${ideasMode === "canvas" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-accent"}`}
+                          >
+                            Canvas
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIdeasMode("blocking")}
+                            className={`px-3 py-1 border-l border-border transition-colors ${ideasMode === "blocking" ? "bg-indigo-600 text-white" : "bg-background text-muted-foreground hover:bg-accent"}`}
+                          >
+                            Blocking
+                          </button>
+                        </div>
+                      </div>
                       <div className="flex flex-wrap items-center justify-end gap-2">
-                        <Button variant="outline" size="sm" onClick={handlePreviousCanvas} disabled={currentCanvasIndex === 0 && !isNewCanvas}>
-                          <ChevronLeft className="h-4 w-4" />
-                        </Button>
-                        <span className="text-sm font-medium min-w-[80px] text-center w-full sm:w-auto">
-                          Moodboard {displayCanvasNumber}
-                          {totalCanvases > 0 ? ` / ${isNewCanvas ? totalCanvases + 1 : totalCanvases}` : ""}
-                        </span>
-                        <Button variant="outline" size="sm" onClick={handleNextCanvas} disabled={isNewCanvas || currentCanvasIndex >= compositions.length - 1}>
-                          <ChevronRight className="h-4 w-4" />
-                        </Button>
-                        <Button variant="default" size="sm" onClick={handleNewCanvas} disabled={isNewCanvas}>
-                          <Plus className="h-4 w-4" /> Add
-                        </Button>
-                        <div className="hidden sm:block w-px h-6 bg-border mx-1" />
-                        <Button
-                          variant="default"
-                          size="sm"
-                          className="bg-teal-600 hover:bg-teal-700 text-white border-0"
-                          onClick={handleGenerateMoodboard}
-                          disabled={generatingMoodboard || !selectedTramLineId}
-                          title="CoProducer: generate moodboard images for all shots in this scene"
-                        >
-                          {generatingMoodboard ? (
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          ) : (
-                            <Bot className="h-4 w-4 mr-2" />
-                          )}
-                          {generatingMoodboard ? "CoProducer thinking..." : "Generate moodboard"}
-                        </Button>
-                        <div className="hidden sm:block w-px h-6 bg-border mx-1" />
-                        <Button variant="default" size="sm" className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white border-0" onClick={handleVisualize} disabled={!selectedTramLineId}>
-                          <Sparkles className="h-4 w-4 mr-2" /> Visualize
-                        </Button>
+                        {ideasMode === "canvas" && (
+                          <>
+                            <Button variant="outline" size="sm" onClick={handlePreviousCanvas} disabled={currentCanvasIndex === 0 && !isNewCanvas}>
+                              <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            <span className="text-sm font-medium min-w-[80px] text-center w-full sm:w-auto">
+                              Moodboard {displayCanvasNumber}
+                              {totalCanvases > 0 ? ` / ${isNewCanvas ? totalCanvases + 1 : totalCanvases}` : ""}
+                            </span>
+                            <Button variant="outline" size="sm" onClick={handleNextCanvas} disabled={isNewCanvas || currentCanvasIndex >= compositions.length - 1}>
+                              <ChevronRight className="h-4 w-4" />
+                            </Button>
+                            <Button variant="default" size="sm" onClick={handleNewCanvas} disabled={isNewCanvas}>
+                              <Plus className="h-4 w-4" /> Add
+                            </Button>
+                            <div className="hidden sm:block w-px h-6 bg-border mx-1" />
+                            <Button
+                              variant="default"
+                              size="sm"
+                              className="bg-teal-600 hover:bg-teal-700 text-white border-0"
+                              onClick={handleGenerateMoodboard}
+                              disabled={generatingMoodboard || !selectedTramLineId}
+                              title="CoProducer: generate moodboard images for all shots in this scene"
+                            >
+                              {generatingMoodboard ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              ) : (
+                                <Bot className="h-4 w-4 mr-2" />
+                              )}
+                              {generatingMoodboard ? "CoProducer thinking..." : "Generate moodboard"}
+                            </Button>
+                            <div className="hidden sm:block w-px h-6 bg-border mx-1" />
+                            <Button variant="default" size="sm" className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white border-0" onClick={handleVisualize} disabled={!selectedTramLineId}>
+                              <Sparkles className="h-4 w-4 mr-2" /> Visualize
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-muted-foreground">Canvas Aspect Ratio</label>
-                      <Select value={canvasAspectRatio} onValueChange={setCanvasAspectRatio}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CANVAS_ASPECT_RATIO_OPTIONS.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {compositionsLoading ? (
-                      <div className="flex items-center justify-center py-12">
-                        <Loader2 className="h-6 w-6 animate-spin" />
-                      </div>
+                    {ideasMode === "canvas" ? (
+                      <>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-muted-foreground">Canvas Aspect Ratio</label>
+                          <Select value={canvasAspectRatio} onValueChange={setCanvasAspectRatio}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {CANVAS_ASPECT_RATIO_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {compositionsLoading ? (
+                          <div className="flex items-center justify-center py-12">
+                            <Loader2 className="h-6 w-6 animate-spin" />
+                          </div>
+                        ) : (
+                          <DrawingCanvas
+                            key={currentComposition?.id ?? `new-${selectedTramLine?.id}`}
+                            ref={canvasRef}
+                            tramLineId={selectedTramLine?.id ?? ""}
+                            initialData={currentComposition?.composition_data as DrawingCanvasProps["initialData"]}
+                            onSave={handleCanvasSave}
+                            aspectRatio={canvasAspectRatio}
+                          />
+                        )}
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-muted-foreground">Canvas Notes</label>
+                          <Textarea
+                            placeholder="Add notes about this moodboard composition..."
+                            value={canvasNote}
+                            onChange={(e) => setCanvasNote(e.target.value)}
+                            className="min-h-[100px] resize-y"
+                          />
+                          <p className="text-xs text-muted-foreground italic">Notes are saved when you save the canvas (Save in the toolbar above).</p>
+                        </div>
+                        {generateResult && (
+                          <p className="text-xs text-teal-600 dark:text-teal-400 font-medium">{generateResult}</p>
+                        )}
+                        {generateError && (
+                          <p className="text-xs text-destructive">{generateError}</p>
+                        )}
+                      </>
                     ) : (
-                      <DrawingCanvas
-                        key={currentComposition?.id ?? `new-${selectedTramLine?.id}`}
-                        ref={canvasRef}
-                        tramLineId={selectedTramLine?.id ?? ""}
-                        initialData={currentComposition?.composition_data as DrawingCanvasProps["initialData"]}
-                        onSave={handleCanvasSave}
-                        aspectRatio={canvasAspectRatio}
-                      />
-                    )}
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-muted-foreground">Canvas Notes</label>
-                      <Textarea
-                        placeholder="Add notes about this moodboard composition..."
-                        value={canvasNote}
-                        onChange={(e) => setCanvasNote(e.target.value)}
-                        className="min-h-[100px] resize-y"
-                      />
-                      <p className="text-xs text-muted-foreground italic">Notes are saved when you save the canvas (Save in the toolbar above).</p>
-                    </div>
-                    {generateResult && (
-                      <p className="text-xs text-teal-600 dark:text-teal-400 font-medium">{generateResult}</p>
-                    )}
-                    {generateError && (
-                      <p className="text-xs text-destructive">{generateError}</p>
+                      /* Blocking diagram mode */
+                      selectedTramLine?.scenes?.script_id && selectedTramLine.scenes.scene_number != null ? (
+                        <BlockingDiagram
+                          key={`blocking-${selectedTramLineId}`}
+                          scriptId={selectedTramLine.scenes.script_id}
+                          sceneNumber={selectedTramLine.scenes.scene_number}
+                          lineLabel={selectedTramLine.line_number ?? ""}
+                          initialData={blockingData ?? null}
+                          onUpdated={() => loadCompositions(selectedTramLineId)}
+                        />
+                      ) : (
+                        <p className="text-sm text-muted-foreground py-4 text-center">
+                          Select a shot to view its blocking diagram.
+                        </p>
+                      )
                     )}
                   </CardContent>
                 </Card>

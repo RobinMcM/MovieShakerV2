@@ -253,7 +253,7 @@ function BackgroundLocationCard({
 }: {
   location: BackgroundLocation;
   scriptId: string;
-  onGenerateSketch: (scriptId: string, locationName: string, locationType: string | null, sceneNumbers: number[]) => Promise<void>;
+  onGenerateSketch: (scriptId: string, locationName: string, locationType: string | null, sceneNumbers: number[]) => Promise<unknown>;
   onUpload: (locationName: string, backgroundId: string | null, file: File) => Promise<void>;
   uploadingLocation: string | null;
   setToastMessage: (m: { title: string; description?: string; variant?: "default" | "destructive" } | null) => void;

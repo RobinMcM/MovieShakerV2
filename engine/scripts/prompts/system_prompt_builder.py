@@ -406,6 +406,8 @@ def build_system_prompt(
             base_prompt = COWRITER_SYSTEM_PROMPT
         elif agent == "codirector":
             base_prompt = CODIRECTOR_SYSTEM_PROMPT
+        elif agent == "codesigner":
+            base_prompt = CODESIGNER_SYSTEM_PROMPT
         else:
             base_prompt = COPRODUCER_SYSTEM_PROMPT
         return base_prompt + "\n\n" + base

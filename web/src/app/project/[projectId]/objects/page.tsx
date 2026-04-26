@@ -49,8 +49,10 @@ import {
   Search,
   ChevronLeft,
   Sparkles,
+  ScanSearch,
 } from "lucide-react";
 import { useObjects } from "./useObjects";
+import type { BackgroundLocation } from "./useObjects";
 import type { CharacterMood } from "../moodboard/types";
 import { storageImageUrl } from "@/lib/api";
 
@@ -82,6 +84,8 @@ function parseSceneTags(sceneTags: string | null | undefined): string[] {
     return [];
   }
 }
+
+// ─── Character / Artifact card (existing objects) ───────────────────────────
 
 function ObjectCard({
   object,
@@ -158,7 +162,7 @@ function ObjectCard({
                   key={tag}
                   className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border"
                 >
-                  Sc {tag}
+                  Sc.{tag}
                 </span>
               ))}
             </div>
@@ -237,6 +241,125 @@ function ObjectCard({
   );
 }
 
+// ─── Background location card ─────────────────────────────────────────────────
+
+function BackgroundLocationCard({
+  location,
+  scriptId,
+  onGenerateSketch,
+  onUpload,
+  uploadingLocation,
+  setToastMessage,
+}: {
+  location: BackgroundLocation;
+  scriptId: string;
+  onGenerateSketch: (scriptId: string, locationName: string, locationType: string | null, sceneNumbers: number[]) => Promise<void>;
+  onUpload: (locationName: string, backgroundId: string | null, file: File) => Promise<void>;
+  uploadingLocation: string | null;
+  setToastMessage: (m: { title: string; description?: string; variant?: "default" | "destructive" } | null) => void;
+}) {
+  const [generating, setGenerating] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageUrl = storageImageUrl(location.image_url) ?? location.image_url ?? null;
+  const isUploading = uploadingLocation === location.location_name;
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    try {
+      await onGenerateSketch(scriptId, location.location_name, location.location_type, location.scene_numbers);
+      setToastMessage({ title: "Background sketch generated" });
+    } catch (e) {
+      setToastMessage({
+        title: "Failed to generate sketch",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <Card className="flex flex-col">
+      <CardHeader>
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-2">
+            {location.location_type && (
+              <span className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground shrink-0">
+                {location.location_type}
+              </span>
+            )}
+            <CardTitle className="text-base break-words leading-snug">{location.location_name}</CardTitle>
+          </div>
+          {location.scene_numbers.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {location.scene_numbers.map((n) => (
+                <span
+                  key={n}
+                  className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border"
+                >
+                  Sc.{n}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="flex-1 flex flex-col gap-4">
+        <div className="aspect-[16/9] bg-muted rounded-lg overflow-hidden relative">
+          {imageUrl ? (
+            <img src={imageUrl} alt={location.location_name} className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground">
+              <ImageIcon className="h-8 w-8 mb-2 opacity-40" />
+              <p className="text-xs text-muted-foreground">No background yet</p>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            size="sm"
+            onClick={handleGenerate}
+            disabled={generating || isUploading}
+          >
+            {generating ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-1" />
+            ) : (
+              <Sparkles className="h-4 w-4 mr-1" />
+            )}
+            {generating ? "Generating..." : "Generate sketch"}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={generating || isUploading}
+          >
+            {isUploading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <><Upload className="h-4 w-4 mr-1" />Upload</>
+            )}
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) onUpload(location.location_name, location.background_id, file);
+              e.target.value = "";
+            }}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Shared helpers ───────────────────────────────────────────────────────────
+
 function EmptyState({ label }: { label: string }) {
   return (
     <Card>
@@ -288,6 +411,8 @@ function ObjectGrid({
   );
 }
 
+// ─── Tab types / config ───────────────────────────────────────────────────────
+
 type TabKey = "characters" | "backgrounds" | "artifacts";
 
 const TAB_CONFIG: Record<TabKey, { label: string; addLabel: string; objectType: string; type: "character" | "object"; defaultAspect: string }> = {
@@ -295,6 +420,8 @@ const TAB_CONFIG: Record<TabKey, { label: string; addLabel: string; objectType: 
   backgrounds: { label: "Backgrounds", addLabel: "Add Background", objectType: "background", type: "object", defaultAspect: "16:9" },
   artifacts: { label: "Artifacts", addLabel: "Add Artifact", objectType: "prop", type: "object", defaultAspect: "1:1" },
 };
+
+// ─── Create dialog ─────────────────────────────────────────────────────────────
 
 function CreateDialog({
   tab,
@@ -393,6 +520,8 @@ function CreateDialog({
   );
 }
 
+// ─── Main page content ────────────────────────────────────────────────────────
+
 function ObjectsContent() {
   const params = useParams();
   const projectId = (params?.projectId as string) ?? null;
@@ -402,19 +531,22 @@ function ObjectsContent() {
     currentScriptId,
     objectImageModels,
     characterObjects,
-    backgroundObjects,
     artifactObjects,
+    backgroundLocations,
     createObject,
     updateObject,
     deleteObject,
     uploadImage,
     generateImage,
+    generateBackgroundSketch,
+    uploadBackgroundImage,
   } = useObjects(projectId);
 
   const [activeTab, setActiveTab] = useState<TabKey>("characters");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedImageModel, setSelectedImageModel] = useState<string | null>(null);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [uploadingLocation, setUploadingLocation] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<{
     title: string;
     description?: string;
@@ -437,21 +569,34 @@ function ObjectsContent() {
     setSelectedImageModel(defaultModel);
   }, [objectImageModels, selectedImageModel]);
 
+  // Dismiss toast after 3 seconds
+  useEffect(() => {
+    if (!toastMessage) return;
+    const t = setTimeout(() => setToastMessage(null), 3000);
+    return () => clearTimeout(t);
+  }, [toastMessage]);
+
   const allObjects = useMemo(
-    () => [...characterObjects, ...backgroundObjects, ...artifactObjects],
-    [characterObjects, backgroundObjects, artifactObjects]
+    () => [...characterObjects, ...artifactObjects],
+    [characterObjects, artifactObjects]
   );
 
-  const filtered = useMemo(() => {
+  const filteredCharacters = useMemo(() => {
     const term = searchTerm.toLowerCase();
-    const filter = (list: CharacterMood[]) =>
-      term ? list.filter((o) => o.name.toLowerCase().includes(term)) : list;
-    return {
-      characters: filter(characterObjects),
-      backgrounds: filter(backgroundObjects),
-      artifacts: filter(artifactObjects),
-    };
-  }, [characterObjects, backgroundObjects, artifactObjects, searchTerm]);
+    return term ? characterObjects.filter((o) => o.name.toLowerCase().includes(term)) : characterObjects;
+  }, [characterObjects, searchTerm]);
+
+  const filteredArtifacts = useMemo(() => {
+    const term = searchTerm.toLowerCase();
+    return term ? artifactObjects.filter((o) => o.name.toLowerCase().includes(term)) : artifactObjects;
+  }, [artifactObjects, searchTerm]);
+
+  const filteredBackgroundLocations = useMemo(() => {
+    const term = searchTerm.toLowerCase();
+    return term
+      ? backgroundLocations.filter((l) => l.location_name.toLowerCase().includes(term))
+      : backgroundLocations;
+  }, [backgroundLocations, searchTerm]);
 
   const handleCreate = async (params: {
     name: string;
@@ -505,6 +650,44 @@ function ObjectsContent() {
     fileTargetIdRef.current = null;
   };
 
+  const handleBackgroundUpload = async (
+    locationName: string,
+    backgroundId: string | null,
+    file: File
+  ) => {
+    if (!currentScriptId) return;
+    setUploadingLocation(locationName);
+    try {
+      await uploadBackgroundImage(currentScriptId, locationName, backgroundId, file);
+      setToastMessage({ title: "Background image uploaded" });
+    } catch {
+      setToastMessage({ title: "Failed to upload background", variant: "destructive" });
+    } finally {
+      setUploadingLocation(null);
+    }
+  };
+
+  const handleIdentifyArtifacts = () => {
+    window.dispatchEvent(new Event("openCoproducer"));
+    window.dispatchEvent(
+      new CustomEvent("coproducerSendMessage", {
+        detail: {
+          message:
+            "Read the action lines in script.json and identify all physical objects that:\n" +
+            "1. Are physically handled by a character\n" +
+            "2. Appear in more than one scene\n" +
+            "3. Are plot-significant\n\n" +
+            "For each artifact return:\n" +
+            "- name\n" +
+            "- description\n" +
+            "- scene numbers where it appears\n" +
+            "- why it needs continuity tracking\n\n" +
+            "Format as a list I can review before adding to the objects library.",
+        },
+      })
+    );
+  };
+
   const gridProps = {
     onUpdate: updateObject,
     onDelete: handleDeleteClick,
@@ -547,7 +730,7 @@ function ObjectsContent() {
           <h2 className="text-2xl font-bold">Objects</h2>
         </div>
 
-        {allObjects.length > 0 && (
+        {(allObjects.length > 0 || backgroundLocations.length > 0) && (
           <div className="mb-6 flex flex-col sm:flex-row gap-4">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -582,6 +765,7 @@ function ObjectsContent() {
           </div>
         )}
 
+        {/* Hidden file input for character/artifact uploads */}
         <input
           ref={fileInputRef}
           type="file"
@@ -594,45 +778,82 @@ function ObjectsContent() {
           <div className="flex items-center justify-between mb-4">
             <TabsList>
               <TabsTrigger value="characters">
-                Characters {characterObjects.length > 0 && <span className="ml-1.5 text-xs opacity-70">({characterObjects.length})</span>}
+                Characters{characterObjects.length > 0 && <span className="ml-1.5 text-xs opacity-70">({characterObjects.length})</span>}
               </TabsTrigger>
               <TabsTrigger value="backgrounds">
-                Backgrounds {backgroundObjects.length > 0 && <span className="ml-1.5 text-xs opacity-70">({backgroundObjects.length})</span>}
+                Backgrounds{filteredBackgroundLocations.length > 0 && <span className="ml-1.5 text-xs opacity-70">({filteredBackgroundLocations.length})</span>}
               </TabsTrigger>
               <TabsTrigger value="artifacts">
-                Artifacts {artifactObjects.length > 0 && <span className="ml-1.5 text-xs opacity-70">({artifactObjects.length})</span>}
+                Artifacts{artifactObjects.length > 0 && <span className="ml-1.5 text-xs opacity-70">({artifactObjects.length})</span>}
               </TabsTrigger>
             </TabsList>
-            <CreateDialog
-              tab={activeTab}
-              currentScriptId={currentScriptId}
-              onCreate={handleCreate}
-            />
+            {activeTab !== "backgrounds" && (
+              <CreateDialog
+                tab={activeTab}
+                currentScriptId={currentScriptId}
+                onCreate={handleCreate}
+              />
+            )}
           </div>
 
+          {/* ── Characters tab ── */}
           <TabsContent value="characters">
             <ObjectGrid
-              items={filtered.characters}
+              items={filteredCharacters}
               emptyLabel="characters"
               showSceneTags={true}
               {...gridProps}
             />
           </TabsContent>
 
+          {/* ── Backgrounds tab ── */}
           <TabsContent value="backgrounds">
-            <ObjectGrid
-              items={filtered.backgrounds}
-              emptyLabel="backgrounds"
-              {...gridProps}
-            />
+            {filteredBackgroundLocations.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center text-muted-foreground">
+                  {currentScriptId
+                    ? "No locations found in this script. Parse the script to populate scene locations."
+                    : "No script found for this project."}
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {filteredBackgroundLocations.map((location) => (
+                  <BackgroundLocationCard
+                    key={location.location_name}
+                    location={location}
+                    scriptId={currentScriptId!}
+                    onGenerateSketch={generateBackgroundSketch}
+                    onUpload={handleBackgroundUpload}
+                    uploadingLocation={uploadingLocation}
+                    setToastMessage={setToastMessage}
+                  />
+                ))}
+              </div>
+            )}
           </TabsContent>
 
+          {/* ── Artifacts tab ── */}
           <TabsContent value="artifacts">
-            <ObjectGrid
-              items={filtered.artifacts}
-              emptyLabel="artifacts"
-              {...gridProps}
-            />
+            <div className="flex flex-col gap-6">
+              <div className="flex justify-start">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleIdentifyArtifacts}
+                  disabled={!currentScriptId}
+                  className="gap-2"
+                >
+                  <ScanSearch className="h-4 w-4" />
+                  Identify artifacts in this script
+                </Button>
+              </div>
+              <ObjectGrid
+                items={filteredArtifacts}
+                emptyLabel="artifacts"
+                {...gridProps}
+              />
+            </div>
           </TabsContent>
         </Tabs>
 

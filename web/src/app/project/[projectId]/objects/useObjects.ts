@@ -20,6 +20,15 @@ export interface ObjectImageModelOption {
   default_for_media_type?: string | null;
 }
 
+export interface BackgroundLocation {
+  location_name: string;
+  location_type: string | null;
+  scene_numbers: number[];
+  background_id: string | null;
+  image_url: string | null;
+  has_background: boolean;
+}
+
 const CHARACTER_OBJECT_TYPES = new Set([
   "actor_full",
   "actor_body",
@@ -42,6 +51,7 @@ export function useObjects(projectId: string | null) {
   const [project, setProject] = useState<ProjectObjects | null>(null);
   const [currentScriptId, setCurrentScriptId] = useState<string | null>(null);
   const [characters, setCharacters] = useState<CharacterMood[]>([]);
+  const [backgroundLocations, setBackgroundLocations] = useState<BackgroundLocation[]>([]);
   const [objectImageModels, setObjectImageModels] = useState<ObjectImageModelOption[]>([]);
 
   const loadProject = useCallback(async (pid: string) => {
@@ -64,7 +74,19 @@ export function useObjects(projectId: string | null) {
     }
   }, []);
 
-  const loadScriptsAndCharacters = useCallback(async (pid: string) => {
+  const loadBackgroundLocations = useCallback(async (scriptId: string) => {
+    try {
+      const res = await api.get<{ success: boolean; data: BackgroundLocation[] }>(
+        `scripts/${scriptId}/backgrounds`
+      );
+      const data = (res as { data?: BackgroundLocation[] }).data ?? [];
+      setBackgroundLocations(data);
+    } catch {
+      setBackgroundLocations([]);
+    }
+  }, []);
+
+  const loadScriptsAndCharacters = useCallback(async (pid: string): Promise<string | null> => {
     try {
       const scriptsRes = await api.get<{ scripts: { id: string; is_current?: boolean }[] }>(
         `projects/${pid}/scripts`
@@ -74,7 +96,7 @@ export function useObjects(projectId: string | null) {
       if (!current) {
         setCurrentScriptId(null);
         setCharacters([]);
-        return;
+        return null;
       }
       setCurrentScriptId(current.id);
       const charsRes = await api.get<{ success: boolean; data: CharacterMood[] }>(
@@ -82,9 +104,11 @@ export function useObjects(projectId: string | null) {
       );
       const data = (charsRes as { data?: CharacterMood[] }).data ?? [];
       setCharacters(data);
+      return current.id;
     } catch {
       setCurrentScriptId(null);
       setCharacters([]);
+      return null;
     }
   }, []);
 
@@ -106,14 +130,18 @@ export function useObjects(projectId: string | null) {
       setProject(null);
       setCurrentScriptId(null);
       setCharacters([]);
+      setBackgroundLocations([]);
       return;
     }
     setLoading(true);
-    Promise.all([loadProject(projectId), loadScriptsAndCharacters(projectId)]).finally(() =>
-      setLoading(false)
-    );
+    Promise.all([
+      loadProject(projectId),
+      loadScriptsAndCharacters(projectId).then((scriptId) => {
+        if (scriptId) void loadBackgroundLocations(scriptId);
+      }),
+    ]).finally(() => setLoading(false));
     void loadConfigModels();
-  }, [projectId, loadProject, loadScriptsAndCharacters, loadConfigModels]);
+  }, [projectId, loadProject, loadScriptsAndCharacters, loadBackgroundLocations, loadConfigModels]);
 
   // Categorise by object_type. Legacy records with no object_type fall into the Characters tab.
   const characterObjects = useMemo(() => {
@@ -134,12 +162,15 @@ export function useObjects(projectId: string | null) {
   const refetch = useCallback(() => {
     if (projectId) {
       setLoading(true);
-      Promise.all([loadProject(projectId), loadScriptsAndCharacters(projectId)]).finally(() =>
-        setLoading(false)
-      );
+      Promise.all([
+        loadProject(projectId),
+        loadScriptsAndCharacters(projectId).then((scriptId) => {
+          if (scriptId) void loadBackgroundLocations(scriptId);
+        }),
+      ]).finally(() => setLoading(false));
       void loadConfigModels();
     }
-  }, [projectId, loadProject, loadScriptsAndCharacters, loadConfigModels]);
+  }, [projectId, loadProject, loadScriptsAndCharacters, loadBackgroundLocations, loadConfigModels]);
 
   const createObject = useCallback(
     async (params: {
@@ -229,28 +260,59 @@ export function useObjects(projectId: string | null) {
     []
   );
 
-  const generateSketch = useCallback(
-    async (scriptId: string, characterId: string, prompt: string, aspectRatio?: string, model?: string | null) => {
+  const generateBackgroundSketch = useCallback(
+    async (
+      scriptId: string,
+      locationName: string,
+      locationType: string | null,
+      sceneNumbers: number[],
+      aspectRatio?: string,
+      model?: string | null
+    ) => {
       const res = await api.post<{
         success: boolean;
-        data: CharacterMood;
-        gateway?: { request_body?: Record<string, unknown>; model_used?: string | null };
+        character_id: string;
+        image_url: string;
+        location_name: string;
       }>(
         `scripts/${scriptId}/backgrounds/generate-sketch`,
         {
-          character_id: characterId,
-          prompt: prompt.trim(),
-          aspect_ratio: aspectRatio || null,
+          location_name: locationName,
+          location_type: locationType || null,
+          scene_numbers: sceneNumbers,
+          aspect_ratio: aspectRatio || "16:9",
           model: model || null,
         }
       );
-      const data = (res as { data?: CharacterMood }).data;
-      if (data) {
-        setCharacters((prev: CharacterMood[]) => prev.map((c: CharacterMood) => (c.id === characterId ? { ...c, ...data } : c)));
-      }
+      await loadBackgroundLocations(scriptId);
       return res;
     },
-    []
+    [loadBackgroundLocations]
+  );
+
+  const uploadBackgroundImage = useCallback(
+    async (
+      scriptId: string,
+      locationName: string,
+      existingCharacterId: string | null,
+      file: File
+    ): Promise<void> => {
+      let charId = existingCharacterId;
+      if (!charId) {
+        // Create background character first if none exists yet
+        const created = await createObject({
+          name: locationName,
+          type: "object",
+          object_type: "background",
+          aspect_ratio: "16:9",
+        });
+        charId = created?.id ?? null;
+      }
+      if (!charId) throw new Error("Failed to create background character");
+      await uploadImage(charId, file);
+      await loadBackgroundLocations(scriptId);
+    },
+    [createObject, uploadImage, loadBackgroundLocations]
   );
 
   return {
@@ -261,12 +323,14 @@ export function useObjects(projectId: string | null) {
     characterObjects,
     backgroundObjects,
     artifactObjects,
+    backgroundLocations,
     refetch,
     createObject,
     updateObject,
     deleteObject,
     uploadImage,
     generateImage,
-    generateSketch,
+    generateBackgroundSketch,
+    uploadBackgroundImage,
   };
 }

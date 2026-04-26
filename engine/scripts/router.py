@@ -47,7 +47,7 @@ from storage import (
 )
 from script_parser import (
     parse_pdf, parse_json_v1, document_to_bytes,
-    derive_db_data, ParseError,
+    derive_db_data, ParseError, _clean_character_name,
 )
 from scripts.analysis import compute_production_metrics
 from scripts.prompts.analysis import ANALYSIS_SYSTEM_PROMPT, build_analysis_user_prompt
@@ -1153,6 +1153,48 @@ def parse_script(
     db.commit()
 
     cache_delete(scripts_stats_key(script_id))
+
+    # Build name → GUID map from the committed characters rows
+    raw_conn = db.connection().connection
+    with raw_conn.cursor() as cur:
+        cur.execute(
+            "SELECT name, id FROM characters WHERE script_id = %s",
+            (str(script_uuid),)
+        )
+        _char_rows = cur.fetchall()
+    char_guid_map = {row[0].upper(): str(row[1]) for row in _char_rows}
+
+    # Embed GUIDs into every character reference in the parsed document
+    for _el in doc["elements"]:
+        _el_type = _el.get("type", "")
+
+        if _el_type == "character":
+            _name = _clean_character_name(_el.get("text", "")).upper()
+            if _name in char_guid_map:
+                _el["guid"] = char_guid_map[_name]
+
+        elif _el_type == "scene_heading":
+            _new_chars = []
+            for _c in _el.get("characters", []):
+                if isinstance(_c, str):
+                    _cname = _c.upper().strip()
+                else:
+                    _cname = _c.get("name", "").upper().strip()
+                _new_chars.append({
+                    "name": _cname,
+                    "guid": char_guid_map.get(_cname, ""),
+                })
+            _el["characters"] = _new_chars
+
+        elif _el_type == "action":
+            _text_upper = _el.get("text", "").upper()
+            _entities = [
+                {"text": _n, "guid": _g, "type": "character"}
+                for _n, _g in char_guid_map.items()
+                if _n in _text_upper
+            ]
+            if _entities:
+                _el["entities"] = _entities
 
     json_bytes = document_to_bytes(doc)
     save_script_file(

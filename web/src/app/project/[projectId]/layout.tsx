@@ -145,7 +145,7 @@ export default function ProjectLayout({
         : contextMode === "scheduling"
         ? schedulingScriptId
         : contextMode === "moodboard"
-        ? (projectId ?? undefined)
+        ? (scripts.find((s) => s.is_current)?.id ?? scripts[0]?.id)
         : undefined;
 
     if (!projectId) {

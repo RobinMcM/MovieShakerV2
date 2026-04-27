@@ -665,7 +665,11 @@ def derive_db_data(elements: list[dict], page_count: int) -> tuple[list[dict], l
 
         if el_type == "scene_heading":
             idx = len(headings)
-            _chars = [c for c in (el.get("characters") or []) if c]
+            _chars = [
+                (c["name"] if isinstance(c, dict) else c)
+                for c in (el.get("characters") or [])
+                if c
+            ]
             headings.append({
                 "heading": text[:255],
                 "page_number": f"Page {el.get('page', idx + 1)}",
@@ -682,8 +686,7 @@ def derive_db_data(elements: list[dict], page_count: int) -> tuple[list[dict], l
             scene_char_map[idx] = set()
             scene_number_map[el.get("scene_number", idx + 1)] = idx
 
-            # Use pre-computed characters field if present
-            for cname in el.get("characters") or []:
+            for cname in _chars:
                 if cname:
                     character_set.add(cname)
                     scene_char_map[idx].add(cname)

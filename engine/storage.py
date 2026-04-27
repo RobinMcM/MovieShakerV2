@@ -2,6 +2,7 @@
 Script file storage: local STORAGE_ROOT or DigitalOcean Spaces (when DO_* env vars are set).
 Path convention: {user_id}/{project_id}/{script_id}/script.pdf
 """
+import mimetypes
 import os
 import shutil
 from pathlib import Path
@@ -42,6 +43,34 @@ def _spaces_client():
         aws_secret_access_key=DO_SPACES_SECRET_ACCESS_KEY,
         config=Config(signature_version="s3v4"),
     )
+
+
+def _content_type_from_path(path: str, spaces_content_type: str) -> str:
+    """
+    Resolve a MIME type for a storage object.
+    Prefers the ContentType stored in Spaces unless it is absent or the generic
+    'binary/octet-stream' sentinel that Spaces sometimes returns instead of the
+    real type.  Falls back to mimetypes.guess_type, then a hard-coded table.
+    """
+    if spaces_content_type and spaces_content_type != "binary/octet-stream":
+        return spaces_content_type
+    mime, _ = mimetypes.guess_type(path)
+    if mime:
+        return mime
+    ext = path.lower().rsplit(".", 1)[-1] if "." in path else ""
+    defaults = {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "webp": "image/webp",
+        "gif": "image/gif",
+        "mp4": "video/mp4",
+        "webm": "video/webm",
+        "mov": "video/quicktime",
+        "pdf": "application/pdf",
+        "json": "application/json",
+    }
+    return defaults.get(ext, "application/octet-stream")
 
 
 def script_dir(user_id: str, project_id: str, script_id: str) -> Path:
@@ -114,7 +143,7 @@ def get_script_file_stream(relative_path: str) -> Optional[Tuple[bytes, str]]:
         client = _spaces_client()
         resp = client.get_object(Bucket=DO_SPACES_BUCKET, Key=relative_path)
         body = resp["Body"].read()
-        content_type = resp.get("ContentType") or "application/pdf"
+        content_type = _content_type_from_path(relative_path, resp.get("ContentType", ""))
         return (body, content_type)
     except Exception:
         return None
@@ -256,9 +285,7 @@ def save_moodboard_image(
     key = moodboard_relative_path(user_id, project_id, scene_id, tram_line_id, filename)
     if uses_spaces():
         body = content.read() if hasattr(content, "read") else content
-        content_type = "image/png" if filename.lower().endswith(".png") else "image/jpeg"
-        if not filename.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
-            content_type = "application/octet-stream"
+        content_type = _content_type_from_path(filename, "")
         client = _spaces_client()
         client.put_object(
             Bucket=DO_SPACES_BUCKET,
@@ -352,9 +379,7 @@ def save_character_image(
     key = character_image_relative_path(user_id, project_id, character_id, filename, is_scene)
     if uses_spaces():
         body = content.read() if hasattr(content, "read") else content
-        content_type = "image/png" if filename.lower().endswith(".png") else "image/jpeg"
-        if not filename.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
-            content_type = "application/octet-stream"
+        content_type = _content_type_from_path(filename, "")
         client = _spaces_client()
         client.put_object(
             Bucket=DO_SPACES_BUCKET,

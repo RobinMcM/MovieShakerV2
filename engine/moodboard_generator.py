@@ -117,6 +117,38 @@ PASS_PROMPTS = {
 }
 
 
+# Maps project aspect_ratio values to FAL-compatible strings.
+# 2.39:1 (cinematic) → FAL's "21:9" widescreen; anything else passes through unchanged.
+FAL_ASPECT_MAP: dict[str, str] = {
+    "16:9":   "16:9",
+    "9:16":   "9:16",
+    "1:1":    "1:1",
+    "2.39:1": "21:9",
+}
+
+
+def _aspect_to_dimensions(aspect_ratio: str) -> dict:
+    """Convert aspect ratio string to pixel dimensions. Base width is always 1920px."""
+    DIMENSION_MAP = {
+        "16:9":   {"width": 1920, "height": 1080},
+        "9:16":   {"width": 1080, "height": 1920},
+        "1:1":    {"width": 1920, "height": 1920},
+        "2.39:1": {"width": 1920, "height": 803},
+        "21:9":   {"width": 1920, "height": 823},
+        "4:3":    {"width": 1920, "height": 1440},
+        "3:4":    {"width": 1440, "height": 1920},
+    }
+    if aspect_ratio in DIMENSION_MAP:
+        return DIMENSION_MAP[aspect_ratio]
+    try:
+        parts = aspect_ratio.split(":")
+        w, h = float(parts[0]), float(parts[1])
+        height = int(1920 / (w / h))
+        return {"width": 1920, "height": height}
+    except Exception:
+        return {"width": 1920, "height": 1080}
+
+
 class GenerateMoodboardRequest(BaseModel):
     pass_type: str = "sketch"
 
@@ -214,6 +246,7 @@ def _generate_shot_image(
     text_model: str,
     image_model: Optional[str],
     pass_type: str = "sketch",
+    fal_aspect_ratio: str = "16:9",
 ) -> Optional[str]:
     """
     Build an AI prompt for a shot then call FAL for the image.
@@ -268,7 +301,7 @@ def _generate_shot_image(
     try:
         response = gateway.execute_fal(
             media_type="image-generation",
-            payload={"prompt": prompt, "aspect_ratio": "16:9"},
+            payload={"prompt": prompt, "aspect_ratio": fal_aspect_ratio},
             model=image_model,
             dry_run=False,
         )
@@ -328,6 +361,20 @@ def generate_scene_moodboard(
         "location_type": scene_row[3] or "",
         "heading": scene_row[4] or "",
     }
+
+    # Read aspect ratio from project settings — never hardcode or ask the user
+    with raw_conn.cursor() as cur:
+        cur.execute(
+            "SELECT p.aspect_ratio "
+            "FROM project p "
+            "JOIN script s ON s.project_id = p.id "
+            "WHERE s.id = %s",
+            (str(script_uuid),),
+        )
+        ar_row = cur.fetchone()
+    raw_aspect = ar_row[0] if ar_row else "16:9"
+    fal_aspect = FAL_ASPECT_MAP.get(raw_aspect, "16:9")
+    dims = _aspect_to_dimensions(raw_aspect)
 
     # Fetch tram lines for this scene
     tram_lines = list(
@@ -432,6 +479,7 @@ def generate_scene_moodboard(
             text_model=text_model,
             image_model=image_model,
             pass_type=pass_type,
+            fal_aspect_ratio=fal_aspect,
         )
 
         if not image_url:
@@ -476,12 +524,12 @@ def generate_scene_moodboard(
                     "src": path_key,
                     "x": 0,
                     "y": 0,
-                    "width": 1920,
-                    "height": 1080,
+                    "width": dims["width"],
+                    "height": dims["height"],
                 }
             ],
             "lines": [],
-            "dimensions": {"width": 1920, "height": 1080},
+            "dimensions": dims,
             "snapshot_path": path_key,
             "note": tl.camera_direction or "",
             "mode": "snapshot",

@@ -37,6 +37,33 @@ from supertokens_python.recipe.session.framework.fastapi import verify_session
 router = APIRouter(tags=["backgrounds"])
 settings = load_settings()
 
+# Maps project aspect_ratio values to FAL-compatible strings.
+FAL_ASPECT_MAP: dict[str, str] = {
+    "16:9":   "16:9",
+    "9:16":   "9:16",
+    "1:1":    "1:1",
+    "2.39:1": "21:9",
+}
+
+_DIMENSION_MAP: dict[str, dict] = {
+    "16:9":   {"width": 1920, "height": 1080},
+    "9:16":   {"width": 1080, "height": 1920},
+    "1:1":    {"width": 1080, "height": 1080},
+    "2.39:1": {"width": 1920, "height": 803},
+}
+
+
+def _aspect_to_dimensions(aspect_ratio: str) -> dict:
+    if aspect_ratio in _DIMENSION_MAP:
+        return _DIMENSION_MAP[aspect_ratio]
+    try:
+        w_str, h_str = aspect_ratio.split(":")
+        ratio = float(w_str) / float(h_str)
+        base = 1920
+        return {"width": base, "height": round(base / ratio)}
+    except Exception:
+        return {"width": 1920, "height": 1080}
+
 
 def _get_script_and_ensure_access(db: Session, script_id: str, user_id: str) -> Script:
     script = db.get(Script, uuid.UUID(script_id))
@@ -170,8 +197,14 @@ def generate_background_sketch(
 
     int_ext = ((body.location_type or "").strip().upper() or _derive_int_ext(location_name))
     prompt = _build_sketch_prompt(location_name, int_ext)
-    aspect_ratio = body.aspect_ratio or "16:9"
     scene_numbers = body.scene_numbers or []
+
+    # Read aspect ratio from project settings — never hardcode or ask the user
+    ar_row = db.execute(
+        text("SELECT aspect_ratio FROM project WHERE id = :pid"),
+        {"pid": str(script.project_id)},
+    ).fetchone()
+    aspect_ratio = FAL_ASPECT_MAP.get(ar_row[0] if ar_row else "16:9", "16:9")
 
     payload: dict = {"prompt": prompt, "aspect_ratio": aspect_ratio}
     gateway = _gateway_client()

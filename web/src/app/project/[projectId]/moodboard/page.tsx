@@ -14,13 +14,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   User,
@@ -45,13 +38,6 @@ const DrawingCanvas = dynamic(
   () => import("@/components/DrawingCanvas").then((m) => ({ default: m.DrawingCanvas })),
   { ssr: false }
 );
-
-const CANVAS_ASPECT_RATIO_OPTIONS = [
-  { value: "16:9", label: "Landscape (16:9) - most common" },
-  { value: "9:16", label: "Vertical (9:16) - mobile / social media" },
-  { value: "1:1", label: "Square (1:1) - simple / training datasets" },
-  { value: "2.39:1", label: "Cinematic (2.39:1) - film style" },
-];
 
 // Used only for read-only pass badge display — AI generation is handled by the CoDesigner sidebar
 const PASS_OPTIONS = [
@@ -433,21 +419,6 @@ function MoodBoardContent() {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-muted-foreground">Canvas Aspect Ratio</label>
-                      <Select value={canvasAspectRatio} onValueChange={setCanvasAspectRatio}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CANVAS_ASPECT_RATIO_OPTIONS.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
                     {compositionsLoading ? (
                       <div className="flex items-center justify-center py-12">
                         <Loader2 className="h-6 w-6 animate-spin" />

@@ -117,7 +117,7 @@ export default function ProjectLayout({
         : pathname?.includes("/shotlist")
         ? "CoDirector"
         : pathname?.includes("/moodboard")
-        ? "CoDirector"
+        ? "CoDesigner"
         : pathname?.includes("/visualize")
         ? "CoDirector"
         : pathname?.includes("/objects")
@@ -166,7 +166,11 @@ export default function ProjectLayout({
                 activeAgent={activeAgent}
             />
             <ProjectMobileNav projectId={projectId} scripts={scripts} scriptsLoading={loading} />
-            <div className={cn(desktopNavVisible && "md:pl-64")}>{children}</div>
+            <div className={cn(
+                desktopNavVisible && "md:pl-64",
+                coproducerActive && coproducerOpen && "md:pr-[420px]",
+                coproducerActive && !coproducerOpen && "md:pr-12",
+            )}>{children}</div>
             <CoproducerSidebar
                 isOpen={coproducerOpen}
                 onClose={() => setCoproducerOpen((v: boolean) => !v)}

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
@@ -25,7 +24,6 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   User,
-  Bot,
   ChevronLeft,
   ChevronRight,
   Plus,
@@ -55,6 +53,7 @@ const CANVAS_ASPECT_RATIO_OPTIONS = [
   { value: "2.39:1", label: "Cinematic (2.39:1) - film style" },
 ];
 
+// Used only for read-only pass badge display — AI generation is handled by the CoDesigner sidebar
 const PASS_OPTIONS = [
   { value: "sketch",    label: "✏️ Pencil Sketch",  pass: 1 },
   { value: "draft",     label: "🖊️ Ink Draft",       pass: 2 },
@@ -94,10 +93,6 @@ function MoodBoardContent() {
   const [canvasNote, setCanvasNote] = useState("");
   const [canvasAspectRatio, setCanvasAspectRatio] = useState("16:9");
   const [isScriptCollapsed, setIsScriptCollapsed] = useState(false);
-  const [generatingMoodboard, setGeneratingMoodboard] = useState(false);
-  const [generateResult, setGenerateResult] = useState<string | null>(null);
-  const [generateError, setGenerateError] = useState<string | null>(null);
-  const [passType, setPassType] = useState("sketch");
   const canvasRef = useRef<DrawingCanvasRef>(null);
 
   useEffect(() => {
@@ -151,11 +146,48 @@ function MoodBoardContent() {
 
   const selectedTramLine = tramLines.find((t) => t.id === selectedTramLineId);
 
+  // Read-only badge showing the pass type of the currently displayed composition
   const passLabel = !isNewCanvas && currentComposition?.composition_data
     ? PASS_OPTIONS.find(
         (o) => o.value === (currentComposition.composition_data as { pass_type?: string }).pass_type
       )?.label ?? null
     : null;
+
+  // Internal — triggered by the CoDesigner sidebar via the 'generateMoodboard' custom event.
+  // Dispatches 'moodboardGenerated' when done so the sidebar can show progress feedback.
+  const handleGenerateMoodboard = useCallback(async (passType: string = "sketch") => {
+    if (!selectedTramLine || !selectedTramLineId) return;
+    const scriptId = selectedTramLine.scenes?.script_id;
+    const sceneNumber = selectedTramLine.scenes?.scene_number;
+    if (!scriptId || sceneNumber == null) return;
+    try {
+      await api.post<{ shots_generated: number; shots_skipped: number }>(
+        `scripts/${scriptId}/scenes/${sceneNumber}/generate-moodboard`,
+        { pass_type: passType },
+        90_000,
+      );
+      await loadCompositions(selectedTramLineId);
+      setIsNewCanvas(false);
+      setCurrentCanvasIndex(0);
+      window.dispatchEvent(
+        new CustomEvent("moodboardGenerated", { detail: { passType, sceneNumber } })
+      );
+    } catch {
+      window.dispatchEvent(
+        new CustomEvent("moodboardGenerated", { detail: { passType, sceneNumber, error: true } })
+      );
+    }
+  }, [selectedTramLine, selectedTramLineId, loadCompositions]);
+
+  // Bridge: CoDesigner sidebar dispatches 'generateMoodboard' → this page runs generation
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { passType } = (e as CustomEvent).detail ?? {};
+      handleGenerateMoodboard(passType || "sketch");
+    };
+    window.addEventListener("generateMoodboard", handler);
+    return () => window.removeEventListener("generateMoodboard", handler);
+  }, [handleGenerateMoodboard]);
 
   const handleCanvasSave = useCallback(
     async (blob: Blob, compositionData: Record<string, unknown>) => {
@@ -211,32 +243,6 @@ function MoodBoardContent() {
   const handleNewCanvas = () => {
     setIsNewCanvas(true);
     setCurrentCanvasIndex(compositions.length);
-  };
-
-  const handleGenerateMoodboard = async () => {
-    if (!selectedTramLine || !selectedTramLineId) return;
-    const scriptId = selectedTramLine.scenes?.script_id;
-    const sceneNumber = selectedTramLine.scenes?.scene_number;
-    if (!scriptId || sceneNumber == null) return;
-    setGeneratingMoodboard(true);
-    setGenerateResult(null);
-    setGenerateError(null);
-    try {
-      const res = await api.post<{ shots_generated: number; shots_skipped: number }>(
-        `scripts/${scriptId}/scenes/${sceneNumber}/generate-moodboard`,
-        { pass_type: passType },
-        90_000,
-      );
-      const generated = (res as { shots_generated?: number }).shots_generated ?? 0;
-      setGenerateResult(`${generated} shot${generated === 1 ? "" : "s"} generated`);
-      await loadCompositions(selectedTramLineId);
-      setIsNewCanvas(false);
-      setCurrentCanvasIndex(0);
-    } catch {
-      setGenerateError("Generation failed — please try again.");
-    } finally {
-      setGeneratingMoodboard(false);
-    }
   };
 
   const handleVisualize = async () => {
@@ -420,38 +426,6 @@ function MoodBoardContent() {
                           <Plus className="h-4 w-4" /> Add
                         </Button>
                         <div className="hidden sm:block w-px h-6 bg-border mx-1" />
-                        <div className="flex items-center gap-2">
-                          <select
-                            value={passType}
-                            onChange={(e) => setPassType(e.target.value)}
-                            disabled={generatingMoodboard}
-                            className="text-sm border rounded-md px-2 py-1.5 bg-background text-foreground border-border"
-                          >
-                            {PASS_OPTIONS.map((opt) => (
-                              <option key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
-                          <Button
-                            variant="default"
-                            size="sm"
-                            className="bg-teal-600 hover:bg-teal-700 text-white border-0"
-                            onClick={handleGenerateMoodboard}
-                            disabled={generatingMoodboard || !selectedTramLineId}
-                            title="CoDesigner: generate moodboard images for all shots in this scene"
-                          >
-                            {generatingMoodboard ? (
-                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            ) : (
-                              <Bot className="h-4 w-4 mr-2" />
-                            )}
-                            {generatingMoodboard
-                              ? `Generating ${PASS_OPTIONS.find((o) => o.value === passType)?.label}...`
-                              : `Generate — ${PASS_OPTIONS.find((o) => o.value === passType)?.label}`}
-                          </Button>
-                        </div>
-                        <div className="hidden sm:block w-px h-6 bg-border mx-1" />
                         <Button variant="default" size="sm" className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white border-0" onClick={handleVisualize} disabled={!selectedTramLineId}>
                           <Sparkles className="h-4 w-4 mr-2" /> Visualize
                         </Button>
@@ -459,14 +433,6 @@ function MoodBoardContent() {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <p className="text-xs text-muted-foreground">
-                      Pass {PASS_OPTIONS.find((o) => o.value === passType)?.pass} of 6 —{" "}
-                      {passType === "sketch"
-                        ? "Start here to approve composition"
-                        : passType === "reference"
-                        ? "Final quality for Visualize"
-                        : "Build on approved composition"}
-                    </p>
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-muted-foreground">Canvas Aspect Ratio</label>
                       <Select value={canvasAspectRatio} onValueChange={setCanvasAspectRatio}>
@@ -506,12 +472,6 @@ function MoodBoardContent() {
                       />
                       <p className="text-xs text-muted-foreground italic">Notes are saved when you save the canvas (Save in the toolbar above).</p>
                     </div>
-                    {generateResult && (
-                      <p className="text-xs text-teal-600 dark:text-teal-400 font-medium">{generateResult}</p>
-                    )}
-                    {generateError && (
-                      <p className="text-xs text-destructive">{generateError}</p>
-                    )}
                   </CardContent>
                 </Card>
 

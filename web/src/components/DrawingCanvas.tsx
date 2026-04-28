@@ -249,6 +249,28 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
                 savedHeight > 0 &&
                 imgData.width >= savedWidth - 1 &&
                 imgData.height >= savedHeight - 1;
+              // Scale image to fit canvas dimensions
+              const canvasW = dimensions.width || 800;
+              const canvasH = dimensions.height || 450;
+
+              let displayW = imgData.width || canvasW;
+              let displayH = imgData.height || canvasH;
+              let displayX = imgData.x ?? 0;
+              let displayY = imgData.y ?? 0;
+
+              const isOversized = displayW > canvasW || displayH > canvasH;
+
+              if (isOversized || isLikelyBackground) {
+                const scaleX = canvasW / displayW;
+                const scaleY = canvasH / displayH;
+                const scale = Math.min(scaleX, scaleY);
+
+                displayW = Math.round(displayW * scale);
+                displayH = Math.round(displayH * scale);
+                displayX = Math.round((canvasW - displayW) / 2);
+                displayY = Math.round((canvasH - displayH) / 2);
+              }
+
               return {
                 idx,
                 image: {
@@ -256,6 +278,10 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
                   src: originalSrc || imgData.src,
                   image: loadedImg,
                   isBackground: isLikelyBackground,
+                  width: displayW,
+                  height: displayH,
+                  x: displayX,
+                  y: displayY,
                 } as CanvasImage,
               };
             } catch {

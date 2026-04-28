@@ -236,6 +236,26 @@ def _extract_text_from_response(response: dict) -> Optional[str]:
     return None
 
 
+def _build_fal_prompt(
+    shot_type: str,
+    camera_direction: str,
+    characters: list,
+    scene_location: str,
+    location_type: str,
+    pass_type: str,
+) -> str:
+    style = PASS_PROMPTS.get(pass_type, PASS_PROMPTS["sketch"])["style"]
+    char_list = ", ".join(characters) if characters else "no characters"
+    prompt = (
+        f"{shot_type} shot. "
+        f"Location: {location_type}. {scene_location}. "
+        f"Characters: {char_list}. "
+        f"Camera: {camera_direction}. "
+        f"{style}"
+    )
+    return prompt
+
+
 def _generate_shot_image(
     tram_line: TramLine,
     character_images: dict,
@@ -243,60 +263,28 @@ def _generate_shot_image(
     props: list,
     scene: dict,
     gateway: GatewayClient,
-    text_model: str,
     image_model: Optional[str],
     pass_type: str = "sketch",
     fal_aspect_ratio: str = "16:9",
 ) -> Optional[str]:
     """
-    Build an AI prompt for a shot then call FAL for the image.
+    Build a FAL prompt directly from script data and call FAL for the image.
     Returns image URL on success, None on any failure (caller skips the shot).
     """
-    char_names = (tram_line.character_names or "").strip()
-    style = PASS_PROMPTS.get(pass_type, PASS_PROMPTS["sketch"])["style"]
+    char_names = [
+        n.strip()
+        for n in (tram_line.character_names or "").split(",")
+        if n.strip()
+    ]
 
-    user_msg = (
-        "Write a FAL.ai image generation prompt for this film shot.\n\n"
-        f"Scene: {scene.get('heading', '')}\n"
-        f"Shot type: {tram_line.shot_type or 'MS'}\n"
-        f"Camera direction: {tram_line.camera_direction or ''}\n"
-        f"Characters in frame: {char_names}\n"
-        f"Location: {scene.get('scene_location', '')} ({scene.get('location_type', '')})\n\n"
-        "Return ONLY:\n"
-        "1. Shot framing and camera angle\n"
-        "2. Character positions, expressions, and blocking\n"
-        "3. Location atmosphere and setting detail\n"
-        "Maximum 80 words. Do not include style directives.\n"
-        "No character names — describe appearance only."
+    prompt = _build_fal_prompt(
+        shot_type=tram_line.shot_type or "Medium",
+        camera_direction=tram_line.camera_direction or "",
+        characters=char_names,
+        scene_location=scene.get("scene_location", ""),
+        location_type=scene.get("location_type", ""),
+        pass_type=pass_type,
     )
-
-    prompt: Optional[str] = None
-    try:
-        text_resp = gateway.execute_text(
-            model=text_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a cinematography prompt writer for AI image generation. "
-                        "Write precise, visual prompts for FAL.ai image generation. "
-                        "Return ONLY the prompt string. No explanation."
-                    ),
-                },
-                {"role": "user", "content": user_msg},
-            ],
-        )
-        prompt = _extract_text_from_response(text_resp)
-    except Exception as exc:
-        logger.warning("Prompt generation failed for tram line %s: %s", tram_line.id, exc)
-
-    if prompt:
-        prompt = f"{prompt}\n{style}"
-    else:
-        prompt = (
-            f"{tram_line.shot_type or 'Medium shot'}, {scene.get('heading', '')},\n"
-            f"{style}"
-        )
 
     try:
         response = gateway.execute_fal(
@@ -476,7 +464,6 @@ def generate_scene_moodboard(
             props=props,
             scene=scene,
             gateway=gateway,
-            text_model=text_model,
             image_model=image_model,
             pass_type=pass_type,
             fal_aspect_ratio=fal_aspect,

@@ -525,7 +525,9 @@ def generate_scene_moodboard(
         }
         comp_data_json = json.dumps(composition_payload)
 
-        # Upsert: update first existing composition, or create with canvas_number=1
+        # Upsert keyed on (tram_line_id, user_id, pass_type).
+        # Each pass type gets its own composition row; re-generating the same
+        # pass type updates that row rather than creating a duplicate.
         existing = list(
             db.exec(
                 select(MoodBoardComposition)
@@ -534,20 +536,27 @@ def generate_scene_moodboard(
                     MoodBoardComposition.user_id == user_id,
                 )
                 .order_by(MoodBoardComposition.canvas_number.asc())
-                .limit(1)
             ).all()
         )
-        if existing:
-            comp = existing[0]
+        pass_match = next(
+            (
+                c for c in existing
+                if json.loads(c.composition_data or "{}").get("pass_type") == pass_type
+            ),
+            None,
+        )
+        if pass_match:
+            comp = pass_match
             comp.composition_data = comp_data_json
             comp.updated_at = datetime.utcnow()
             db.add(comp)
         else:
+            next_canvas_number = len(existing) + 1
             comp = MoodBoardComposition(
                 tram_line_id=tl.id,
                 user_id=user_id,
                 composition_data=comp_data_json,
-                canvas_number=1,
+                canvas_number=next_canvas_number,
             )
             db.add(comp)
 

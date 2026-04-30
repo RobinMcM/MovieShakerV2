@@ -383,6 +383,35 @@ class GatewayClient:
             },
         ]
 
+    def generate_image(
+        self,
+        prompt: str,
+        model_key: str = "flux-2-klein",
+        aspect_ratio: str = "1:1",
+        dry_run: bool = False,
+    ) -> dict:
+        """
+        Generate an image via the OpenRouter gateway synchronously.
+        Returns {"ok": true, "image_b64": "...", "content_type": "image/png",
+                 "model": "...", "model_key": "..."}.
+        image_b64 is None when dry_run=True.
+        """
+        status_code, response_json, detail = self._request_json(
+            method="POST",
+            path="/api/image/generate",
+            json_body={
+                "prompt": prompt,
+                "model_key": model_key,
+                "aspect_ratio": aspect_ratio,
+                "dry_run": dry_run,
+            },
+        )
+        if status_code >= 400:
+            raise GatewayClientError(f"Gateway image generate failed ({status_code}): {detail}")
+        if not isinstance(response_json, dict):
+            raise GatewayClientError("Gateway image generate failed: response is not valid JSON")
+        return response_json
+
     def execute_fal(
         self,
         media_type: str,

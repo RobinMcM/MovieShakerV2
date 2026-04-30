@@ -3,30 +3,20 @@ Background image endpoints for the Objects page Backgrounds tab.
 Routes: GET /scripts/{script_id}/backgrounds,
         POST /scripts/{script_id}/backgrounds/generate-sketch
 """
+import base64
 import json
 import uuid
 from io import BytesIO
 from typing import Optional
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlmodel import Session, select
 
-from characters import (
-    _detect_ext,
-    _extract_generated_image_bytes,
-    _gateway_client,
-    _gateway_debug_hint,
-    _image_model_catalog,
-    _resolve_image_model_id,
-    _resolve_image_url_from_gateway,
-    _should_fallback_to_default_model,
-    _stable_filename,
-)
+from characters import _gateway_client, _stable_filename
 from config import load_settings
-from credits import apply_credit_cost, ensure_user_can_generate, extract_credit_cost
+from credits import apply_credit_cost, ensure_user_can_generate
 from db import get_session
 from gateway_client import GatewayClientError
 from models import Character, ProjectMember, Script
@@ -37,7 +27,7 @@ from supertokens_python.recipe.session.framework.fastapi import verify_session
 router = APIRouter(tags=["backgrounds"])
 settings = load_settings()
 
-# Maps project aspect_ratio values to FAL-compatible strings.
+# Maps project aspect_ratio values to OpenRouter-compatible strings.
 FAL_ASPECT_MAP: dict[str, str] = {
     "16:9":   "16:9",
     "9:16":   "9:16",
@@ -206,73 +196,42 @@ def generate_background_sketch(
     ).fetchone()
     aspect_ratio = FAL_ASPECT_MAP.get(ar_row[0] if ar_row else "16:9", "16:9")
 
-    payload: dict = {"prompt": prompt, "aspect_ratio": aspect_ratio}
+    model_key = body.model or "flux-2-klein"
     gateway = _gateway_client()
-    catalog = _image_model_catalog(gateway)
-    selected_model = _resolve_image_model_id(catalog=catalog, explicit_model=(body.model or None))
-
     try:
-        request_body = dict(
-            provider="fal",
-            media_type="image-generation",
-            payload=payload,
-            model=selected_model,
-            dry_run=body.dry_run,
-        )
-        response = gateway.execute_fal(
-            media_type="image-generation",
-            payload=payload,
-            model=selected_model,
+        result = gateway.generate_image(
+            prompt=prompt,
+            model_key=model_key,
+            aspect_ratio=aspect_ratio,
             dry_run=body.dry_run,
         )
     except GatewayClientError as exc:
-        error_text = str(exc)
-        if not selected_model or not _should_fallback_to_default_model(error_text):
-            raise HTTPException(status_code=502, detail=error_text)
-        try:
-            response = gateway.execute_fal(
-                media_type="image-generation",
-                payload=payload,
-                model=None,
-                dry_run=body.dry_run,
-            )
-            request_body["model"] = None
-        except GatewayClientError:
-            raise HTTPException(
-                status_code=502,
-                detail=f"Selected model '{selected_model}' is unavailable and default fallback failed: {error_text}",
-            )
+        raise HTTPException(status_code=502, detail=str(exc))
 
-    image_url, final_response = _resolve_image_url_from_gateway(gateway, response)
-    content = None
-    ext = None
+    if body.dry_run:
+        return {
+            "success": True,
+            "location_name": location_name,
+            "credits": {"cost": 1, "balance": None},
+            "dry_run": True,
+        }
 
-    if image_url:
-        if image_url.startswith("data:image/"):
-            content, ext = _extract_generated_image_bytes({"image": image_url})
-        else:
-            try:
-                downloaded = httpx.get(
-                    image_url,
-                    timeout=settings.gateway_timeout_seconds,
-                    follow_redirects=True,
-                    headers={"User-Agent": "MovieShakerEngine/1.0"},
-                )
-                downloaded.raise_for_status()
-                content = downloaded.content
-                ext = _detect_ext(image_url, downloaded.headers.get("content-type"))
-            except Exception as exc:
-                raise HTTPException(status_code=502, detail=f"Failed to download generated image: {exc}")
+    image_b64 = result.get("image_b64") or ""
+    if not image_b64:
+        raise HTTPException(status_code=502, detail="Gateway returned no image data")
+
+    try:
+        content = base64.b64decode(image_b64)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to decode image: {exc}")
+
+    content_type = result.get("content_type", "image/png").lower()
+    if "jpeg" in content_type or "jpg" in content_type:
+        ext = "jpg"
+    elif "webp" in content_type:
+        ext = "webp"
     else:
-        content, ext = _extract_generated_image_bytes(
-            final_response if isinstance(final_response, dict) else {}
-        )
-        if not content:
-            error_msg = final_response.get("error") if isinstance(final_response, dict) else None
-            if isinstance(error_msg, str) and error_msg.strip():
-                raise HTTPException(status_code=502, detail=f"Image generation failed: {error_msg.strip()}")
-            hint = _gateway_debug_hint(final_response if isinstance(final_response, dict) else {})
-            raise HTTPException(status_code=502, detail=f"Gateway did not return image output ({hint})")
+        ext = "png"
 
     # Upsert background character — find existing by name match, else create
     bg_chars = list(
@@ -298,7 +257,6 @@ def generate_background_sketch(
         db.add(character)
         db.flush()
 
-    ext = ext or "png"
     filename = _stable_filename(character, ext)
     try:
         path_key = save_character_image(
@@ -317,8 +275,7 @@ def generate_background_sketch(
     if scene_numbers:
         character.scene_tags = json.dumps(scene_numbers)
     db.add(character)
-    credits_cost = extract_credit_cost(final_response if isinstance(final_response, dict) else response)
-    balance = apply_credit_cost(db, user_id, credits_cost)
+    balance = apply_credit_cost(db, user_id, 1)
     db.commit()
     db.refresh(character)
 
@@ -328,6 +285,5 @@ def generate_background_sketch(
         "image_url": character.character_image_url,
         "location_name": location_name,
         "pass": 1,
-        "credits": {"cost": credits_cost, "balance": balance},
-        "gateway": {"request_body": request_body, "model_used": selected_model},
+        "credits": {"cost": 1, "balance": balance},
     }

@@ -6,15 +6,14 @@ Generates AI images for every shot (tram line) in a scene, writes each
 image to storage, upserts the first MoodBoardComposition for the tram line,
 and updates tram_line.scene_visual.
 """
+import base64
 import json
 import logging
-import time
 import uuid
 from datetime import datetime
 from io import BytesIO
 from typing import Optional
 
-import httpx
 from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import Session, select
@@ -22,7 +21,7 @@ from sqlmodel import Session, select
 from config import load_settings
 from credits import apply_credit_cost, ensure_user_can_generate
 from db import get_session
-from gateway_client import GatewayClient, GatewayClientError
+from gateway_client import GatewayClient
 from models import MoodBoardComposition, ProjectMember, Script, TramLine
 from storage import save_moodboard_image
 from supertokens_python.recipe.session import SessionContainer
@@ -116,9 +115,18 @@ PASS_PROMPTS = {
     },
 }
 
+# Maps pass type to the best OpenRouter image model for that pass.
+PASS_TO_MODEL = {
+    "sketch":    "flux-2-klein",
+    "draft":     "flux-2-klein",
+    "tonal":     "flux-2-pro",
+    "colour":    "flux-2-pro",
+    "cinematic": "nano-banana-2",
+    "reference": "gpt-5-image",
+}
 
-# Maps project aspect_ratio values to FAL-compatible strings.
-# 2.39:1 (cinematic) → FAL's "21:9" widescreen; anything else passes through unchanged.
+# Maps project aspect_ratio values to gateway-compatible strings.
+# 2.39:1 (cinematic) → "21:9" widescreen; anything else passes through unchanged.
 FAL_ASPECT_MAP: dict[str, str] = {
     "16:9":   "16:9",
     "9:16":   "9:16",
@@ -160,60 +168,6 @@ def _gateway_client() -> GatewayClient:
         timeout_seconds=settings.gateway_timeout_seconds,
         verify_tls=settings.gateway_verify_tls,
     )
-
-
-def _extract_image_url(node) -> Optional[str]:
-    if isinstance(node, str):
-        v = node.strip()
-        if v.startswith(("http://", "https://", "data:image/")):
-            return v
-        return None
-    if isinstance(node, dict):
-        for key in ("image_url", "url", "output_url", "download_url", "file_url"):
-            v = node.get(key)
-            if isinstance(v, str) and v.strip():
-                return v.strip()
-        files = node.get("files")
-        if isinstance(files, list):
-            for item in files:
-                found = _extract_image_url(item)
-                if found:
-                    return found
-        for v in node.values():
-            found = _extract_image_url(v)
-            if found:
-                return found
-    if isinstance(node, list):
-        for v in node:
-            found = _extract_image_url(v)
-            if found:
-                return found
-    return None
-
-
-def _resolve_image_url(client: GatewayClient, first_response: dict) -> Optional[str]:
-    """Return image URL from response, polling async jobs if needed."""
-    url = _extract_image_url(first_response)
-    if url:
-        return url
-    job_id = first_response.get("job_id")
-    if not isinstance(job_id, str) or not job_id.strip():
-        return None
-    deadline = time.monotonic() + max(10.0, settings.gateway_timeout_seconds * 2)
-    latest = first_response
-    while time.monotonic() < deadline:
-        try:
-            latest = client.get_status(job_id)
-        except GatewayClientError:
-            break
-        url = _extract_image_url(latest)
-        if url:
-            return url
-        status = str(latest.get("job_status") or "").lower()
-        if status in {"failed", "error", "cancelled", "completed", "succeeded", "done"}:
-            break
-        time.sleep(1.0)
-    return None
 
 
 def _extract_text_from_response(response: dict) -> Optional[str]:
@@ -263,13 +217,12 @@ def _generate_shot_image(
     props: list,
     scene: dict,
     gateway: GatewayClient,
-    image_model: Optional[str],
     pass_type: str = "sketch",
-    fal_aspect_ratio: str = "16:9",
-) -> Optional[str]:
+    aspect_ratio: str = "16:9",
+) -> Optional[bytes]:
     """
-    Build a FAL prompt directly from script data and call FAL for the image.
-    Returns image URL on success, None on any failure (caller skips the shot).
+    Build a prompt from script data and generate an image via OpenRouter.
+    Returns raw image bytes on success, None on any failure (caller skips the shot).
     """
     char_names = [
         n.strip()
@@ -286,14 +239,19 @@ def _generate_shot_image(
         pass_type=pass_type,
     )
 
+    model_key = PASS_TO_MODEL.get(pass_type, "flux-2-klein")
+
     try:
-        response = gateway.execute_fal(
-            media_type="image-generation",
-            payload={"prompt": prompt, "aspect_ratio": fal_aspect_ratio},
-            model=image_model,
+        result = gateway.generate_image(
+            prompt=prompt,
+            model_key=model_key,
+            aspect_ratio=aspect_ratio,
             dry_run=False,
         )
-        return _resolve_image_url(gateway, response)
+        image_b64 = result.get("image_b64") or ""
+        if not image_b64:
+            return None
+        return base64.b64decode(image_b64)
     except Exception as exc:
         logger.warning("Image generation failed for tram line %s: %s", tram_line.id, exc)
         return None
@@ -361,7 +319,7 @@ def generate_scene_moodboard(
         )
         ar_row = cur.fetchone()
     raw_aspect = ar_row[0] if ar_row else "16:9"
-    fal_aspect = FAL_ASPECT_MAP.get(raw_aspect, "16:9")
+    aspect_ratio = FAL_ASPECT_MAP.get(raw_aspect, "16:9")
     dims = _aspect_to_dimensions(raw_aspect)
 
     # Fetch tram lines for this scene
@@ -433,22 +391,6 @@ def generate_scene_moodboard(
     for pr in prop_rows:
         props.append({"name": pr[0], "character_image_url": pr[1], "object_type": pr[2]})
 
-    # Get user model preferences
-    with raw_conn.cursor() as cur:
-        cur.execute(
-            "SELECT model_fiab_text, model_object_image FROM user_profile "
-            "WHERE user_id = %s",
-            (user_id,),
-        )
-        profile_row = cur.fetchone()
-    text_model = "anthropic/claude-3.7-sonnet"
-    image_model: Optional[str] = None
-    if profile_row:
-        if profile_row[0]:
-            text_model = profile_row[0]
-        if profile_row[1]:
-            image_model = profile_row[1]
-
     ensure_user_can_generate(db, user_id)
 
     gateway = _gateway_client()
@@ -457,38 +399,22 @@ def generate_scene_moodboard(
     skipped = []
 
     for tl in tram_lines:
-        image_url = _generate_shot_image(
+        content = _generate_shot_image(
             tram_line=tl,
             character_images=character_images,
             background_url=background_url,
             props=props,
             scene=scene,
             gateway=gateway,
-            image_model=image_model,
             pass_type=pass_type,
-            fal_aspect_ratio=fal_aspect,
+            aspect_ratio=aspect_ratio,
         )
 
-        if not image_url:
+        if not content:
             skipped.append({"line_number": tl.line_number, "reason": "Image generation failed"})
             continue
 
-        # Download generated image
-        try:
-            downloaded = httpx.get(
-                image_url,
-                timeout=settings.gateway_timeout_seconds,
-                follow_redirects=True,
-                headers={"User-Agent": "MovieShakerEngine/1.0"},
-            )
-            downloaded.raise_for_status()
-            content = downloaded.content
-        except Exception as exc:
-            logger.warning("Download failed for shot %s: %s", tl.line_number, exc)
-            skipped.append({"line_number": tl.line_number, "reason": "Download failed"})
-            continue
-
-        filename = f"{tl.line_number}.jpg"
+        filename = f"{tl.line_number}.png"
         try:
             path_key = save_moodboard_image(
                 user_id=user_id,
@@ -582,4 +508,3 @@ def generate_scene_moodboard(
         "missing_character_images": [n for n in sorted(all_names) if n not in character_images],
         "results": results,
     }
-

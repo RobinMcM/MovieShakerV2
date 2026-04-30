@@ -115,12 +115,21 @@ PASS_PROMPTS = {
     },
 }
 
-# Maps pass type to the best OpenRouter image model for that pass.
+# Maps pass type to image model — three-phase strategy:
+#
+# DEVELOPMENT (director building composition):
+#   flux-2-pro — fast enough, good quality, low cost per iteration
+#
+# APPROVAL (director happy with composition):
+#   nano-banana-2 — contextual colour understanding produces better images
+#
+# FINAL REFERENCE (feeds the Visualize pipeline):
+#   gpt-5-image — quality here directly determines video quality; worth the premium
 PASS_TO_MODEL = {
-    "sketch":    "flux-2-klein",
-    "draft":     "flux-2-klein",
+    "sketch":    "flux-2-pro",
+    "draft":     "flux-2-pro",
     "tonal":     "flux-2-pro",
-    "colour":    "flux-2-pro",
+    "colour":    "nano-banana-2",
     "cinematic": "nano-banana-2",
     "reference": "gpt-5-image",
 }

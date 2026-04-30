@@ -218,6 +218,34 @@ def _migrate_characters_object_type():
                     logger.warning("Migration characters object_type/scene_tags: %s", e)
 
 
+# object_views JSONB structure by object_type:
+#
+# PERSON (character/principal/supporting/voice/entity):
+#   face_front, face_side, face_back,
+#   short_front, short_side, short_back,
+#   full_front, full_side, full_back
+#   each: {"url": "", "is_dynamic": false, "video_url": null}
+#
+# SCENE OBJECT (prop/vehicle/set_piece/artifact):
+#   front, side, back — same value shape
+#
+# BACKGROUND:
+#   front — same value shape
+def _migrate_characters_object_views():
+    """Add object_views JSONB to characters table."""
+    with engine.connect() as conn:
+        with conn.begin():
+            try:
+                conn.execute(
+                    text(
+                        "ALTER TABLE characters "
+                        "ADD COLUMN IF NOT EXISTS object_views JSONB DEFAULT '{}'"
+                    )
+                )
+            except Exception as e:
+                logger.warning("Migration characters object_views: %s", e)
+
+
 def _migrate_email_tracking_tables():
     """Ensure webhook/email tracking indexes and constraints exist."""
     with engine.connect() as conn:
@@ -458,6 +486,7 @@ def init_db():
     _migrate_characters_cast_tier()
     _migrate_characters_objects_fields()
     _migrate_characters_object_type()
+    _migrate_characters_object_views()
     _migrate_email_tracking_tables()
     _migrate_chatbot_prompt_config_table()
     _migrate_user_profile_prompt_override()

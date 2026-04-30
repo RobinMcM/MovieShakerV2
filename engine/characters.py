@@ -35,6 +35,42 @@ from supertokens_python.recipe.session import SessionContainer
 router = APIRouter(tags=["characters"])
 settings = load_settings()
 
+VALID_VIEW_KEYS: frozenset = frozenset({
+    "face_front", "face_side", "face_back",
+    "short_front", "short_side", "short_back",
+    "full_front", "full_side", "full_back",
+    "front", "side", "back",
+})
+
+
+def _parse_object_views(character: "Character") -> dict:
+    ov = getattr(character, "object_views", None)
+    if not ov:
+        return {}
+    if isinstance(ov, dict):
+        return ov
+    try:
+        return json.loads(ov)
+    except Exception:
+        return {}
+
+
+def _char_to_dict(character: "Character") -> dict:
+    return {
+        "id": str(character.id),
+        "name": character.name,
+        "script_id": str(character.script_id),
+        "type": getattr(character, "type", "character"),
+        "casting_notes": character.casting_notes,
+        "character_image_url": character.character_image_url,
+        "hide_from_view": character.hide_from_view,
+        "aspect_ratio": character.aspect_ratio,
+        "series_group": getattr(character, "series_group", None),
+        "object_type": getattr(character, "object_type", None),
+        "scene_tags": getattr(character, "scene_tags", None),
+        "object_views": _parse_object_views(character),
+    }
+
 
 def _get_character_and_ensure_access(db: Session, character_id: str, user_id: str) -> Character:
     character = db.get(Character, uuid.UUID(character_id))
@@ -67,6 +103,13 @@ class GenerateCharacterImageBody(BaseModel):
     aspect_ratio: Optional[str] = None
     model: Optional[str] = None
     dry_run: bool = False
+
+
+class PatchViewBody(BaseModel):
+    view_key: str
+    url: str
+    is_dynamic: bool = False
+    video_url: Optional[str] = None
 
 
 def _gateway_client() -> GatewayClient:
@@ -336,22 +379,7 @@ def update_character(
     db.add(character)
     db.commit()
     db.refresh(character)
-    return {
-        "success": True,
-        "data": {
-            "id": str(character.id),
-            "name": character.name,
-            "script_id": str(character.script_id),
-            "type": getattr(character, "type", "character"),
-            "casting_notes": character.casting_notes,
-            "character_image_url": character.character_image_url,
-            "hide_from_view": character.hide_from_view,
-            "aspect_ratio": character.aspect_ratio,
-            "series_group": getattr(character, "series_group", None),
-            "object_type": getattr(character, "object_type", None),
-            "scene_tags": getattr(character, "scene_tags", None),
-        },
-    }
+    return {"success": True, "data": _char_to_dict(character)}
 
 
 @router.delete("/characters/{character_id}")
@@ -365,6 +393,31 @@ def delete_character(
     db.delete(character)
     db.commit()
     return {"success": True, "message": "Deleted"}
+
+
+@router.patch("/characters/{character_id}/views")
+def patch_character_view(
+    character_id: str,
+    body: PatchViewBody,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    """Update a single view within object_views JSONB."""
+    if body.view_key not in VALID_VIEW_KEYS:
+        raise HTTPException(status_code=400, detail=f"Invalid view_key '{body.view_key}'")
+    user_id = session.get_user_id()
+    character = _get_character_and_ensure_access(db, character_id, user_id)
+    views = _parse_object_views(character)
+    views[body.view_key] = {
+        "url": body.url,
+        "is_dynamic": body.is_dynamic,
+        "video_url": body.video_url,
+    }
+    character.object_views = json.dumps(views)
+    db.add(character)
+    db.commit()
+    db.refresh(character)
+    return {"success": True, "data": _char_to_dict(character)}
 
 
 @router.post("/api/characters/{character_id}/generate-image")
@@ -494,17 +547,7 @@ def generate_character_image(
     db.refresh(character)
     return {
         "success": True,
-        "data": {
-            "id": str(character.id),
-            "name": character.name,
-            "script_id": str(character.script_id),
-            "type": getattr(character, "type", "character"),
-            "casting_notes": character.casting_notes,
-            "character_image_url": character.character_image_url,
-            "hide_from_view": character.hide_from_view,
-            "aspect_ratio": character.aspect_ratio,
-            "series_group": getattr(character, "series_group", None),
-        },
+        "data": _char_to_dict(character),
         "credits": {
             "cost": credits_cost,
             "balance": balance,
@@ -520,18 +563,21 @@ def generate_character_image(
 async def upload_character_image(
     character_id: str = Form(...),
     file: UploadFile = File(...),
+    view_key: Optional[str] = Form(None),
     session: SessionContainer = Depends(verify_session()),
     db: Session = Depends(get_session),
 ):
-    """Upload image for a character/object. Returns path to store as character_image_url."""
+    """Upload image for a character/object. If view_key is set, saves to object_views; otherwise sets character_image_url."""
     user_id = session.get_user_id()
+    if view_key and view_key not in VALID_VIEW_KEYS:
+        raise HTTPException(status_code=400, detail=f"Invalid view_key '{view_key}'")
     character = _get_character_and_ensure_access(db, character_id, user_id)
     if not file.filename:
         raise HTTPException(status_code=400, detail="Missing filename")
     ext = file.filename.split(".")[-1].lower() if "." in file.filename else "png"
     if ext not in ("png", "jpg", "jpeg", "gif", "webp"):
         ext = "png"
-    filename = f"{character_id}.{ext}"
+    filename = f"{character_id}_{view_key}.{ext}" if view_key else f"{character_id}.{ext}"
     content = await file.read()
     size = len(content)
     is_scene = getattr(character, "type", None) == "scene"
@@ -551,7 +597,24 @@ async def upload_character_image(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    character.character_image_url = path_key
+
+    views = _parse_object_views(character)
+    if view_key:
+        views[view_key] = {"url": path_key, "is_dynamic": False, "video_url": None}
+        character.object_views = json.dumps(views)
+    else:
+        character.character_image_url = path_key
+        # Auto-set face_front if it has no image yet
+        if not (views.get("face_front") or {}).get("url"):
+            views["face_front"] = {"url": path_key, "is_dynamic": False, "video_url": None}
+            character.object_views = json.dumps(views)
+
     db.add(character)
     db.commit()
-    return {"success": True, "path": path_key, "character_image_url": path_key}
+    db.refresh(character)
+    return {
+        "success": True,
+        "path": path_key,
+        "character_image_url": character.character_image_url,
+        "object_views": _parse_object_views(character),
+    }

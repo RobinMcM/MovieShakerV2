@@ -228,18 +228,60 @@ export function useObjects(projectId: string | null) {
     const form = new FormData();
     form.append("character_id", characterId);
     form.append("file", file);
-    const res = await api.postForm<{ success: boolean; path: string; character_image_url: string }>(
-      "api/characters/upload",
-      form
-    );
-    const url = (res as { character_image_url?: string }).character_image_url;
+    const res = await api.postForm<{
+      success: boolean;
+      path: string;
+      character_image_url: string;
+      object_views?: Record<string, { url: string; is_dynamic: boolean; video_url: string | null }>;
+    }>("api/characters/upload", form);
+    const url = res.character_image_url;
     if (url) {
       setCharacters((prev: CharacterMood[]) =>
-        prev.map((c: CharacterMood) => (c.id === characterId ? { ...c, character_image_url: url } : c))
+        prev.map((c: CharacterMood) =>
+          c.id === characterId
+            ? { ...c, character_image_url: url, ...(res.object_views ? { object_views: res.object_views } : {}) }
+            : c
+        )
       );
     }
     return url;
   }, []);
+
+  const uploadViewImage = useCallback(async (characterId: string, viewKey: string, file: File): Promise<void> => {
+    const form = new FormData();
+    form.append("character_id", characterId);
+    form.append("file", file);
+    form.append("view_key", viewKey);
+    const res = await api.postForm<{
+      success: boolean;
+      path: string;
+      character_image_url: string | null;
+      object_views: Record<string, { url: string; is_dynamic: boolean; video_url: string | null }>;
+    }>("api/characters/upload", form);
+    setCharacters((prev: CharacterMood[]) =>
+      prev.map((c: CharacterMood) =>
+        c.id === characterId && res.object_views
+          ? { ...c, object_views: res.object_views }
+          : c
+      )
+    );
+  }, []);
+
+  const updateObjectView = useCallback(
+    async (characterId: string, viewKey: string, url: string, isDynamic: boolean = false, videoUrl: string | null = null): Promise<void> => {
+      const res = await api.patch<{ success: boolean; data: CharacterMood }>(
+        `characters/${characterId}/views`,
+        { view_key: viewKey, url, is_dynamic: isDynamic, video_url: videoUrl }
+      );
+      const data = (res as { data?: CharacterMood }).data;
+      if (data) {
+        setCharacters((prev: CharacterMood[]) =>
+          prev.map((c: CharacterMood) => (c.id === characterId ? { ...c, ...data } : c))
+        );
+      }
+    },
+    []
+  );
 
   const generateImage = useCallback(
     async (characterId: string, prompt: string, aspectRatio?: string, model?: string | null) => {
@@ -329,6 +371,8 @@ export function useObjects(projectId: string | null) {
     updateObject,
     deleteObject,
     uploadImage,
+    uploadViewImage,
+    updateObjectView,
     generateImage,
     generateBackgroundSketch,
     uploadBackgroundImage,

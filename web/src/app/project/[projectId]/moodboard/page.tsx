@@ -30,8 +30,8 @@ import { ScriptTextRenderer } from "@/components/ScriptTextRenderer";
 import type { ScriptElement } from "@/lib/scriptJsonUtils";
 import { TramLineSelect } from "./TramLineSelect";
 import { useMoodBoard } from "./useMoodBoard";
-import type { TramLineWithScene, CanvasComposition } from "./types";
-import type { DrawingCanvasRef, DrawingCanvasProps } from "@/components/DrawingCanvas";
+import type { TramLineWithScene, CanvasComposition, CharacterMood, ObjectViewData } from "./types";
+import type { DrawingCanvasRef, DrawingCanvasProps, CanvasImageMeta } from "@/components/DrawingCanvas";
 import { api, storageImageUrl } from "@/lib/api";
 
 const DrawingCanvas = dynamic(
@@ -51,6 +51,174 @@ const PASS_OPTIONS = [
 
 function getSceneNumber(tramLine: TramLineWithScene): string | number {
   return tramLine.scenes?.scene_number ?? "?";
+}
+
+// ─── View selector helpers ────────────────────────────────────────────────────
+
+function parseObjectViews(raw: unknown): Record<string, ObjectViewData> {
+  if (!raw) return {};
+  if (typeof raw === "object" && !Array.isArray(raw)) return raw as Record<string, ObjectViewData>;
+  if (typeof raw === "string") {
+    try { return JSON.parse(raw); } catch { return {}; }
+  }
+  return {};
+}
+
+const CROP_ICONS: Record<string, string> = { face: "👤", short: "🧍", full: "🧍" };
+const CROP_TYPES = ["face", "short", "full"] as const;
+const VIEW_ANGLES = ["front", "side", "back"] as const;
+
+function ViewSelectorCard({
+  object,
+  canvasRef,
+}: {
+  object: CharacterMood;
+  canvasRef: React.RefObject<DrawingCanvasRef | null>;
+}) {
+  const views = parseObjectViews(object.object_views);
+
+  // Determine available crop types (person views: face_front, short_side, etc.)
+  const availableCrops = CROP_TYPES.filter((crop) =>
+    VIEW_ANGLES.some((angle) => views[`${crop}_${angle}`]?.url)
+  );
+  const isPersonType = availableCrops.length > 0;
+
+  // For scene objects: front/side/back directly
+  const availableSceneAngles = VIEW_ANGLES.filter((angle) => views[angle]?.url);
+
+  const [selectedCrop, setSelectedCrop] = useState<string>(availableCrops[0] ?? "face");
+  const [selectedAngle, setSelectedAngle] = useState<"front" | "side" | "back">("front");
+
+  // Angles available for the current crop (person) or all scene angles
+  const currentAngles = isPersonType
+    ? VIEW_ANGLES.filter((angle) => views[`${selectedCrop}_${angle}`]?.url)
+    : availableSceneAngles;
+
+  // Ensure selectedAngle is valid after crop switch
+  const validAngle = currentAngles.includes(selectedAngle) ? selectedAngle : (currentAngles[0] ?? "front");
+  const effectiveAngle = validAngle;
+
+  const currentViewKey = isPersonType ? `${selectedCrop}_${effectiveAngle}` : effectiveAngle;
+  const currentViewData = views[currentViewKey];
+  const currentViewUrl = storageImageUrl(currentViewData?.url) ?? currentViewData?.url ?? null;
+
+  const handleCropChange = (crop: string) => {
+    const anglesForCrop = VIEW_ANGLES.filter((angle) => views[`${crop}_${angle}`]?.url);
+    const nextAngle = anglesForCrop.includes(selectedAngle)
+      ? selectedAngle
+      : (anglesForCrop[0] ?? "front");
+    setSelectedCrop(crop);
+    setSelectedAngle(nextAngle);
+  };
+
+  const goAngle = (dir: 1 | -1) => {
+    const idx = currentAngles.indexOf(effectiveAngle);
+    const next = currentAngles[(idx + dir + currentAngles.length) % currentAngles.length];
+    if (next) setSelectedAngle(next);
+  };
+
+  const buildMeta = (): CanvasImageMeta => ({
+    character_id: object.id,
+    character_name: object.name,
+    view_key: currentViewKey,
+    object_type: (object as { object_type?: string | null }).object_type ?? "object",
+  });
+
+  const buildDragData = () => ({
+    name: object.name,
+    src: currentViewUrl,
+    type: currentViewUrl ? "image" : "placeholder",
+    ...buildMeta(),
+  });
+
+  return (
+    <div
+      draggable={!!currentViewUrl}
+      onDragStart={(e) => {
+        if ((e.target as HTMLElement | null)?.closest("button")) { e.preventDefault(); return; }
+        if (!currentViewUrl) { e.preventDefault(); return; }
+        e.dataTransfer.setData("application/json", JSON.stringify(buildDragData()));
+        e.dataTransfer.setData("text/plain", currentViewUrl);
+        e.dataTransfer.effectAllowed = "copy";
+      }}
+      className={`relative group flex flex-col items-center bg-secondary rounded-md p-2 border border-border ${currentViewUrl ? "cursor-grab hover:bg-accent" : "opacity-50 cursor-not-allowed"}`}
+      onClick={() => {
+        if (currentViewUrl) canvasRef.current?.addImage(currentViewUrl, false, buildMeta());
+      }}
+      title={currentViewUrl ? `Click to place ${object.name} (${currentViewKey}) on canvas` : "No image for this view"}
+    >
+      {/* Fill canvas button */}
+      {currentViewUrl && (
+        <button
+          type="button"
+          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            canvasRef.current?.addImage(currentViewUrl!, true, buildMeta());
+          }}
+          className="absolute -top-2 -right-2 p-1 bg-primary text-primary-foreground rounded-full shadow-md opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity hover:scale-110 z-10"
+          title="Fill Canvas"
+        >
+          <Maximize className="h-3 w-3" />
+        </button>
+      )}
+
+      {/* Crop type selector (person objects only) */}
+      {isPersonType && availableCrops.length > 1 && (
+        <div className="flex items-center gap-1.5 mb-1">
+          {availableCrops.map((crop) => (
+            <button
+              key={crop}
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleCropChange(crop); }}
+              className={`text-sm leading-none transition-opacity ${selectedCrop === crop ? "opacity-100" : "opacity-30"}`}
+              title={crop}
+            >
+              {CROP_ICONS[crop]}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Image with angle navigation */}
+      <div className="flex items-center gap-0.5">
+        {currentAngles.length > 1 && (
+          <button
+            type="button"
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); goAngle(-1); }}
+            className="p-0.5 hover:bg-muted rounded shrink-0"
+          >
+            <ChevronLeft className="h-3 w-3 text-muted-foreground" />
+          </button>
+        )}
+        <div className="h-12 w-12 rounded overflow-hidden bg-muted border border-border shrink-0">
+          {currentViewUrl ? (
+            <img src={currentViewUrl} alt={`${object.name} ${currentViewKey}`} className="h-full w-full object-cover" />
+          ) : (
+            <User className="h-4 w-4 m-auto mt-4 text-muted-foreground" />
+          )}
+        </div>
+        {currentAngles.length > 1 && (
+          <button
+            type="button"
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); goAngle(1); }}
+            className="p-0.5 hover:bg-muted rounded shrink-0"
+          >
+            <ChevronRight className="h-3 w-3 text-muted-foreground" />
+          </button>
+        )}
+      </div>
+
+      {/* Name · view_key label */}
+      <div className="text-[10px] text-muted-foreground text-center mt-1 max-w-[96px] truncate">
+        {object.name} · {currentViewKey}
+      </div>
+    </div>
+  );
 }
 
 function MoodBoardContent() {
@@ -350,6 +518,7 @@ function MoodBoardContent() {
                             !(c as { hide_from_view?: boolean }).hide_from_view
                         );
                         if (!character) return null;
+                        const castImgUrl = storageImageUrl((character as { character_image_url?: string })?.character_image_url) ?? (character as { character_image_url?: string })?.character_image_url ?? null;
                         return (
                           <div
                             key={idx}
@@ -357,19 +526,22 @@ function MoodBoardContent() {
                             onDragStart={(e) => {
                               const data = JSON.stringify({
                                 name: trimmed,
-                                src: storageImageUrl((character as { character_image_url?: string })?.character_image_url) ?? (character as { character_image_url?: string })?.character_image_url ?? null,
-                                type: (storageImageUrl((character as { character_image_url?: string })?.character_image_url) ?? (character as { character_image_url?: string })?.character_image_url) ? "image" : "placeholder",
+                                src: castImgUrl,
+                                type: castImgUrl ? "image" : "placeholder",
+                                character_id: character.id,
+                                character_name: trimmed,
+                                view_key: "primary",
+                                object_type: (character as { object_type?: string | null }).object_type ?? "character",
                               });
                               e.dataTransfer.setData("application/json", data);
-                              const castSrc = storageImageUrl((character as { character_image_url?: string })?.character_image_url) ?? (character as { character_image_url?: string })?.character_image_url;
-                              if (castSrc) e.dataTransfer.setData("text/plain", castSrc);
+                              if (castImgUrl) e.dataTransfer.setData("text/plain", castImgUrl);
                               e.dataTransfer.effectAllowed = "copy";
                             }}
                             className="flex items-center gap-2 bg-secondary/50 rounded-full pr-3 pl-1 py-1 border border-border/50 cursor-grab"
                           >
                             <Avatar className="h-6 w-6">
                               <AvatarImage
-                                src={storageImageUrl((character as { character_image_url?: string })?.character_image_url) ?? (character as { character_image_url?: string })?.character_image_url ?? undefined}
+                                src={castImgUrl ?? undefined}
                                 alt={trimmed}
                                 className="object-cover object-top"
                               />
@@ -460,6 +632,27 @@ function MoodBoardContent() {
                         .map((object) => {
                           const objImgUrl = (object as { character_image_url?: string }).character_image_url;
                           const objImgSrc = storageImageUrl(objImgUrl) ?? objImgUrl ?? null;
+                          const objMeta: CanvasImageMeta = {
+                            character_id: object.id,
+                            character_name: object.name,
+                            view_key: "primary",
+                            object_type: (object as { object_type?: string | null }).object_type ?? "object",
+                          };
+
+                          // Use view selector card if object has any populated views
+                          const objViews = parseObjectViews((object as { object_views?: unknown }).object_views);
+                          const hasViews = Object.values(objViews).some((v) => !!v?.url);
+                          if (hasViews) {
+                            return (
+                              <ViewSelectorCard
+                                key={object.id}
+                                object={object as CharacterMood}
+                                canvasRef={canvasRef}
+                              />
+                            );
+                          }
+
+                          // Fallback: existing single-image card
                           return (
                             <div
                               key={object.id}
@@ -471,7 +664,7 @@ function MoodBoardContent() {
                                   return;
                                 }
                                 if (objImgSrc) {
-                                  e.dataTransfer.setData("application/json", JSON.stringify({ name: object.name, src: objImgSrc }));
+                                  e.dataTransfer.setData("application/json", JSON.stringify({ name: object.name, src: objImgSrc, ...objMeta }));
                                   e.dataTransfer.setData("text/plain", objImgSrc);
                                   e.dataTransfer.effectAllowed = "copy";
                                 } else {
@@ -481,7 +674,7 @@ function MoodBoardContent() {
                               className={`relative group flex items-center gap-2 bg-secondary rounded-md p-2 border border-border cursor-grab hover:bg-accent ${!objImgSrc ? "opacity-50 cursor-not-allowed" : ""}`}
                               onClick={() => {
                                 if (objImgSrc) {
-                                  canvasRef.current?.addImage(objImgSrc, false);
+                                  canvasRef.current?.addImage(objImgSrc, false, objMeta);
                                 }
                               }}
                               title={objImgSrc ? "Click to place on canvas or drag to position" : "No image available"}
@@ -496,7 +689,7 @@ function MoodBoardContent() {
                                   onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    canvasRef.current?.addImage(objImgSrc, true);
+                                    canvasRef.current?.addImage(objImgSrc, true, objMeta);
                                   }}
                                   className="absolute -top-2 -right-2 p-1 bg-primary text-primary-foreground rounded-full shadow-md opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity hover:scale-110 z-10"
                                   title="Fill Canvas"

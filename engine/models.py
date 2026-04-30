@@ -201,6 +201,7 @@ class Character(SQLModel, table=True):
     # CoProducer moodboard generation
     object_type: Optional[str] = Field(default="actor_full")  # actor_head | actor_body | actor_full | background | prop | vehicle | set_piece
     scene_tags: Optional[str] = Field(default="[]")  # JSONB stored as string — scene numbers this object appears in
+    object_views: Optional[str] = Field(default="{}")  # JSONB stored as string — keyed view images per object_type (see db.py _migrate_characters_object_views)
 
 
 class SceneCharacter(SQLModel, table=True):

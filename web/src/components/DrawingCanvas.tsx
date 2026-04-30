@@ -8,16 +8,29 @@ import {
   useImperativeHandle,
 } from "react";
 import { Button } from "@/components/ui/button";
-import { Stage, Layer, Line, Image as KonvaImage, Transformer } from "react-konva";
+import { Stage, Layer, Line, Image as KonvaImage, Transformer, Text as KonvaText } from "react-konva";
 import { MousePointer2, Pencil, Eraser, Trash2, Save, Loader2 } from "lucide-react";
 import type Konva from "konva";
 import { API_URL, storageImageUrl } from "@/lib/api";
+
+export interface CanvasImageMeta {
+  character_id?: string | null;
+  character_name?: string | null;
+  view_key?: string | null;
+  object_type?: string | null;
+}
 
 export interface DrawingCanvasProps {
   tramLineId: string;
   aspectRatio?: string | null;
   initialData?: {
-    images?: Array<{ id: string; src: string; x: number; y: number; width: number; height: number }>;
+    images?: Array<{
+      id: string; src: string; x: number; y: number; width: number; height: number;
+      character_id?: string | null;
+      character_name?: string | null;
+      view_key?: string | null;
+      object_type?: string | null;
+    }>;
     lines?: Array<{ points: number[]; color: string; width: number; tool: string }>;
     dimensions?: { width: number; height: number };
   };
@@ -25,7 +38,7 @@ export interface DrawingCanvasProps {
 }
 
 export interface DrawingCanvasRef {
-  addImage: (url: string, fill?: boolean) => void;
+  addImage: (url: string, fill?: boolean, meta?: CanvasImageMeta) => void;
   getCanvasDataURL: () => Promise<string>;
 }
 
@@ -39,6 +52,10 @@ interface CanvasImage {
   width: number;
   height: number;
   image: HTMLImageElement;
+  character_id?: string | null;
+  character_name?: string | null;
+  view_key?: string | null;
+  object_type?: string | null;
 }
 
 interface CanvasLine {
@@ -153,7 +170,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
       });
 
     useImperativeHandle(ref, () => ({
-      addImage(url: string, fill = false) {
+      addImage(url: string, fill = false, meta?: CanvasImageMeta) {
         createCanvasImage(url, (img) => {
           let x = 100;
           let y = 100;
@@ -192,8 +209,12 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
             width,
             height,
             image: img,
-            name: "Imported Image",
+            name: meta?.character_name ?? "Imported Image",
             isBackground: fill,
+            character_id: meta?.character_id ?? null,
+            character_name: meta?.character_name ?? null,
+            view_key: meta?.view_key ?? null,
+            object_type: meta?.object_type ?? null,
           };
           setImages((prev) => {
             if (fill) {
@@ -378,7 +399,13 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
       const rect = stage.container().getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-      let dragData: { name?: string; src?: string; type?: string } = {};
+      let dragData: {
+        name?: string; src?: string; type?: string;
+        character_id?: string | null;
+        character_name?: string | null;
+        view_key?: string | null;
+        object_type?: string | null;
+      } = {};
       try {
         const j = e.dataTransfer.getData("application/json");
         if (j) dragData = JSON.parse(j);
@@ -462,6 +489,10 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
               height: h,
               image: img,
               isBackground: false,
+              character_id: dragData.character_id ?? null,
+              character_name: dragData.character_name ?? null,
+              view_key: dragData.view_key ?? null,
+              object_type: dragData.object_type ?? null,
             },
           ]);
           setTool("select");
@@ -642,6 +673,19 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
                   onTransformEnd={(e) => handleTransformEnd(img.id, e)}
                 />
               ))}
+              {images.map((img) =>
+                selectedId === img.id && img.view_key ? (
+                  <KonvaText
+                    key={`label-${img.id}`}
+                    x={img.x}
+                    y={img.y + img.height + 3}
+                    text={img.character_name ? `${img.character_name} · ${img.view_key}` : img.view_key}
+                    fontSize={11}
+                    fill="#888888"
+                    listening={false}
+                  />
+                ) : null
+              )}
               {lines.map((line, i) => (
                 <Line
                   key={i}

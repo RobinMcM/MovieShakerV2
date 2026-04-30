@@ -59,6 +59,12 @@ export interface ImageHistoryItem {
   created_at: string | null;
 }
 
+export interface ObjectViewData {
+  url: string;
+  is_dynamic: boolean;
+  video_url: string | null;
+}
+
 export interface CharacterMood {
   id: string;
   name: string;
@@ -71,4 +77,5 @@ export interface CharacterMood {
   series_group?: string | null;
   object_type?: string | null;
   scene_tags?: string | null;
+  object_views?: Record<string, ObjectViewData> | string | null;
 }

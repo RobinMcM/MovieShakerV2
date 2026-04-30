@@ -53,7 +53,7 @@ import {
 } from "lucide-react";
 import { useObjects } from "./useObjects";
 import type { BackgroundLocation } from "./useObjects";
-import type { CharacterMood } from "../moodboard/types";
+import type { CharacterMood, ObjectViewData } from "../moodboard/types";
 import { storageImageUrl } from "@/lib/api";
 
 const PROJECT_ASPECT_RATIO_OPTIONS = [
@@ -62,6 +62,37 @@ const PROJECT_ASPECT_RATIO_OPTIONS = [
   { value: "1:1", label: "Square (1:1) - simple / training datasets" },
   { value: "2.39:1", label: "Cinematic (2.39:1) - film style" },
 ];
+
+// ─── View grid constants ───────────────────────────────────────────────────────
+
+const VIEW_DESCRIPTIONS: Record<string, string> = {
+  face_front: "Face looking directly at camera, headshot crop",
+  face_side: "Face in profile, looking left or right",
+  face_back: "Back of head and shoulders",
+  short_front: "Waist up, facing camera",
+  short_side: "Waist up, profile view",
+  short_back: "Waist up, seen from behind",
+  full_front: "Full body, facing camera, standing",
+  full_side: "Full body, profile, standing",
+  full_back: "Full body, seen from behind, standing",
+  front: "Front view",
+  side: "Side profile view",
+  back: "Back view",
+};
+
+const PERSON_OBJECT_TYPES_SET = new Set([
+  "actor_full", "actor_body", "actor_head", "principal", "supporting", "voice", "entity",
+]);
+
+const ARTIFACT_OBJECT_TYPES_SET = new Set(["prop", "vehicle", "set_piece", "artifact"]);
+
+const PERSON_COL_PREFIXES = ["face", "short", "full"] as const;
+const PERSON_COL_LABELS = ["FACE", "SHORT", "FULL"];
+const VIEW_ROW_SUFFIXES = ["front", "side", "back"] as const;
+const VIEW_ROW_LABELS = ["FRONT", "SIDE", "BACK"];
+const SCENE_VIEW_KEYS = ["front", "side", "back"] as const;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function getAspectRatioClass(aspectRatio: string | null | undefined): string {
   switch (aspectRatio) {
@@ -85,7 +116,186 @@ function parseSceneTags(sceneTags: string | null | undefined): string[] {
   }
 }
 
-// ─── Character / Artifact card (existing objects) ───────────────────────────
+function parseObjectViews(raw: unknown): Record<string, ObjectViewData> {
+  if (!raw) return {};
+  if (typeof raw === "object" && !Array.isArray(raw))
+    return raw as Record<string, ObjectViewData>;
+  if (typeof raw === "string") {
+    try { return JSON.parse(raw); } catch { return {}; }
+  }
+  return {};
+}
+
+// ─── ViewCell ─────────────────────────────────────────────────────────────────
+
+function ViewCell({
+  viewKey,
+  viewData,
+  characterId,
+  characterName,
+  primaryImageUrl,
+  onUpload,
+}: {
+  viewKey: string;
+  viewData?: ObjectViewData;
+  characterId: string;
+  characterName: string;
+  primaryImageUrl?: string | null;
+  onUpload: (viewKey: string, file: File) => Promise<void>;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const imageUrl = storageImageUrl(viewData?.url) ?? viewData?.url ?? null;
+
+  const handleGenerate = () => {
+    window.dispatchEvent(
+      new CustomEvent("generateObjectView", {
+        detail: {
+          characterId,
+          characterName,
+          viewKey,
+          primaryImageUrl: primaryImageUrl ?? null,
+          description: VIEW_DESCRIPTIONS[viewKey] ?? viewKey,
+        },
+      })
+    );
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setUploading(true);
+    try {
+      await onUpload(viewKey, file);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="relative group aspect-square bg-muted rounded border border-border overflow-hidden">
+      {imageUrl ? (
+        <>
+          <img src={imageUrl} alt={viewKey} className="w-full h-full object-cover" />
+          {viewData?.is_dynamic && (
+            <span className="absolute top-0.5 right-0.5 text-[8px] leading-none">📹</span>
+          )}
+        </>
+      ) : (
+        <div className="w-full h-full flex items-center justify-center border-2 border-dashed border-border/40 rounded">
+          <Plus className="h-3 w-3 text-muted-foreground/40" />
+        </div>
+      )}
+      <div className="absolute inset-0 hidden group-hover:flex flex-col items-center justify-center gap-1 bg-black/60 rounded">
+        <Button
+          size="sm"
+          variant="secondary"
+          className="h-5 text-[10px] px-1.5 py-0 gap-0.5"
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+        >
+          {uploading ? (
+            <Loader2 className="h-2.5 w-2.5 animate-spin" />
+          ) : (
+            <><Upload className="h-2.5 w-2.5" />Up</>
+          )}
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          className="h-5 text-[10px] px-1.5 py-0 gap-0.5"
+          onClick={handleGenerate}
+        >
+          <Sparkles className="h-2.5 w-2.5" />Gen
+        </Button>
+      </div>
+      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+    </div>
+  );
+}
+
+// ─── PersonViewsGrid (3×3) ────────────────────────────────────────────────────
+
+function PersonViewsGrid({
+  object,
+  onUpload,
+}: {
+  object: CharacterMood;
+  onUpload: (viewKey: string, file: File) => Promise<void>;
+}) {
+  const views = parseObjectViews(object.object_views);
+
+  return (
+    <div className="space-y-1">
+      {/* Column header row */}
+      <div className="grid grid-cols-4 gap-1">
+        <div />
+        {PERSON_COL_LABELS.map((col) => (
+          <div key={col} className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground text-center">
+            {col}
+          </div>
+        ))}
+      </div>
+      {/* Data rows */}
+      {VIEW_ROW_SUFFIXES.map((suffix, rowIdx) => (
+        <div key={suffix} className="grid grid-cols-4 gap-1 items-center">
+          <div className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground text-right pr-1">
+            {VIEW_ROW_LABELS[rowIdx]}
+          </div>
+          {PERSON_COL_PREFIXES.map((prefix) => {
+            const viewKey = `${prefix}_${suffix}`;
+            return (
+              <ViewCell
+                key={viewKey}
+                viewKey={viewKey}
+                viewData={views[viewKey]}
+                characterId={object.id}
+                characterName={object.name}
+                primaryImageUrl={object.character_image_url}
+                onUpload={onUpload}
+              />
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── SceneViewsGrid (3-cell row) ──────────────────────────────────────────────
+
+function SceneViewsGrid({
+  object,
+  onUpload,
+}: {
+  object: CharacterMood;
+  onUpload: (viewKey: string, file: File) => Promise<void>;
+}) {
+  const views = parseObjectViews(object.object_views);
+
+  return (
+    <div className="grid grid-cols-3 gap-1">
+      {SCENE_VIEW_KEYS.map((viewKey) => (
+        <div key={viewKey} className="space-y-0.5">
+          <div className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground text-center">
+            {viewKey.toUpperCase()}
+          </div>
+          <ViewCell
+            viewKey={viewKey}
+            viewData={views[viewKey]}
+            characterId={object.id}
+            characterName={object.name}
+            primaryImageUrl={object.character_image_url}
+            onUpload={onUpload}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Character / Artifact card ────────────────────────────────────────────────
 
 function ObjectCard({
   object,
@@ -93,6 +303,7 @@ function ObjectCard({
   onDelete,
   onGenerate,
   onTriggerFileInput,
+  onUploadView,
   uploadingId,
   setToastMessage,
   showSceneTags = false,
@@ -102,13 +313,19 @@ function ObjectCard({
   onDelete: (obj: CharacterMood) => void;
   onGenerate: (id: string, prompt: string, aspectRatio?: string | null) => Promise<void>;
   onTriggerFileInput: (id: string) => void;
+  onUploadView: (characterId: string, viewKey: string, file: File) => Promise<void>;
   uploadingId: string | null;
   setToastMessage: (m: { title: string; description?: string; variant?: "default" | "destructive" } | null) => void;
   showSceneTags?: boolean;
 }) {
   const [description, setDescription] = useState(object.casting_notes ?? object.name);
   const [isGenerating, setIsGenerating] = useState(false);
-  const imageUrl = storageImageUrl(object.character_image_url) ?? object.character_image_url ?? null;
+
+  const isPerson = PERSON_OBJECT_TYPES_SET.has(object.object_type ?? "") || !object.object_type;
+  const isSceneObj = ARTIFACT_OBJECT_TYPES_SET.has(object.object_type ?? "");
+  const isBackground = object.object_type === "background";
+
+  const primaryImageUrl = storageImageUrl(object.character_image_url) ?? object.character_image_url ?? null;
   const sceneTags = showSceneTags ? parseSceneTags(object.scene_tags) : [];
 
   useEffect(() => {
@@ -145,95 +362,159 @@ function ObjectCard({
     }
   };
 
+  const handleGenerateAll = () => {
+    window.dispatchEvent(new Event("openCoproducer"));
+    window.dispatchEvent(
+      new CustomEvent("coproducerSendMessage", {
+        detail: {
+          message:
+            `Generate all 9 character views for ${object.name}. ` +
+            `Reference image: ${object.character_image_url ?? "none"}. ` +
+            `Views needed: face_front, face_side, face_back, short_front, short_side, ` +
+            `short_back, full_front, full_side, full_back.`,
+        },
+      })
+    );
+  };
+
+  const handleUploadView = async (viewKey: string, file: File) => {
+    try {
+      await onUploadView(object.id, viewKey, file);
+      setToastMessage({ title: "View uploaded" });
+    } catch (e) {
+      setToastMessage({
+        title: "Failed to upload view",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <Card className="flex flex-col">
-      <CardHeader>
-        <div className="flex flex-col items-start gap-1">
-          {object.object_type && (
-            <span className="text-xs uppercase tracking-wide text-muted-foreground">
-              {object.object_type.replace(/_/g, " ")}
-            </span>
-          )}
-          <CardTitle className="text-xl w-full break-words">{object.name}</CardTitle>
-          {showSceneTags && sceneTags.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1">
-              {sceneTags.map((tag) => (
-                <span
-                  key={tag}
-                  className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border"
-                >
-                  Sc.{tag}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="flex items-center justify-between gap-2 pt-2">
-          <div className="flex items-center gap-2">
+      <CardHeader className="pb-2">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex flex-col gap-0.5 min-w-0">
+            {object.object_type && (
+              <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                {object.object_type.replace(/_/g, " ")}
+              </span>
+            )}
+            <CardTitle className="text-lg break-words leading-snug">{object.name}</CardTitle>
+            {showSceneTags && sceneTags.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-0.5">
+                {sceneTags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border"
+                  >
+                    Sc.{tag}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            {isPerson && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs px-2 gap-1"
+                onClick={handleGenerateAll}
+                title="Generate all views with CoProducer"
+              >
+                <Sparkles className="h-3 w-3" />All
+              </Button>
+            )}
             <Button
               size="icon"
               variant={!object.hide_from_view ? "default" : "outline"}
               onClick={() => onUpdate(object.id, { hide_from_view: !object.hide_from_view })}
-              className="h-8 w-8"
+              className="h-7 w-7"
               title={!object.hide_from_view ? "Published" : "Publish"}
               aria-label={!object.hide_from_view ? "Published" : "Publish"}
             >
-              {!object.hide_from_view ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+              {!object.hide_from_view ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
             </Button>
-            <span className="text-sm">Publish</span>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => onDelete(object)}
+              className="h-7 w-7 text-destructive hover:text-destructive"
+              title="Delete"
+              aria-label="Delete"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
           </div>
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={() => onDelete(object)}
-            className="h-8 w-8 text-destructive hover:text-destructive"
-            title="Delete"
-            aria-label="Delete"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
         </div>
       </CardHeader>
-      <CardContent className="flex-1 flex flex-col gap-4">
-        <div className={`${getAspectRatioClass(object.aspect_ratio)} bg-muted rounded-lg overflow-hidden relative`}>
-          {imageUrl ? (
-            <img src={imageUrl} alt={object.name} className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground py-8">
-              <ImageIcon className="h-12 w-12 mb-2" />
-              <p className="text-sm">No image</p>
-            </div>
-          )}
-        </div>
+      <CardContent className="flex-1 flex flex-col gap-3">
+        {/* Views grid — layout determined by object_type */}
+        {isPerson && (
+          <PersonViewsGrid object={object} onUpload={handleUploadView} />
+        )}
+        {isSceneObj && (
+          <SceneViewsGrid object={object} onUpload={handleUploadView} />
+        )}
+        {isBackground && (
+          <div className="space-y-0.5">
+            <div className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">FRONT</div>
+            <ViewCell
+              viewKey="front"
+              viewData={parseObjectViews(object.object_views)["front"]}
+              characterId={object.id}
+              characterName={object.name}
+              primaryImageUrl={object.character_image_url}
+              onUpload={handleUploadView}
+            />
+          </div>
+        )}
+        {!isPerson && !isSceneObj && !isBackground && (
+          <div className={`${getAspectRatioClass(object.aspect_ratio)} bg-muted rounded-lg overflow-hidden`}>
+            {primaryImageUrl ? (
+              <img src={primaryImageUrl} alt={object.name} className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground py-8">
+                <ImageIcon className="h-12 w-12 mb-2" />
+                <p className="text-sm">No image</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Primary image actions */}
         <div className="flex items-center gap-2">
           <Button
             size="sm"
             variant="outline"
             onClick={() => onTriggerFileInput(object.id)}
             disabled={uploadingId === object.id}
+            className="text-xs"
           >
             {uploadingId === object.id ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
-              <><Upload className="h-4 w-4 mr-1" />Upload</>
+              <><Upload className="h-3.5 w-3.5 mr-1" />Primary</>
             )}
           </Button>
-          <Button size="sm" onClick={handleGenerate} disabled={isGenerating}>
+          <Button size="sm" onClick={handleGenerate} disabled={isGenerating} className="text-xs">
             {isGenerating ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
-              <><Sparkles className="h-4 w-4 mr-1" />Generate</>
+              <><Sparkles className="h-3.5 w-3.5 mr-1" />Generate</>
             )}
           </Button>
         </div>
-        <div className="flex flex-col gap-2">
-          <Label>Description (AI prompt)</Label>
+
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-xs">Description (AI prompt)</Label>
           <Textarea
             placeholder="Describe for AI image generation..."
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             onBlur={handleBlur}
-            className="min-h-[60px] resize-none"
+            className="min-h-[52px] resize-none text-xs"
           />
         </div>
       </CardContent>
@@ -377,6 +658,7 @@ function ObjectGrid({
   onDelete,
   onGenerate,
   onTriggerFileInput,
+  onUploadView,
   uploadingId,
   setToastMessage,
   showSceneTags = false,
@@ -387,6 +669,7 @@ function ObjectGrid({
   onDelete: (obj: CharacterMood) => void;
   onGenerate: (id: string, prompt: string, aspectRatio?: string | null) => Promise<void>;
   onTriggerFileInput: (id: string) => void;
+  onUploadView: (characterId: string, viewKey: string, file: File) => Promise<void>;
   uploadingId: string | null;
   setToastMessage: (m: { title: string; description?: string; variant?: "default" | "destructive" } | null) => void;
   showSceneTags?: boolean;
@@ -402,6 +685,7 @@ function ObjectGrid({
           onDelete={onDelete}
           onGenerate={onGenerate}
           onTriggerFileInput={onTriggerFileInput}
+          onUploadView={onUploadView}
           uploadingId={uploadingId}
           setToastMessage={setToastMessage}
           showSceneTags={showSceneTags}
@@ -537,6 +821,7 @@ function ObjectsContent() {
     updateObject,
     deleteObject,
     uploadImage,
+    uploadViewImage,
     generateImage,
     generateBackgroundSketch,
     uploadBackgroundImage,
@@ -569,7 +854,6 @@ function ObjectsContent() {
     setSelectedImageModel(defaultModel);
   }, [objectImageModels, selectedImageModel]);
 
-  // Dismiss toast after 3 seconds
   useEffect(() => {
     if (!toastMessage) return;
     const t = setTimeout(() => setToastMessage(null), 3000);
@@ -693,6 +977,7 @@ function ObjectsContent() {
     onDelete: handleDeleteClick,
     onGenerate: handleGenerate,
     onTriggerFileInput: triggerFileInput,
+    onUploadView: uploadViewImage,
     uploadingId,
     setToastMessage,
   };
@@ -765,7 +1050,7 @@ function ObjectsContent() {
           </div>
         )}
 
-        {/* Hidden file input for character/artifact uploads */}
+        {/* Hidden file input for primary character/artifact uploads */}
         <input
           ref={fileInputRef}
           type="file"

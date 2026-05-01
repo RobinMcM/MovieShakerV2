@@ -213,7 +213,10 @@ def _generate_shot_image(
             return None
         return base64.b64decode(image_b64)
     except Exception as exc:
-        logger.warning("Image generation failed for tram line %s: %s", tram_line.id, exc)
+        logger.error(
+            "IMAGE GENERATION FAILED tram_line=%s model=%s prompt=%s error=%s",
+            tram_line.id, model_key, prompt[:100], exc, exc_info=True,
+        )
         return None
 
 
@@ -371,8 +374,14 @@ def generate_scene_moodboard(
         )
 
         if not content:
+            logger.error(
+                "NO IMAGE CONTENT returned for shot %s pass_type=%s",
+                tl.line_number, pass_type,
+            )
             skipped.append({"line_number": tl.line_number, "reason": "Image generation failed"})
             continue
+
+        logger.info("IMAGE GENERATED shot=%s bytes=%d", tl.line_number, len(content))
 
         filename = f"{tl.line_number}.png"
         try:
@@ -386,9 +395,14 @@ def generate_scene_moodboard(
                 size=len(content),
             )
         except Exception as exc:
-            logger.warning("Storage failed for shot %s: %s", tl.line_number, exc)
+            logger.error(
+                "SPACES STORAGE FAILED shot=%s error=%s",
+                tl.line_number, exc, exc_info=True,
+            )
             skipped.append({"line_number": tl.line_number, "reason": "Storage failed"})
             continue
+
+        logger.info("IMAGE SAVED TO SPACES shot=%s path=%s", tl.line_number, path_key)
 
         composition_payload = {
             "images": [

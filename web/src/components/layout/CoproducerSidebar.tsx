@@ -343,29 +343,27 @@ export function CoproducerSidebar({
                                 </div>
                             )}
 
-                            {/* Moodboard opening — CoDesigner: 2-column pass grid
-                                Clicking a chip dispatches 'generateMoodboard' to the page
-                                and dismisses the opening, transitioning to chat. */}
+                            {/* Moodboard — CoDesigner: compact vision + pass grid, always visible.
+                                Chat runs below and is always shown so the user can discuss
+                                ideas before generating. */}
                             {contextMode === "moodboard" && contextId && activeAgent !== "CoDirector" && (
-                                <div className="flex flex-col gap-3 p-5">
-                                    <p className="text-sm text-foreground leading-relaxed">
-                                        I&apos;m CoDesigner — ready to build your visual world.
-                                        Select a scene and I&apos;ll generate the moodboard progression.
-                                    </p>
+                                <div className="shrink-0 border-b px-4 pt-4 pb-3 flex flex-col gap-3">
                                     <div className="flex flex-col gap-1.5">
-                                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Scene Vision</label>
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Scene Vision</label>
+                                            {visionPrompt.trim() && (
+                                                <span className="text-[10px] text-teal-400 font-medium">Active ✓</span>
+                                            )}
+                                        </div>
                                         <textarea
                                             value={visionPrompt}
                                             onChange={(e) => setVisionPrompt(e.target.value)}
-                                            placeholder="Describe the mood, lighting, atmosphere, colour palette, tone… This becomes the generation prompt."
-                                            rows={4}
+                                            placeholder="Paste your agreed vision here, or discuss ideas in the chat below ↓"
+                                            rows={3}
                                             className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground resize-y focus:outline-none focus:ring-1 focus:ring-ring"
                                         />
-                                        {visionPrompt.trim() && (
-                                            <p className="text-xs text-teal-400">Vision will be used as the generation prompt.</p>
-                                        )}
                                     </div>
-                                    <div className="grid grid-cols-2 gap-2">
+                                    <div className="grid grid-cols-3 gap-1.5">
                                         {MOODBOARD_PASS_OPTIONS.map((opt) => (
                                             <button
                                                 key={opt.value}
@@ -378,10 +376,9 @@ export function CoproducerSidebar({
                                                     );
                                                     setOpeningDismissed((prev) => ({ ...prev, [contextMode]: true }));
                                                 }}
-                                                className="flex flex-col items-start p-2 rounded-md border border-border bg-background hover:bg-accent hover:border-teal-500 transition-colors text-left"
+                                                className="flex flex-col items-start p-1.5 rounded-md border border-border bg-background hover:bg-accent hover:border-teal-500 transition-colors text-left"
                                             >
-                                                <span className="text-sm font-medium">{opt.label}</span>
-                                                <span className="text-xs text-muted-foreground">{opt.description}</span>
+                                                <span className="text-xs font-medium leading-tight">{opt.label}</span>
                                             </button>
                                         ))}
                                     </div>
@@ -495,9 +492,10 @@ export function CoproducerSidebar({
                                 </div>
                             )}
 
-                            {/* Chat — scripts always; other contexts once opening is dismissed */}
+                            {/* Chat — scripts and moodboard always; other contexts once opening is dismissed */}
                             {(contextMode === "scripts" ||
-                              ((contextMode === "scheduling" || contextMode === "shotlist" || contextMode === "moodboard" || contextMode === "objects") && !showOpening))
+                              contextMode === "moodboard" ||
+                              ((contextMode === "scheduling" || contextMode === "shotlist" || contextMode === "objects") && !showOpening))
                              && contextId ? (
                                 <ScriptChat
                                     ref={chatRef}

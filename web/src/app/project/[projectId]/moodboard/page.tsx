@@ -307,6 +307,21 @@ function MoodBoardContent() {
       )?.label ?? null
     : null;
 
+  const currentImagePath = currentComposition?.composition_data
+    ? (() => {
+        try {
+          const data =
+            typeof currentComposition.composition_data === "string"
+              ? JSON.parse(currentComposition.composition_data)
+              : currentComposition.composition_data;
+          return (data?.snapshot_path || data?.images?.[0]?.src || null) as string | null;
+        } catch {
+          return null;
+        }
+      })()
+    : null;
+  const currentImageUrl = currentImagePath ? storageImageUrl(currentImagePath) : null;
+
   // Internal — triggered by the CoDesigner sidebar via the 'generateMoodboard' custom event.
   // Dispatches 'moodboardGenerated' when done so the sidebar can show progress feedback.
   const handleGenerateMoodboard = useCallback(async (passType: string = "sketch") => {
@@ -576,6 +591,16 @@ function MoodBoardContent() {
                           <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
                             {passLabel}
                           </span>
+                        )}
+                        {currentImageUrl && (
+                          <a
+                            href={currentImageUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+                          >
+                            Open full image ↗
+                          </a>
                         )}
                         <Button variant="outline" size="sm" onClick={handleNextCanvas} disabled={isNewCanvas || currentCanvasIndex >= compositions.length - 1}>
                           <ChevronRight className="h-4 w-4" />

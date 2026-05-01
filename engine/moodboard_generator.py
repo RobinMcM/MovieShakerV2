@@ -35,83 +35,32 @@ PASS_PROMPTS = {
     "sketch": {
         "label": "Pencil Sketch",
         "pass": 1,
-        "style": (
-            "Simple pencil sketch, "
-            "hand-drawn gestural lines, "
-            "black pencil on white paper background, "
-            "film production storyboard aesthetic, "
-            "rough sketch style, no colour, "
-            "no shading, minimal detail, "
-            "character silhouettes with initials "
-            "on face to identify each person, "
-            "blocking diagram feel"
-        ),
+        "style": "pencil sketch, black on white, minimal, storyboard",
     },
     "draft": {
         "label": "Ink Draft",
         "pass": 2,
-        "style": (
-            "Clean ink line drawing, "
-            "more defined than a sketch, "
-            "bold confident lines, "
-            "characters recognisable and detailed, "
-            "basic shadow hatching suggested, "
-            "black ink on white paper, "
-            "graphic novel panel aesthetic, "
-            "no colour"
-        ),
+        "style": "ink line drawing, black on white, bold lines, no colour",
     },
     "tonal": {
         "label": "Tonal Study",
         "pass": 3,
-        "style": (
-            "Greyscale tonal study, "
-            "light and shadow fully defined, "
-            "cinematic lighting direction clear, "
-            "characters have volume and form, "
-            "environment detailed and atmospheric, "
-            "no colour, rich greyscale values, "
-            "film noir aesthetic"
-        ),
+        "style": "greyscale, light and shadow, no colour, cinematic",
     },
     "colour": {
         "label": "Colour Study",
         "pass": 4,
-        "style": (
-            "Flat colour illustration, "
-            "bold colour palette, "
-            "cinematic colour grading, "
-            "mood and atmosphere through colour, "
-            "stylised not photorealistic, "
-            "concept art aesthetic, "
-            "characters and environment fully rendered in colour"
-        ),
+        "style": "flat colour, stylised, concept art",
     },
     "cinematic": {
         "label": "Cinematic",
         "pass": 5,
-        "style": (
-            "Photorealistic cinematic frame, "
-            "professional film lighting, "
-            "shallow depth of field, "
-            "35mm film grain, "
-            "colour graded, "
-            "high production value, "
-            "indistinguishable from a film still, "
-            "professional cinematography"
-        ),
+        "style": "photorealistic, cinematic lighting, film still",
     },
     "reference": {
         "label": "Reference Shot",
         "pass": 6,
-        "style": (
-            "Photorealistic film reference, "
-            "exact character likenesses, "
-            "approved costume and makeup, "
-            "production accurate locations, "
-            "final pre-visualisation quality, "
-            "ready for Visualize pipeline"
-        ),
+        "style": "photorealistic, production accurate, final quality",
     },
 }
 
@@ -208,15 +157,17 @@ def _build_fal_prompt(
     pass_type: str,
 ) -> str:
     style = PASS_PROMPTS.get(pass_type, PASS_PROMPTS["sketch"])["style"]
-    char_list = ", ".join(characters) if characters else "no characters"
-    prompt = (
-        f"{shot_type} shot. "
-        f"Location: {location_type}. {scene_location}. "
-        f"Characters: {char_list}. "
-        f"Camera: {camera_direction}. "
-        f"{style}"
-    )
-    return prompt
+    if camera_direction:
+        return f"{camera_direction}, {style}"
+    parts = []
+    if characters:
+        parts.append(", ".join(characters))
+    if scene_location:
+        parts.append(scene_location)
+    if shot_type:
+        parts.append(f"{shot_type} shot")
+    parts.append(style)
+    return ", ".join(parts)
 
 
 def _generate_shot_image(

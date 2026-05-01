@@ -136,6 +136,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
     const transformerRef = useRef<Konva.Transformer>(null);
 
     const [dimensions, setDimensions] = useState({ width: 800, height: 500 });
+    const [isMeasured, setIsMeasured] = useState(false);
     const [images, setImages] = useState<CanvasImage[]>([]);
     const [lines, setLines] = useState<CanvasLine[]>([]);
     const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -241,6 +242,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
     }));
 
     useEffect(() => {
+      if (!isMeasured) return;
       let cancelled = false;
       setSelectedId(null);
       if (initialData) {
@@ -326,7 +328,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
       return () => {
         cancelled = true;
       };
-    }, [tramLineId, initialData]);
+    }, [tramLineId, initialData, isMeasured]);
 
     const handleSave = async () => {
       if (!stageRef.current || !onSave) return;
@@ -372,6 +374,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasRef, DrawingCanvasProps>(
             height = width / (16 / 9);
           }
           setDimensions({ width, height });
+          setIsMeasured(true);
         }
       };
       updateSize();

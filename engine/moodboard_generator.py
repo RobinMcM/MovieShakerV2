@@ -117,6 +117,7 @@ def _aspect_to_dimensions(aspect_ratio: str) -> dict:
 
 class GenerateMoodboardRequest(BaseModel):
     pass_type: str = "sketch"
+    vision: Optional[str] = None
 
 
 def _gateway_client() -> GatewayClient:
@@ -155,8 +156,11 @@ def _build_fal_prompt(
     scene_location: str,
     location_type: str,
     pass_type: str,
+    vision: Optional[str] = None,
 ) -> str:
     style = PASS_PROMPTS.get(pass_type, PASS_PROMPTS["sketch"])["style"]
+    if vision:
+        return f"{vision}, {style}"
     if camera_direction:
         return f"{camera_direction}, {style}"
     parts = []
@@ -179,6 +183,7 @@ def _generate_shot_image(
     gateway: GatewayClient,
     pass_type: str = "sketch",
     aspect_ratio: str = "16:9",
+    vision: Optional[str] = None,
 ) -> Optional[bytes]:
     """
     Build a prompt from script data and generate an image via OpenRouter.
@@ -202,6 +207,7 @@ def _generate_shot_image(
         scene_location=scene.get("scene_location", ""),
         location_type=scene.get("location_type", ""),
         pass_type=pass_type,
+        vision=vision,
     )
 
     model_key = PASS_TO_MODEL.get(pass_type, "flux-2-klein")
@@ -247,6 +253,7 @@ def generate_scene_moodboard(
     pass_type = (request.pass_type if request else None) or "sketch"
     if pass_type not in PASS_PROMPTS:
         pass_type = "sketch"
+    vision: Optional[str] = ((request.vision or "").strip() or None) if request else None
 
     # Verify script + project membership
     try:
@@ -386,6 +393,7 @@ def generate_scene_moodboard(
             gateway=gateway,
             pass_type=pass_type,
             aspect_ratio=aspect_ratio,
+            vision=vision,
         )
 
         if not content:

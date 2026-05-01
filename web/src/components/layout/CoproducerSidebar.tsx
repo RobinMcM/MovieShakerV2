@@ -83,6 +83,8 @@ export function CoproducerSidebar({
     const [saving, setSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
 
+    const [visionPrompt, setVisionPrompt] = useState("");
+
     // Opening-message state — keyed by contextMode so switching pages resets it
     const [openingDismissed, setOpeningDismissed] = useState<Record<string, boolean>>({});
     const [generating, setGenerating] = useState(false);
@@ -344,12 +346,25 @@ export function CoproducerSidebar({
                             {/* Moodboard opening — CoDesigner: 2-column pass grid
                                 Clicking a chip dispatches 'generateMoodboard' to the page
                                 and dismisses the opening, transitioning to chat. */}
-                            {contextMode === "moodboard" && contextId && showOpening && activeAgent !== "CoDirector" && (
+                            {contextMode === "moodboard" && contextId && activeAgent !== "CoDirector" && (
                                 <div className="flex flex-col gap-3 p-5">
                                     <p className="text-sm text-foreground leading-relaxed">
                                         I&apos;m CoDesigner — ready to build your visual world.
                                         Select a scene and I&apos;ll generate the moodboard progression.
                                     </p>
+                                    <div className="flex flex-col gap-1.5">
+                                        <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Scene Vision</label>
+                                        <textarea
+                                            value={visionPrompt}
+                                            onChange={(e) => setVisionPrompt(e.target.value)}
+                                            placeholder="Describe the mood, lighting, atmosphere, colour palette, tone… This becomes the generation prompt."
+                                            rows={4}
+                                            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground resize-y focus:outline-none focus:ring-1 focus:ring-ring"
+                                        />
+                                        {visionPrompt.trim() && (
+                                            <p className="text-xs text-teal-400">Vision will be used as the generation prompt.</p>
+                                        )}
+                                    </div>
                                     <div className="grid grid-cols-2 gap-2">
                                         {MOODBOARD_PASS_OPTIONS.map((opt) => (
                                             <button
@@ -358,7 +373,7 @@ export function CoproducerSidebar({
                                                 onClick={() => {
                                                     window.dispatchEvent(
                                                         new CustomEvent("generateMoodboard", {
-                                                            detail: { passType: opt.value },
+                                                            detail: { passType: opt.value, vision: visionPrompt.trim() || undefined },
                                                         })
                                                     );
                                                     setOpeningDismissed((prev) => ({ ...prev, [contextMode]: true }));

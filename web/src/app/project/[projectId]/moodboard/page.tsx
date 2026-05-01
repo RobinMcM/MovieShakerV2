@@ -326,7 +326,7 @@ function MoodBoardContent() {
 
   // Internal — triggered by the CoDesigner sidebar via the 'generateMoodboard' custom event.
   // Dispatches 'moodboardGenerated' when done so the sidebar can show progress feedback.
-  const handleGenerateMoodboard = useCallback(async (passType: string = "sketch") => {
+  const handleGenerateMoodboard = useCallback(async (passType: string = "sketch", vision?: string) => {
     if (!selectedTramLine || !selectedTramLineId) return;
     const scriptId = selectedTramLine.scenes?.script_id;
     const sceneNumber = selectedTramLine.scenes?.scene_number;
@@ -334,7 +334,7 @@ function MoodBoardContent() {
     try {
       await api.post<{ shots_generated: number; shots_skipped: number }>(
         `scripts/${scriptId}/scenes/${sceneNumber}/generate-moodboard`,
-        { pass_type: passType },
+        { pass_type: passType, ...(vision ? { vision } : {}) },
         90_000,
       );
       await loadCompositions(selectedTramLineId);
@@ -353,8 +353,8 @@ function MoodBoardContent() {
   // Bridge: CoDesigner sidebar dispatches 'generateMoodboard' → this page runs generation
   useEffect(() => {
     const handler = (e: Event) => {
-      const { passType } = (e as CustomEvent).detail ?? {};
-      handleGenerateMoodboard(passType || "sketch");
+      const { passType, vision } = (e as CustomEvent).detail ?? {};
+      handleGenerateMoodboard(passType || "sketch", vision || undefined);
     };
     window.addEventListener("generateMoodboard", handler);
     return () => window.removeEventListener("generateMoodboard", handler);

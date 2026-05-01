@@ -154,6 +154,11 @@ export function useMoodBoard(projectId: string | null) {
     []
   );
 
+  const deleteComposition = useCallback(async (compositionId: string) => {
+    await api.delete<{ success: boolean }>(`api/moodboard/${compositionId}`);
+    setCompositions((prev) => prev.filter((c) => c.id !== compositionId));
+  }, []);
+
   const saveCanvas = useCallback(
     async (params: {
       tramLineId: string;
@@ -196,6 +201,7 @@ export function useMoodBoard(projectId: string | null) {
     uploadImage,
     saveComposition,
     saveCanvas,
+    deleteComposition,
     refetchTramLines: () => projectId && loadTramLines(projectId),
     refetchCharacters: () => projectId && loadCharacters(projectId),
   };

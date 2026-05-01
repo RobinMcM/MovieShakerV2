@@ -427,6 +427,39 @@ def create_history(
     }
 
 
+@router.delete("/{composition_id}")
+def delete_composition(
+    composition_id: str,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    try:
+        comp_uuid = uuid.UUID(composition_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid composition ID")
+    comp = db.get(MoodBoardComposition, comp_uuid)
+    if not comp or comp.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Composition not found")
+    _ensure_tramline_access(db, str(comp.tram_line_id), user_id)
+    snapshot_path: Optional[str] = None
+    if comp.composition_data:
+        try:
+            data = json.loads(comp.composition_data)
+            if isinstance(data, dict):
+                snapshot_path = str(data.get("snapshot_path") or "").strip() or None
+        except Exception:
+            pass
+    db.delete(comp)
+    db.commit()
+    if snapshot_path:
+        try:
+            delete_storage_file(snapshot_path)
+        except Exception:
+            pass
+    return {"success": True}
+
+
 @router.delete("/history/{history_id}")
 def delete_history(
     history_id: str,

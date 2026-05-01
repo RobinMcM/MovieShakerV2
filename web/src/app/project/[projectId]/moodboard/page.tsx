@@ -24,6 +24,7 @@ import {
   RefreshCw,
   Maximize,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import { StructuredScriptRenderer } from "@/components/StructuredScriptRenderer";
 import { ScriptTextRenderer } from "@/components/ScriptTextRenderer";
@@ -236,6 +237,7 @@ function MoodBoardContent() {
     compositionsLoading,
     loadCompositions,
     saveCanvas,
+    deleteComposition,
     refetchCharacters,
   } = useMoodBoard(projectId);
 
@@ -413,6 +415,18 @@ function MoodBoardContent() {
     setIsNewCanvas(true);
     setCurrentCanvasIndex(compositions.length);
   };
+
+  const handleDeleteComposition = useCallback(async () => {
+    if (!currentComposition) return;
+    const newLength = compositions.length - 1;
+    await deleteComposition(currentComposition.id);
+    if (newLength === 0) {
+      setIsNewCanvas(true);
+      setCurrentCanvasIndex(0);
+    } else {
+      setCurrentCanvasIndex((idx) => Math.min(idx, newLength - 1));
+    }
+  }, [currentComposition, deleteComposition, compositions.length]);
 
   const handleVisualize = async () => {
     if (!selectedTramLineId || !projectId) return;
@@ -607,6 +621,9 @@ function MoodBoardContent() {
                         </Button>
                         <Button variant="default" size="sm" onClick={handleNewCanvas} disabled={isNewCanvas}>
                           <Plus className="h-4 w-4" /> Add
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={handleDeleteComposition} disabled={isNewCanvas || !currentComposition} className="text-destructive hover:text-destructive hover:bg-destructive/10" title="Delete this composition">
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                         <div className="hidden sm:block w-px h-6 bg-border mx-1" />
                         <Button variant="default" size="sm" className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white border-0" onClick={handleVisualize} disabled={!selectedTramLineId}>

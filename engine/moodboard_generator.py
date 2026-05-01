@@ -184,6 +184,11 @@ def _generate_shot_image(
     Build a prompt from script data and generate an image via OpenRouter.
     Returns raw image bytes on success, None on any failure (caller skips the shot).
     """
+    logger.info(
+        "=== _generate_shot_image START === tram=%s pass=%s model=%s",
+        tram_line.id, pass_type, PASS_TO_MODEL.get(pass_type, "unknown"),
+    )
+
     char_names = [
         n.strip()
         for n in (tram_line.character_names or "").split(",")
@@ -208,13 +213,14 @@ def _generate_shot_image(
             aspect_ratio=aspect_ratio,
             dry_run=False,
         )
-        logger.info("Gateway result keys: %s", list(result.keys()))
-        logger.info("Gateway ok: %s", result.get("ok"))
-        logger.info("Gateway status_code in result: %s", result.get("status_code"))
-        logger.info("Gateway status in result: %s", result.get("status"))
+        logger.info(
+            "=== GATEWAY RETURNED === keys=%s ok=%s has_b64=%s b64_len=%d",
+            list(result.keys()),
+            result.get("ok"),
+            bool(result.get("image_b64")),
+            len(result.get("image_b64") or ""),
+        )
         image_b64 = result.get("image_b64") or ""
-        logger.info("image_b64 present: %s length: %d",
-                    bool(image_b64), len(image_b64))
         if not image_b64:
             logger.error("NO image_b64 in result. Full result: %s",
                          {k: v[:50] if isinstance(v, str) and len(v) > 50

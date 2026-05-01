@@ -208,15 +208,24 @@ def _generate_shot_image(
             aspect_ratio=aspect_ratio,
             dry_run=False,
         )
+        logger.info("Gateway result keys: %s", list(result.keys()))
+        logger.info("Gateway ok: %s", result.get("ok"))
+        logger.info("Gateway status_code in result: %s", result.get("status_code"))
+        logger.info("Gateway status in result: %s", result.get("status"))
         image_b64 = result.get("image_b64") or ""
+        logger.info("image_b64 present: %s length: %d",
+                    bool(image_b64), len(image_b64))
         if not image_b64:
+            logger.error("NO image_b64 in result. Full result: %s",
+                         {k: v[:50] if isinstance(v, str) and len(v) > 50
+                          else v for k, v in result.items()})
             return None
-        return base64.b64decode(image_b64)
+        img_bytes = base64.b64decode(image_b64)
+        logger.info("Decoded %d bytes successfully", len(img_bytes))
+        return img_bytes
     except Exception as exc:
-        logger.error(
-            "IMAGE GENERATION FAILED tram_line=%s model=%s prompt=%s error=%s",
-            tram_line.id, model_key, prompt[:100], exc, exc_info=True,
-        )
+        logger.error("EXCEPTION in _generate_shot_image: %s",
+                     exc, exc_info=True)
         return None
 
 

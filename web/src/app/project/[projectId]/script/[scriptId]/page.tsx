@@ -72,6 +72,7 @@ function ScriptManagementPage() {
     const [loadedScenes, setLoadedScenes] = useState<SceneRow[]>([]);
     const [loadedCharacters, setLoadedCharacters] = useState<string[]>([]);
     const [sceneCharacters, setSceneCharacters] = useState<Map<string, string[]>>(new Map());
+    const [scenesLoading, setScenesLoading] = useState(true);
     const [parsingScenes, setParsingScenes] = useState(false);
     const [unlockDialogOpen, setUnlockDialogOpen] = useState(false);
     const [unlockConfirmation, setUnlockConfirmation] = useState("");
@@ -93,6 +94,7 @@ function ScriptManagementPage() {
 
     const loadScenesAndCharacters = useCallback(async () => {
         if (!scriptId) return;
+        setScenesLoading(true);
         try {
             const [scenesRes, charactersRes, sceneCharsRes] = await Promise.all([
                 api.get<{ success: boolean; data: SceneRow[] }>(`/scripts/${scriptId}/scenes`),
@@ -118,6 +120,8 @@ function ScriptManagementPage() {
             setLoadedScenes([]);
             setLoadedCharacters([]);
             setSceneCharacters(new Map());
+        } finally {
+            setScenesLoading(false);
         }
     }, [scriptId]);
 
@@ -315,16 +319,22 @@ function ScriptManagementPage() {
                                         >
                                             <FileText className="h-3 w-3 inline mr-1" /> View Script (PDF)
                                         </button>
-                                        <button
-                                            type="button"
-                                            className="text-primary hover:underline"
-                                            onClick={() => {
-                                                const u = `${API_URL}/scripts/${scriptId}/file?variant=json`;
-                                                window.open(u, "_blank");
-                                            }}
-                                        >
-                                            <FileText className="h-3 w-3 inline mr-1" /> View Formatted Script
-                                        </button>
+                                        {!scenesLoading && (loadedScenes.length > 0 || loadedCharacters.length > 0) ? (
+                                            <button
+                                                type="button"
+                                                className="text-primary hover:underline"
+                                                onClick={() => {
+                                                    const u = `${API_URL}/scripts/${scriptId}/file?variant=json`;
+                                                    window.open(u, "_blank");
+                                                }}
+                                            >
+                                                <FileText className="h-3 w-3 inline mr-1" /> View Formatted Script
+                                            </button>
+                                        ) : !scenesLoading ? (
+                                            <span className="text-muted-foreground cursor-default" title="Parse the script to enable this">
+                                                <FileText className="h-3 w-3 inline mr-1" /> View Formatted Script (parse first)
+                                            </span>
+                                        ) : null}
                                     </div>
                                 </div>
                             </div>

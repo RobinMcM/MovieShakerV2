@@ -2,11 +2,14 @@
 Script file storage: local STORAGE_ROOT or DigitalOcean Spaces (when DO_* env vars are set).
 Path convention: {user_id}/{project_id}/{script_id}/script.pdf
 """
+import logging
 import mimetypes
 import os
 import shutil
 from pathlib import Path
 from typing import BinaryIO, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 STORAGE_ROOT = Path(os.getenv("STORAGE_ROOT", "./storage")).resolve()
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50MB
@@ -145,7 +148,8 @@ def get_script_file_stream(relative_path: str) -> Optional[Tuple[bytes, str]]:
         body = resp["Body"].read()
         content_type = _content_type_from_path(relative_path, resp.get("ContentType", ""))
         return (body, content_type)
-    except Exception:
+    except Exception as exc:
+        logger.error("get_script_file_stream failed for key %r: %s", relative_path, exc)
         return None
 
 

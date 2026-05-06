@@ -71,10 +71,16 @@ _CHAR_MAX_X = 390         # character name zone
 # ─── Compiled regexes ─────────────────────────────────────────────────────────
 
 _SCENE_HEADING_RE = re.compile(
-    r'^(INT\.|EXT\.|INT\./EXT\.|I/E|EST\.)\s', re.IGNORECASE
+    r'^(INT\.|EXT\.|INT\./EXT\.|EXT\./INT\.|I/E\.?)\s', re.IGNORECASE
 )
 _TRANSITION_SUFFIX_RE = re.compile(r'TO:\s*$')
 _TRANSITION_PREFIX_RE = re.compile(r'^(FADE\s+IN|FADE\s+OUT|FADE\s+TO)', re.IGNORECASE)
+_SHOT_KEYWORDS_RE = re.compile(
+    r'^(CLOSE\s+ON|ANGLE\s+ON|POV|INSERT|BACK\s+TO\s+SCENE|'
+    r'TWO\s+SHOT|WIDE\s+SHOT|ESTABLISHING|AERIAL\s+SHOT|'
+    r'INTERCUT\s+WITH)[\s:—]?',
+    re.IGNORECASE,
+)
 _PAGE_NUM_RE = re.compile(r'^\d{1,4}\.?$')
 _MORE_RE = re.compile(r"^\(MORE\)$", re.IGNORECASE)
 _CONTD_RE = re.compile(r"^(.+?)\s*\(CONT'D\)\s*$", re.IGNORECASE)
@@ -82,13 +88,13 @@ _INLINE_CONTD_RE = re.compile(r"^(.+?)\s*\(CONT'D\)\s+(.+)$", re.IGNORECASE)
 
 # Scene heading component parser:  "INT. CAFÉ - DAY" / "EXT. SPACE/ORBIT - NIGHT"
 _HEADING_RE = re.compile(
-    r'^(?:INT\.|EXT\.|INT\./EXT\.|I/E|EST\.)\s+'  # INT_EXT prefix
-    r'(.+?)'                                        # location (greedy, trimmed)
-    r'(?:\s*[-–—]\s*(.+?))?$',                     # optional " - TIME OF DAY"
+    r'^(?:INT\./EXT\.|EXT\./INT\.|INT\.|EXT\.|I/E\.?)\s+'  # INT_EXT prefix
+    r'(.+?)'                                                  # location (greedy, trimmed)
+    r'(?:\s*[-–—]\s*(.+?))?$',                               # optional " - TIME OF DAY"
     re.IGNORECASE,
 )
 _INT_EXT_PREFIX_RE = re.compile(
-    r'^(INT\./EXT\.|INT\.|EXT\.|I/E|EST\.)', re.IGNORECASE
+    r'^(INT\./EXT\.|EXT\./INT\.|INT\.|EXT\.|I/E\.?)', re.IGNORECASE
 )
 
 _TIME_OF_DAY_TOKENS = frozenset([
@@ -127,7 +133,9 @@ def _parse_scene_heading(text: str) -> dict:
     raw = (m_prefix.group(1) if m_prefix else "").upper().rstrip(".")
     if "INT" in raw and "EXT" in raw:
         int_ext = "INT/EXT"
-    elif "EXT" in raw or raw in ("I/E",):
+    elif raw.startswith("I/E"):
+        int_ext = "INT/EXT"
+    elif "EXT" in raw:
         int_ext = "EXT"
     elif "INT" in raw:
         int_ext = "INT"
@@ -206,8 +214,12 @@ def _classify(
     if _TRANSITION_SUFFIX_RE.search(t) or _TRANSITION_PREFIX_RE.match(t):
         return "transition"
 
-    # ── Parenthetical: starts and ends with () ──
-    if is_paren:
+    # ── Shot directions: ALL-CAPS camera directions in script text ──
+    if is_upper and _SHOT_KEYWORDS_RE.match(t):
+        return "shot"
+
+    # ── Parenthetical: starts and ends with () — only outside left margin ──
+    if is_paren and x0 >= _ACTION_MAX_X:
         return "parenthetical"
 
     # ── CONT'D character continuation ──
@@ -409,6 +421,7 @@ def parse_pdf(body: bytes, script_name: str = "") -> dict:
     last_page: int = -1
     prev_type: Optional[str] = None
     scene_num = 0
+    scene_element_idx = 0  # resets at each new scene_heading
 
     # Track y_bottom of first line per scene for eighths calculation
     scene_page_yb: list[tuple[int, float]] = []  # (page_num, y_bottom) per scene
@@ -447,7 +460,7 @@ def parse_pdf(body: bytes, script_name: str = "") -> dict:
             last_el is not None
             and last_page == page_num
             and last_el.get("type") == el_type
-            and el_type not in ("scene_heading", "parenthetical", "page_number",
+            and el_type not in ("scene_heading", "shot", "parenthetical", "page_number",
                                 "transition", "_more", "_empty")
             and (last_el.get("type") != "parenthetical")
             and abs(last_yb - yb) <= BLOCK_MERGE_Y_TOLERANCE
@@ -461,19 +474,27 @@ def parse_pdf(body: bytes, script_name: str = "") -> dict:
         # ── New element ──
         if el_type == "scene_heading":
             scene_num += 1
+            scene_element_idx = 0
             components = _parse_scene_heading(t)
             el: dict = {
                 "type": "scene_heading",
                 "text": t,
+                "element_id": f"s{scene_num}_h",
                 "scene_number": scene_num,
                 "page": page_num,
                 **components,
                 "eighths": 1,       # placeholder; filled in pass 2
                 "characters": [],   # filled in pass 2
+                "shots": [],        # filled by soft-lock endpoint
             }
             scene_page_yb.append((page_num, yb))
         else:
-            el = {"type": el_type, "text": t}
+            el = {
+                "type": el_type,
+                "text": t,
+                "element_id": f"s{scene_num}_{el_type[0]}{scene_element_idx}",
+            }
+            scene_element_idx += 1
             # Back-reference to scene for character/dialogue (useful for filtering)
             if el_type in ("character", "dialogue") and scene_num > 0:
                 el["scene_number"] = scene_num
@@ -617,16 +638,22 @@ def parse_json_v1(body: bytes) -> Optional[dict]:
             new_el: dict = {
                 "type": "scene_heading",
                 "text": el_text,
+                "element_id": el.get("element_id") or f"s{scene_num}_h",
                 "scene_number": el.get("scene_number", scene_num),
                 "page": el.get("page", scene_num),
                 **components,
                 "eighths": 1,
                 "characters": [],
+                "shots": el.get("shots") or [],
             }
             normalised.append(new_el)
             scene_el = new_el
         else:
-            new_el = {"type": el_type, "text": el_text}
+            new_el = {
+                "type": el_type,
+                "text": el_text,
+                "element_id": el.get("element_id") or f"s{scene_num}_{el_type[0]}{scene_element_count}",
+            }
             if el_type in ("character", "dialogue") and scene_num > 0:
                 new_el["scene_number"] = scene_num
             if el_type == "character":

@@ -153,6 +153,8 @@ class Script(SQLModel, table=True):
     file_path: str = Field()  # relative: {user_id}/{project_id}/{script_id}/script.pdf
     is_current: bool = Field(default=False)
     is_locked: bool = Field(default=False)
+    is_soft_locked: bool = Field(default=False)
+    soft_locked_at: Optional[datetime] = Field(default=None)
     page_count: Optional[int] = None
     uploaded_at: datetime = Field(default_factory=datetime.utcnow)
 

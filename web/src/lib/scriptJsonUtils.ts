@@ -2,6 +2,23 @@
  * Utility functions for manipulating script JSON with tramline metadata
  */
 
+export interface ShotEmbed {
+  id: string;
+  line_number: string;
+  shot_type: string | null;
+  camera_direction: string;
+  color: string;
+  characters: string[];
+  start_element_id: string;
+  end_element_id: string;
+  start_element_text: string;
+  end_element_text: string;
+  scene_mood: string;
+  scene_visual: string;
+  x_position: number;
+  embedded_at: string;
+}
+
 export interface ScriptElement {
   type:
     | "scene_heading"
@@ -15,6 +32,8 @@ export interface ScriptElement {
     | "page_number";
   text: string;
   element_id?: string;
+  /** Only present on scene_heading elements when the script is soft-locked */
+  shots?: ShotEmbed[];
 }
 
 /**

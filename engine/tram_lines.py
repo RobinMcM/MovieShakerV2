@@ -36,6 +36,19 @@ def _ensure_scene_access(db: Session, scene_id: str, user_id: str) -> Scene:
     return scene
 
 
+def _ensure_not_soft_locked(db: Session, scene_id: uuid.UUID) -> None:
+    """Raise 403 if the script owning this scene is soft-locked."""
+    scene = db.get(Scene, scene_id)
+    if scene is None:
+        return
+    script = db.get(Script, scene.script_id)
+    if script and getattr(script, "is_soft_locked", False):
+        raise HTTPException(
+            status_code=403,
+            detail="Script is soft-locked. Unlock it to modify or delete shots.",
+        )
+
+
 def _ensure_tramline_access(db: Session, tramline_id: str, user_id: str) -> TramLine:
     line = db.get(TramLine, uuid.UUID(tramline_id))
     if not line:
@@ -131,6 +144,7 @@ def create_tram_line(
 ):
     user_id = session.get_user_id()
     _ensure_scene_access(db, body.scene_id, user_id)
+    _ensure_not_soft_locked(db, uuid.UUID(body.scene_id))
     line = TramLine(
         scene_id=uuid.UUID(body.scene_id),
         user_id=user_id,
@@ -177,6 +191,7 @@ def delete_tram_line(
 ):
     user_id = session.get_user_id()
     line = _ensure_tramline_access(db, tramline_id, user_id)
+    _ensure_not_soft_locked(db, line.scene_id)
     db.delete(line)
     db.commit()
     return {"success": True, "message": "Tram line deleted"}

@@ -32,6 +32,8 @@ import {
   Palette,
   Eye,
   Bot,
+  Lock,
+  LockOpen,
 } from "lucide-react";
 import { useShotList } from "./useShotList";
 import {
@@ -65,6 +67,7 @@ function ShotListContent() {
     project,
     scenesData,
     scriptId,
+    currentScriptData,
     selectedSceneId,
     sceneContent,
     isLoadingContent,
@@ -82,6 +85,7 @@ function ShotListContent() {
     deleteTramLine,
     syncTramLineFromDOM,
     loadTramLines,
+    loadScenesAndCharacters,
   } = useShotList(projectId);
 
   const [isDrawingMode, setIsDrawingMode] = useState(false);
@@ -104,6 +108,60 @@ function ShotListContent() {
     placed: number;
     skipped: number;
   } | null>(null);
+  const [isSoftLocked, setIsSoftLocked] = useState(false);
+  const [softLocking, setSoftLocking] = useState(false);
+
+  // Sync soft-lock state from the loaded script
+  useEffect(() => {
+    setIsSoftLocked(currentScriptData?.is_soft_locked ?? false);
+  }, [currentScriptData]);
+
+  async function handleSoftLock() {
+    if (!scriptId) return;
+    setSoftLocking(true);
+    try {
+      const res = await api.post<{ success: boolean; message: string }>(
+        `scripts/${scriptId}/soft-lock`,
+        {}
+      );
+      if (res.success) {
+        setIsSoftLocked(true);
+        setToastMessage({ title: "Soft Lock applied", description: res.message });
+      }
+    } catch (err) {
+      setToastMessage({
+        title: "Soft Lock failed",
+        description: err instanceof Error ? err.message : "Could not soft-lock the script.",
+        variant: "destructive",
+      });
+    } finally {
+      setSoftLocking(false);
+    }
+  }
+
+  async function handleSoftUnlock() {
+    if (!scriptId) return;
+    setSoftLocking(true);
+    try {
+      const res = await api.post<{ success: boolean; message: string }>(
+        `scripts/${scriptId}/soft-unlock`,
+        {}
+      );
+      if (res.success) {
+        setIsSoftLocked(false);
+        setToastMessage({ title: "Soft Lock removed", description: res.message });
+        await loadScenesAndCharacters();
+      }
+    } catch (err) {
+      setToastMessage({
+        title: "Unlock failed",
+        description: err instanceof Error ? err.message : "Could not unlock the script.",
+        variant: "destructive",
+      });
+    } finally {
+      setSoftLocking(false);
+    }
+  }
   const scriptContainerRef = useRef<HTMLDivElement>(null);
 
   const usedColors = useMemo(
@@ -537,6 +595,7 @@ function ShotListContent() {
                               <Button
                                 variant={isDrawingMode ? "default" : "outline"}
                                 size="sm"
+                                disabled={isSoftLocked}
                                 onClick={() => {
                                   setIsDrawingMode(!isDrawingMode);
                                   if (isDrawingMode) setSelectedLineId(null);
@@ -557,7 +616,7 @@ function ShotListContent() {
                               )}
                               <button
                                 onClick={handleSuggestShots}
-                                disabled={suggesting || !currentScene}
+                                disabled={suggesting || !currentScene || isSoftLocked}
                                 className={`
                                   flex items-center gap-2 px-3 py-2 rounded-md
                                   text-sm font-medium transition-colors
@@ -579,7 +638,7 @@ function ShotListContent() {
                                   </>
                                 )}
                               </button>
-                              {tramLines.length > 0 && (
+                              {tramLines.length > 0 && !isSoftLocked && (
                                 <button
                                   onClick={handleClearShots}
                                   disabled={suggesting}
@@ -593,6 +652,47 @@ function ShotListContent() {
                                   <Trash2 className="h-4 w-4" />
                                   Clear shots
                                 </button>
+                              )}
+                              {isSoftLocked ? (
+                                <button
+                                  onClick={handleSoftUnlock}
+                                  disabled={softLocking}
+                                  className={`
+                                    flex items-center gap-2 px-3 py-2 rounded-md
+                                    text-sm font-medium transition-colors
+                                    bg-amber-600 text-white hover:bg-amber-700
+                                    disabled:opacity-50 disabled:cursor-not-allowed
+                                  `}
+                                  title="Remove Soft Lock — allows re-parse and shot editing"
+                                >
+                                  {softLocking ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <LockOpen className="h-4 w-4" />
+                                  )}
+                                  Soft Locked
+                                </button>
+                              ) : (
+                                scenesData.length > 0 && (
+                                  <button
+                                    onClick={handleSoftLock}
+                                    disabled={softLocking || suggesting}
+                                    className={`
+                                      flex items-center gap-2 px-3 py-2 rounded-md
+                                      text-sm font-medium transition-colors
+                                      bg-slate-700 text-white hover:bg-slate-800
+                                      disabled:opacity-50 disabled:cursor-not-allowed
+                                    `}
+                                    title="Embed all shots into script.json — Soft Lock for post-production"
+                                  >
+                                    {softLocking ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Lock className="h-4 w-4" />
+                                    )}
+                                    Soft Lock
+                                  </button>
+                                )
                               )}
                               {suggestResult && (
                                 <span className="text-xs text-muted-foreground">

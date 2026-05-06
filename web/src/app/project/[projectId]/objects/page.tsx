@@ -86,10 +86,8 @@ const PERSON_OBJECT_TYPES_SET = new Set([
 
 const ARTIFACT_OBJECT_TYPES_SET = new Set(["prop", "vehicle", "set_piece", "artifact"]);
 
-const PERSON_COL_PREFIXES = ["face", "short", "full"] as const;
-const PERSON_COL_LABELS = ["FACE", "SHORT", "FULL"];
-const VIEW_ROW_SUFFIXES = ["front", "side", "back"] as const;
-const VIEW_ROW_LABELS = ["FRONT", "SIDE", "BACK"];
+const SIMPLE_PERSON_VIEW_KEYS = ["full_front", "full_side", "full_back"] as const;
+const SIMPLE_PERSON_VIEW_LABELS = ["FRONT", "SIDE", "BACK"];
 const SCENE_VIEW_KEYS = ["front", "side", "back"] as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -124,6 +122,32 @@ function parseObjectViews(raw: unknown): Record<string, ObjectViewData> {
     try { return JSON.parse(raw); } catch { return {}; }
   }
   return {};
+}
+
+// ─── Canvas crop helper ───────────────────────────────────────────────────────
+
+async function cropFile(file: File, heightFraction: number, name: string): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const cropHeight = Math.round(img.naturalHeight * heightFraction);
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth;
+      canvas.height = cropHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { URL.revokeObjectURL(url); reject(new Error("Canvas not supported")); return; }
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+      const mimeType = (file.type === "image/png" || file.type === "image/webp") ? file.type : "image/jpeg";
+      canvas.toBlob((blob) => {
+        if (!blob) { reject(new Error("Failed to crop image")); return; }
+        resolve(new File([blob], name, { type: mimeType }));
+      }, mimeType);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Failed to load image")); };
+    img.src = url;
+  });
 }
 
 // ─── ViewCell ─────────────────────────────────────────────────────────────────
@@ -215,9 +239,9 @@ function ViewCell({
   );
 }
 
-// ─── PersonViewsGrid (3×3) ────────────────────────────────────────────────────
+// ─── SimplePersonViewsGrid (3 cells: front / side / back) ────────────────────
 
-function PersonViewsGrid({
+function SimplePersonViewsGrid({
   object,
   onUpload,
 }: {
@@ -227,36 +251,20 @@ function PersonViewsGrid({
   const views = parseObjectViews(object.object_views);
 
   return (
-    <div className="space-y-1">
-      {/* Column header row */}
-      <div className="grid grid-cols-4 gap-1">
-        <div />
-        {PERSON_COL_LABELS.map((col) => (
-          <div key={col} className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground text-center">
-            {col}
+    <div className="grid grid-cols-3 gap-1">
+      {SIMPLE_PERSON_VIEW_KEYS.map((viewKey, idx) => (
+        <div key={viewKey} className="space-y-0.5">
+          <div className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground text-center">
+            {SIMPLE_PERSON_VIEW_LABELS[idx]}
           </div>
-        ))}
-      </div>
-      {/* Data rows */}
-      {VIEW_ROW_SUFFIXES.map((suffix, rowIdx) => (
-        <div key={suffix} className="grid grid-cols-4 gap-1 items-center">
-          <div className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground text-right pr-1">
-            {VIEW_ROW_LABELS[rowIdx]}
-          </div>
-          {PERSON_COL_PREFIXES.map((prefix) => {
-            const viewKey = `${prefix}_${suffix}`;
-            return (
-              <ViewCell
-                key={viewKey}
-                viewKey={viewKey}
-                viewData={views[viewKey]}
-                characterId={object.id}
-                characterName={object.name}
-                primaryImageUrl={object.character_image_url}
-                onUpload={onUpload}
-              />
-            );
-          })}
+          <ViewCell
+            viewKey={viewKey}
+            viewData={views[viewKey]}
+            characterId={object.id}
+            characterName={object.name}
+            primaryImageUrl={object.character_image_url}
+            onUpload={onUpload}
+          />
         </div>
       ))}
     </div>
@@ -368,10 +376,10 @@ function ObjectCard({
       new CustomEvent("coproducerSendMessage", {
         detail: {
           message:
-            `Generate all 9 character views for ${object.name}. ` +
+            `Generate 3 full-body character views for ${object.name}. ` +
             `Reference image: ${object.character_image_url ?? "none"}. ` +
-            `Views needed: face_front, face_side, face_back, short_front, short_side, ` +
-            `short_back, full_front, full_side, full_back.`,
+            `Views needed: full_front (full body facing camera), ` +
+            `full_side (full body profile), full_back (full body from behind).`,
         },
       })
     );
@@ -380,6 +388,14 @@ function ObjectCard({
   const handleUploadView = async (viewKey: string, file: File) => {
     try {
       await onUploadView(object.id, viewKey, file);
+      // Auto-derive face + short crops from full-body uploads
+      if (viewKey === "full_front" || viewKey === "full_side" || viewKey === "full_back") {
+        const angle = viewKey.split("_")[1];
+        Promise.all([
+          cropFile(file, 0.25, `face_${angle}.jpg`).then((f) => onUploadView(object.id, `face_${angle}`, f)),
+          cropFile(file, 0.55, `short_${angle}.jpg`).then((f) => onUploadView(object.id, `short_${angle}`, f)),
+        ]).catch(() => {});
+      }
       setToastMessage({ title: "View uploaded" });
     } catch (e) {
       setToastMessage({
@@ -452,7 +468,7 @@ function ObjectCard({
       <CardContent className="flex-1 flex flex-col gap-3">
         {/* Views grid — layout determined by object_type */}
         {isPerson && (
-          <PersonViewsGrid object={object} onUpload={handleUploadView} />
+          <SimplePersonViewsGrid object={object} onUpload={handleUploadView} />
         )}
         {isSceneObj && (
           <SceneViewsGrid object={object} onUpload={handleUploadView} />

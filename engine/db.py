@@ -407,6 +407,40 @@ def _create_script_messages_table():
                 logger.warning("Migration script_messages: %s", e)
 
 
+def _create_page_chat_tables():
+    """Create page_chat_sessions and page_chat_messages tables for per-page chat history."""
+    with engine.connect() as conn:
+        with conn.begin():
+            try:
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS page_chat_sessions (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        project_id UUID NOT NULL,
+                        page_type VARCHAR(50) NOT NULL,
+                        user_id TEXT NOT NULL,
+                        created_at TIMESTAMPTZ DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ DEFAULT NOW()
+                    );
+
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_page_chat_sessions_unique
+                    ON page_chat_sessions(project_id, page_type, user_id);
+
+                    CREATE TABLE IF NOT EXISTS page_chat_messages (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        session_id UUID NOT NULL,
+                        role VARCHAR(20) NOT NULL CHECK (role IN ('user', 'assistant')),
+                        content TEXT NOT NULL,
+                        model_used VARCHAR(100),
+                        created_at TIMESTAMPTZ DEFAULT NOW()
+                    );
+
+                    CREATE INDEX IF NOT EXISTS idx_page_chat_messages_session
+                    ON page_chat_messages(session_id);
+                """))
+            except Exception as e:
+                logger.warning("Migration page_chat_tables: %s", e)
+
+
 def _drop_all_foreign_key_constraints():
     """Drop all FK constraints individually so each is independent."""
     constraints = [
@@ -494,6 +528,7 @@ def init_db():
     _create_script_messages_table()
     _create_script_analysis_table()
     _create_production_decisions_table()
+    _create_page_chat_tables()
     _migrate_scenes_characters_column()
     _migrate_scenes_unique_constraint()
 

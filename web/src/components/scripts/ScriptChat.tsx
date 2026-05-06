@@ -22,7 +22,8 @@ export interface ScriptChatHandle {
 }
 
 export interface ScriptChatProps {
-    scriptId: string;
+    scriptId?: string;
+    projectId?: string;
     initialChatId?: string;
     onAfterResponse?: () => void;
     ref?: Ref<ScriptChatHandle>;
@@ -45,6 +46,23 @@ interface MessagesApiResponse {
         role: string;
         content: string;
         scene_refs: number[];
+        model_used?: string | null;
+        created_at?: string | null;
+    }>;
+}
+
+interface PageChatApiResponse {
+    reply: string;
+    session_id: string;
+    model_used: string;
+    agent?: string;
+}
+
+interface PageSessionApiResponse {
+    session_id: string | null;
+    messages: Array<{
+        role: string;
+        content: string;
         model_used?: string | null;
         created_at?: string | null;
     }>;
@@ -142,12 +160,16 @@ function MessageBubble({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function ScriptChat({ scriptId, initialChatId, onAfterResponse, ref, embedded: _embedded, contextMode, activeAgent }: ScriptChatProps) {
+export function ScriptChat({ scriptId, projectId, initialChatId, onAfterResponse, ref, embedded: _embedded, contextMode, activeAgent }: ScriptChatProps) {
     const router = useRouter();
     const pathname = usePathname();
 
+    // Page-level mode: projectId provided, no scriptId for API calls
+    const isPageMode = !!projectId && !scriptId;
+
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [chatId, setChatId] = useState<string | null>(initialChatId ?? null);
+    const [sessionId, setSessionId] = useState<string | null>(null);
     const [inputValue, setInputValue] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -155,7 +177,7 @@ export function ScriptChat({ scriptId, initialChatId, onAfterResponse, ref, embe
     const bottomRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-    // Silently trigger analysis if none exists yet — fire and forget, no UI state
+    // Script mode: silently trigger analysis if none exists yet
     useEffect(() => {
         if (!scriptId) return;
         (async () => {
@@ -170,14 +192,14 @@ export function ScriptChat({ scriptId, initialChatId, onAfterResponse, ref, embe
                     }).catch(() => {});
                 }
             } catch {
-                // Network error — ignore silently
+                // ignore
             }
         })();
     }, [scriptId]);
 
-    // Load history when chat_id is available
+    // Script mode: load history when chat_id is available
     useEffect(() => {
-        if (!chatId) return;
+        if (isPageMode || !chatId || !scriptId) return;
         let cancelled = false;
         (async () => {
             try {
@@ -196,19 +218,50 @@ export function ScriptChat({ scriptId, initialChatId, onAfterResponse, ref, embe
                     }))
                 );
             } catch {
-                // Fresh start — ignore 404 or network errors
+                // Fresh start
             }
         })();
-        return () => {
-            cancelled = true;
-        };
-    }, [scriptId, chatId]);
+        return () => { cancelled = true; };
+    }, [scriptId, chatId, isPageMode]);
 
-    // Persist chat_id in URL without triggering navigation
+    // Page mode: load existing session + history on mount (resets when page type changes)
     useEffect(() => {
-        if (!chatId) return;
+        if (!isPageMode || !projectId) return;
+        let cancelled = false;
+        setMessages([]);
+        setSessionId(null);
+        (async () => {
+            try {
+                const pageType = contextMode || "general";
+                const res = await api.get<PageSessionApiResponse>(
+                    `/projects/${projectId}/chat/session?page_type=${encodeURIComponent(pageType)}`
+                );
+                if (cancelled) return;
+                if (res.session_id) {
+                    setSessionId(res.session_id);
+                    setMessages(
+                        res.messages.map((m) => ({
+                            id: newId(),
+                            role: m.role as "user" | "assistant",
+                            content: m.content,
+                            scene_refs: [],
+                            model_used: m.model_used ?? undefined,
+                            timestamp: m.created_at ? new Date(m.created_at) : new Date(),
+                        }))
+                    );
+                }
+            } catch {
+                // Fresh start
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [projectId, contextMode, isPageMode]);
+
+    // Script mode: persist chat_id in URL without triggering navigation
+    useEffect(() => {
+        if (isPageMode || !chatId) return;
         router.replace(`${pathname}?chat_id=${encodeURIComponent(chatId)}`, { scroll: false });
-    }, [chatId, pathname, router]);
+    }, [chatId, pathname, router, isPageMode]);
 
     // Auto-scroll to bottom on new messages
     useEffect(() => {
@@ -225,45 +278,73 @@ export function ScriptChat({ scriptId, initialChatId, onAfterResponse, ref, embe
             textareaRef.current?.focus();
 
             const optimisticId = newId();
-            const optimisticMsg: ChatMessage = {
+            setMessages((prev) => [...prev, {
                 id: optimisticId,
                 role: "user",
                 content: trimmed,
                 scene_refs: [],
                 timestamp: new Date(),
-            };
-            setMessages((prev) => [...prev, optimisticMsg]);
+            }]);
             setIsLoading(true);
 
             try {
-                const res = await api.post<ChatApiResponse>(
-                    `/scripts/${scriptId}/chat`,
-                    { message: trimmed, chat_id: chatId, context_mode: contextMode ?? "scripts", page_path: window.location.pathname, active_agent: activeAgent ?? "CoProducer" },
-                    90_000
-                );
-
-                if (!chatId) setChatId(res.chat_id);
-
-                setMessages((prev) => [
-                    ...prev,
-                    {
+                if (isPageMode && projectId) {
+                    const res = await api.post<PageChatApiResponse>(
+                        `/projects/${projectId}/chat`,
+                        {
+                            message: trimmed,
+                            session_id: sessionId,
+                            page_type: contextMode || "general",
+                            active_agent: activeAgent ?? "CoProducer",
+                            context_mode: contextMode || "general",
+                        },
+                        90_000
+                    );
+                    if (!sessionId) setSessionId(res.session_id);
+                    setMessages((prev) => [...prev, {
+                        id: newId(),
+                        role: "assistant",
+                        content: res.reply,
+                        scene_refs: [],
+                        model_used: res.model_used,
+                        timestamp: new Date(),
+                    }]);
+                } else if (scriptId) {
+                    const res = await api.post<ChatApiResponse>(
+                        `/scripts/${scriptId}/chat`,
+                        {
+                            message: trimmed,
+                            chat_id: chatId,
+                            context_mode: contextMode ?? "scripts",
+                            page_path: window.location.pathname,
+                            active_agent: activeAgent ?? "CoProducer",
+                        },
+                        90_000
+                    );
+                    if (!chatId) setChatId(res.chat_id);
+                    setMessages((prev) => [...prev, {
                         id: newId(),
                         role: "assistant",
                         content: res.reply,
                         scene_refs: res.scene_refs ?? [],
                         model_used: res.model_used,
                         timestamp: new Date(),
-                    },
-                ]);
+                    }]);
+                }
                 onAfterResponse?.();
             } catch (e) {
                 setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
-                setError(e instanceof Error ? e.message : "Failed to send message.");
+                const msg = e instanceof Error ? e.message : "Failed to send message.";
+                if (msg.includes("Insufficient credits") || msg.includes("status 402")) {
+                    router.push("/credits?reason=chat");
+                    return;
+                }
+                setError(msg);
             } finally {
                 setIsLoading(false);
             }
         },
-        [scriptId, chatId, isLoading, onAfterResponse]
+        [scriptId, projectId, chatId, sessionId, isLoading, isPageMode, contextMode, activeAgent, onAfterResponse, router]
     );
 
     useImperativeHandle(ref, () => ({ sendMessage }), [sendMessage]);

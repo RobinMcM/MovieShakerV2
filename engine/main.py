@@ -45,6 +45,7 @@ from film_in_a_box import router as film_in_a_box_router
 from ai_assistant import router as ai_assistant_router
 from moodboard_generator import router as moodboard_generator_router
 from backgrounds import router as backgrounds_router
+from page_chat import router as page_chat_router
 
 settings = load_settings()
 
@@ -393,6 +394,7 @@ app.include_router(film_in_a_box_router)
 app.include_router(ai_assistant_router)
 app.include_router(moodboard_generator_router)
 app.include_router(backgrounds_router)
+app.include_router(page_chat_router)
 
 # --- Routes ---
 @app.get("/")

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Loader2, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { ChevronDown, ChevronUp, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { ScriptChat, type ScriptChatHandle } from "@/components/scripts/ScriptChat";
 import { api } from "@/lib/api";
 
@@ -23,33 +23,21 @@ const AGENT_CONFIG: Record<string, { icon: string; description: string }> = {
 };
 
 const CONTEXT_LABELS: Record<string, string> = {
-    scripts: "Scripts",
-    budgets: "Budgets",
-    schedule: "Schedule",
+    scripts:    "Scripts",
+    budgets:    "Budgets",
+    schedule:   "Schedule",
     scheduling: "Scheduling",
-    shotlist: "Shot List",
-    moodboard: "Moodboard",
-    objects: "Objects",
-    general: "General",
+    shotlist:   "Shot List",
+    moodboard:  "Moodboard",
+    objects:    "Objects",
+    general:    "General",
 };
-
-// Moodboard generation passes — dispatched to the page via 'generateMoodboard' custom event.
-// The page holds the generation logic; the sidebar is the trigger surface only.
-const MOODBOARD_PASS_OPTIONS = [
-    { value: "sketch",    label: "✏️ Pencil Sketch",  description: "Start here" },
-    { value: "draft",     label: "🖊️ Ink Draft",       description: "Refine lines" },
-    { value: "tonal",     label: "◑ Tonal Study",      description: "Add light/shadow" },
-    { value: "colour",    label: "🎨 Colour Study",     description: "Establish palette" },
-    { value: "cinematic", label: "🎬 Cinematic",        description: "Final quality" },
-    { value: "reference", label: "📷 Reference Shot",   description: "Visualize ready" },
-];
 
 interface PromptOverrideResponse {
     prompt_override?: string | null;
     prompt_override_mode: string;
 }
 
-// Responds to window.matchMedia — initialises to false (safe for SSR)
 function useMediaQuery(query: string): boolean {
     const [matches, setMatches] = useState(false);
     useEffect(() => {
@@ -72,9 +60,6 @@ export function CoproducerSidebar({
 }: CoproducerSidebarProps) {
     const contextLabel = CONTEXT_LABELS[contextMode] ?? "General";
     const agentConfig = AGENT_CONFIG[activeAgent] ?? AGENT_CONFIG.CoProducer;
-
-    // Desktop: sidebar always visible when coproducerActive, collapses to icon strip.
-    // Mobile: overlay behaviour unchanged — isOpen controls translate-x.
     const isMobile = useMediaQuery("(max-width: 767px)");
 
     const [settingsOpen, setSettingsOpen] = useState(false);
@@ -83,102 +68,17 @@ export function CoproducerSidebar({
     const [saving, setSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
 
-    const [visionPrompt, setVisionPrompt] = useState("");
-
-    // Opening-message state — keyed by contextMode so switching pages resets it
-    const [openingDismissed, setOpeningDismissed] = useState<Record<string, boolean>>({});
-    const [generating, setGenerating] = useState(false);
-    const [generatingLabel, setGeneratingLabel] = useState("");
-    const [generateDoneLabel, setGenerateDoneLabel] = useState<string | null>(null);
-    const [generateError, setGenerateError] = useState<string | null>(null);
     const chatRef = useRef<ScriptChatHandle>(null);
-    const [pendingMessage, setPendingMessage] = useState<string | null>(null);
 
-    const showOpening = (
-        contextMode === "scheduling" ||
-        contextMode === "shotlist" ||
-        contextMode === "moodboard" ||
-        contextMode === "objects"
-    ) && !!contextId && !openingDismissed[contextMode];
-
-    // Send pendingMessage once opening is dismissed and chat ref is ready
-    useEffect(() => {
-        if (!pendingMessage || showOpening) return;
-        const t = setTimeout(() => {
-            chatRef.current?.sendMessage(pendingMessage);
-            setPendingMessage(null);
-        }, 150);
-        return () => clearTimeout(t);
-    }, [pendingMessage, showOpening]);
-
-    // Bridge: listen for moodboard generation events dispatched by the page.
-    // 'generateMoodboard' → show progress. 'moodboardGenerated' → show result.
-    useEffect(() => {
-        const startHandler = (e: Event) => {
-            const { passType } = (e as CustomEvent).detail ?? {};
-            const opt = MOODBOARD_PASS_OPTIONS.find((o) => o.value === passType);
-            setGenerating(true);
-            setGeneratingLabel(opt?.label ?? "Moodboard");
-            setGenerateDoneLabel(null);
-            setGenerateError(null);
-        };
-        const doneHandler = (e: Event) => {
-            const { passType, error } = (e as CustomEvent).detail ?? {};
-            const opt = MOODBOARD_PASS_OPTIONS.find((o) => o.value === passType);
-            setGenerating(false);
-            setGeneratingLabel("");
-            if (error) {
-                setGenerateError("Generation failed — please try again.");
-                setTimeout(() => setGenerateError(null), 5000);
-            } else {
-                setGenerateDoneLabel(opt?.label ? `${opt.label} complete ✓` : "Complete ✓");
-                setTimeout(() => setGenerateDoneLabel(null), 3000);
-            }
-        };
-        window.addEventListener("generateMoodboard", startHandler);
-        window.addEventListener("moodboardGenerated", doneHandler);
-        return () => {
-            window.removeEventListener("generateMoodboard", startHandler);
-            window.removeEventListener("moodboardGenerated", doneHandler);
-        };
-    }, []);
-
-    async function handleGenerate() {
-        if (!contextId) return;
-        setGenerating(true);
-        setGenerateError(null);
-        try {
-            await api.post(`/scripts/${contextId}/schedule/generate`, {}, 120_000);
-            window.dispatchEvent(new Event("scheduleGenerated"));
-            setOpeningDismissed((prev) => ({ ...prev, [contextMode]: true }));
-        } catch {
-            setGenerateError("Generate failed — please try again.");
-        } finally {
-            setGenerating(false);
-        }
-    }
-
-    function handleShowBreakdown() {
-        setOpeningDismissed((prev) => ({ ...prev, [contextMode]: true }));
-        setPendingMessage(
-            "Give me a breakdown of the shoot schedule by location with cast requirements and eighths per group"
-        );
-    }
-
-    function handleShotlistBreakdown() {
-        setOpeningDismissed((prev) => ({ ...prev, [contextMode]: true }));
-    }
-
+    // Pages dispatch this event to send a preset message into the chat
     useEffect(() => {
         const handler = (e: Event) => {
             const msg = (e as CustomEvent<{ message: string }>).detail?.message;
-            if (!msg) return;
-            setOpeningDismissed((prev) => ({ ...prev, [contextMode]: true }));
-            setPendingMessage(msg);
+            if (msg) chatRef.current?.sendMessage(msg);
         };
         window.addEventListener("coproducerSendMessage", handler);
         return () => window.removeEventListener("coproducerSendMessage", handler);
-    }, [contextMode]);
+    }, []);
 
     useEffect(() => {
         api.get<PromptOverrideResponse>("/profile/prompt-override")
@@ -207,23 +107,12 @@ export function CoproducerSidebar({
         }
     }
 
-    // Sidebar geometry:
-    //   Mobile  — full-width overlay; translate in/out based on isOpen
-    //   Desktop — fixed strip; always visible when coproducerActive
-    //             isOpen=true → w-[420px], isOpen=false → w-12 (icon strip)
-    const widthClass = isMobile
-        ? "w-full"
-        : isOpen
-            ? "w-[420px]"
-            : "w-12";
-
+    const widthClass = isMobile ? "w-full" : isOpen ? "w-[420px]" : "w-12";
     const transformClass = isMobile
         ? (isOpen ? "translate-x-0" : "translate-x-full")
         : coproducerActive
             ? "translate-x-0"
             : "translate-x-full";
-
-    // Desktop collapsed: show only the agent icon
     const isCollapsedDesktop = !isMobile && !isOpen && coproducerActive;
 
     return (
@@ -237,9 +126,7 @@ export function CoproducerSidebar({
                 />
             )}
 
-            {/* Toggle tab — desktop only, hugs the left edge of the sidebar.
-                On desktop: always rendered when coproducerActive; toggles expand/collapse.
-                right-[420px] when expanded, right-12 when collapsed to icon strip. */}
+            {/* Expand/collapse toggle tab — desktop only */}
             {coproducerActive && (
                 <button
                     type="button"
@@ -276,7 +163,7 @@ export function CoproducerSidebar({
                     </div>
                 ) : (
                     <>
-                        {/* Header */}
+                        {/* Header: agent tag + page type */}
                         <div className="flex items-center px-4 py-3 border-b shrink-0">
                             <span className="mr-2 text-base leading-none">{agentConfig.icon}</span>
                             <div className="flex flex-col min-w-0">
@@ -288,247 +175,34 @@ export function CoproducerSidebar({
                             </span>
                         </div>
 
-                        {/* Content */}
+                        {/* Chat — full height, always shown when contextId is available */}
                         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-
-                            {/* Scheduling opening */}
-                            {contextMode === "scheduling" && contextId && showOpening && (
-                                <div className="flex flex-col gap-4 p-5">
-                                    <p className="text-sm text-foreground leading-relaxed">
-                                        I&apos;m {activeAgent}, your production scheduler. I&apos;ve read
-                                        the script and I&apos;m ready to build your shoot schedule.
-                                        Want me to generate it now?
-                                    </p>
-                                    {generateError && (
-                                        <p className="text-xs text-destructive">{generateError}</p>
-                                    )}
-                                    <div className="flex gap-2 flex-wrap">
-                                        <button
-                                            type="button"
-                                            onClick={handleGenerate}
-                                            disabled={generating}
-                                            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
-                                        >
-                                            {generating && <Loader2 className="h-3 w-3 animate-spin" />}
-                                            Generate schedule
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={handleShowBreakdown}
-                                            className="text-xs px-3 py-1.5 rounded-md border border-border bg-background hover:bg-accent transition-colors"
-                                        >
-                                            Show me the breakdown
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Shotlist opening */}
-                            {contextMode === "shotlist" && contextId && showOpening && (
-                                <div className="flex flex-col gap-4 p-5">
-                                    <p className="text-sm text-foreground leading-relaxed">
-                                        I&apos;m {activeAgent}, your shot designer. Select a scene
-                                        and I&apos;ll suggest camera setups and tram line placements
-                                        based on the dialogue and action.
-                                    </p>
-                                    <div className="flex gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={handleShotlistBreakdown}
-                                            className="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                                        >
-                                            Let&apos;s start
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Moodboard — CoDesigner: compact vision + pass grid, always visible.
-                                Chat runs below and is always shown so the user can discuss
-                                ideas before generating. */}
-                            {contextMode === "moodboard" && contextId && activeAgent !== "CoDirector" && (
-                                <div className="shrink-0 border-b px-4 pt-4 pb-3 flex flex-col gap-3">
-                                    <div className="flex flex-col gap-1.5">
-                                        <div className="flex items-center justify-between">
-                                            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Scene Vision</label>
-                                            {visionPrompt.trim() && (
-                                                <span className="text-[10px] text-teal-400 font-medium">Active ✓</span>
-                                            )}
-                                        </div>
-                                        <textarea
-                                            value={visionPrompt}
-                                            onChange={(e) => setVisionPrompt(e.target.value)}
-                                            placeholder="Paste your agreed vision here, or discuss ideas in the chat below ↓"
-                                            rows={3}
-                                            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground resize-y focus:outline-none focus:ring-1 focus:ring-ring"
-                                        />
-                                    </div>
-                                    <div className="grid grid-cols-3 gap-1.5">
-                                        {MOODBOARD_PASS_OPTIONS.map((opt) => (
-                                            <button
-                                                key={opt.value}
-                                                type="button"
-                                                onClick={() => {
-                                                    window.dispatchEvent(
-                                                        new CustomEvent("generateMoodboard", {
-                                                            detail: { passType: opt.value, vision: visionPrompt.trim() || undefined },
-                                                        })
-                                                    );
-                                                    setOpeningDismissed((prev) => ({ ...prev, [contextMode]: true }));
-                                                }}
-                                                className="flex flex-col items-start p-1.5 rounded-md border border-border bg-background hover:bg-accent hover:border-teal-500 transition-colors text-left"
-                                            >
-                                                <span className="text-xs font-medium leading-tight">{opt.label}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Moodboard opening — CoDirector: framing and shot analysis chips */}
-                            {contextMode === "moodboard" && contextId && showOpening && activeAgent === "CoDirector" && (
-                                <div className="flex flex-col gap-4 p-5">
-                                    <p className="text-sm text-foreground leading-relaxed">
-                                        I&apos;m CoDirector on the moodboard. I can help you refine
-                                        shot framing and develop the visual approach for each setup.
-                                    </p>
-                                    <div className="flex flex-col gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setOpeningDismissed((prev) => ({ ...prev, [contextMode]: true }));
-                                                setPendingMessage(
-                                                    "Review the current moodboard compositions and suggest how to improve the visual storytelling for this scene."
-                                                );
-                                            }}
-                                            className="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-left"
-                                        >
-                                            Suggest improvements
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setOpeningDismissed((prev) => ({ ...prev, [contextMode]: true }));
-                                                setPendingMessage(
-                                                    "Review the shot list and confirm every setup in this scene has a moodboard composition. Flag any gaps."
-                                                );
-                                            }}
-                                            className="text-xs px-3 py-1.5 rounded-md border border-border bg-background hover:bg-accent transition-colors text-left"
-                                        >
-                                            Check shot coverage
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setOpeningDismissed((prev) => ({ ...prev, [contextMode]: true }));
-                                                setPendingMessage(
-                                                    "Looking at the current composition, what would make this shot more cinematic? Consider lighting, framing, and character positioning."
-                                                );
-                                            }}
-                                            className="text-xs px-3 py-1.5 rounded-md border border-border bg-background hover:bg-accent transition-colors text-left"
-                                        >
-                                            Develop this shot further
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* CoDesigner opening (objects context) */}
-                            {contextMode === "objects" && contextId && showOpening && (
-                                <div className="flex flex-col gap-4 p-5">
-                                    <p className="text-sm text-foreground leading-relaxed">
-                                        I&apos;m CoDesigner — your visual identity guardian. I manage
-                                        how everything looks in your film.
-                                    </p>
-                                    <p className="text-sm text-foreground leading-relaxed">
-                                        I can:
-                                    </p>
-                                    <ul className="text-sm text-muted-foreground space-y-1 pl-1">
-                                        <li>· Generate background sketches for each location</li>
-                                        <li>· Identify props and artifacts that need continuity tracking</li>
-                                        <li>· Ensure your characters look consistent across every scene</li>
-                                    </ul>
-                                    <p className="text-sm text-foreground leading-relaxed">
-                                        What would you like to work on?
-                                    </p>
-                                    <div className="flex gap-2 flex-wrap">
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setOpeningDismissed((prev) => ({ ...prev, [contextMode]: true }));
-                                                setPendingMessage(
-                                                    "Read the script and identify all unique locations. Generate a pencil sketch background for each one."
-                                                );
-                                            }}
-                                            className="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                                        >
-                                            Generate backgrounds
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setOpeningDismissed((prev) => ({ ...prev, [contextMode]: true }));
-                                                setPendingMessage(
-                                                    "Read the action lines in the script and identify all physical objects that appear in multiple scenes or are plot-significant. List them with the scenes they appear in."
-                                                );
-                                            }}
-                                            className="text-xs px-3 py-1.5 rounded-md border border-border bg-background hover:bg-accent transition-colors"
-                                        >
-                                            Identify artifacts
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setOpeningDismissed((prev) => ({ ...prev, [contextMode]: true }));
-                                                setPendingMessage(
-                                                    "Review all approved character images and backgrounds. Flag any that are missing or inconsistent with the script descriptions."
-                                                );
-                                            }}
-                                            className="text-xs px-3 py-1.5 rounded-md border border-border bg-background hover:bg-accent transition-colors"
-                                        >
-                                            Check visual consistency
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Chat — scripts and moodboard always; other contexts once opening is dismissed */}
-                            {(contextMode === "scripts" ||
-                              contextMode === "moodboard" ||
-                              ((contextMode === "scheduling" || contextMode === "shotlist" || contextMode === "objects") && !showOpening))
-                             && contextId ? (
-                                <ScriptChat
-                                    ref={chatRef}
-                                    scriptId={contextId}
-                                    embedded={true}
-                                    contextMode={contextMode}
-                                />
-                            ) : !showOpening && (
+                            {contextId ? (
+                                contextMode === "scripts" ? (
+                                    <ScriptChat
+                                        ref={chatRef}
+                                        scriptId={contextId}
+                                        embedded={true}
+                                        contextMode={contextMode}
+                                        activeAgent={activeAgent}
+                                    />
+                                ) : (
+                                    <ScriptChat
+                                        ref={chatRef}
+                                        projectId={contextId}
+                                        embedded={true}
+                                        contextMode={contextMode}
+                                        activeAgent={activeAgent}
+                                    />
+                                )
+                            ) : (
                                 <div className="flex items-center justify-center h-full p-6 text-center">
                                     <p className="text-sm text-muted-foreground">
-                                        {activeAgent} is ready. Navigate to a script to begin.
+                                        {activeAgent} is ready. Select a project to begin.
                                     </p>
                                 </div>
                             )}
                         </div>
-
-                        {/* Moodboard generation progress banner — pinned above personalise panel */}
-                        {contextMode === "moodboard" && generating && (
-                            <div className="flex items-center gap-2 p-3 bg-teal-950 border-t border-teal-800 shrink-0">
-                                <Loader2 className="h-4 w-4 animate-spin text-teal-400" />
-                                <span className="text-sm text-teal-300">Generating {generatingLabel}...</span>
-                            </div>
-                        )}
-                        {contextMode === "moodboard" && generateDoneLabel && !generating && (
-                            <div className="p-3 bg-teal-950 border-t border-teal-800 shrink-0">
-                                <span className="text-sm text-teal-300">{generateDoneLabel}</span>
-                            </div>
-                        )}
-                        {contextMode === "moodboard" && generateError && !generating && (
-                            <div className="p-3 border-t border-border shrink-0">
-                                <span className="text-xs text-destructive">{generateError}</span>
-                            </div>
-                        )}
 
                         {/* Personalise panel — pinned at bottom, collapsed by default */}
                         <div className="shrink-0 border-t">

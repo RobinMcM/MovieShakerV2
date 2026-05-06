@@ -128,25 +128,11 @@ export default function ProjectLayout({
         ? "CoProducer"
         : "CoProducer";
 
-    const [schedulingScriptId, setSchedulingScriptId] = useState<string | undefined>(undefined);
-
-    useEffect(() => {
-        if (contextMode !== "scheduling" || !projectId) return;
-        api.get<{ scripts: { id: string; is_current: boolean }[] }>(`/projects/${projectId}/scripts`)
-            .then((res) => {
-                const current = res.scripts?.find((s) => s.is_current);
-                if (current) setSchedulingScriptId(current.id);
-            })
-            .catch(() => {});
-    }, [contextMode, projectId]);
-
+    // For script pages, contextId is the scriptId from the URL.
+    // For all other pages, contextId is projectId — the page-level chat endpoint uses this.
     const contextId = pathname?.includes("/script/")
         ? pathname.split("/script/")[1]?.split("/")[0]
-        : contextMode === "scheduling"
-        ? schedulingScriptId
-        : contextMode === "moodboard"
-        ? (scripts.find((s) => s.is_current)?.id ?? scripts[0]?.id)
-        : undefined;
+        : projectId ?? undefined;
 
     if (!projectId) {
         return <>{children}</>;

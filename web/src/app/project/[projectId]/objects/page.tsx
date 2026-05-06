@@ -972,6 +972,30 @@ function ObjectsContent() {
     );
   };
 
+  const handleGenerateBackgrounds = () => {
+    window.dispatchEvent(new Event("openCoproducer"));
+    window.dispatchEvent(
+      new CustomEvent("coproducerSendMessage", {
+        detail: {
+          message:
+            "Read the script and identify all unique locations. Generate a pencil sketch background for each one.",
+        },
+      })
+    );
+  };
+
+  const handleCheckConsistency = () => {
+    window.dispatchEvent(new Event("openCoproducer"));
+    window.dispatchEvent(
+      new CustomEvent("coproducerSendMessage", {
+        detail: {
+          message:
+            "Review all approved character images and backgrounds. Flag any that are missing or inconsistent with the script descriptions.",
+        },
+      })
+    );
+  };
+
   const gridProps = {
     onUpdate: updateObject,
     onDelete: handleDeleteClick,
@@ -1083,6 +1107,18 @@ function ObjectsContent() {
 
           {/* ── Characters tab ── */}
           <TabsContent value="characters">
+            <div className="flex justify-start mb-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCheckConsistency}
+                disabled={!currentScriptId}
+                className="gap-2"
+              >
+                <ScanSearch className="h-4 w-4" />
+                Check visual consistency
+              </Button>
+            </div>
             <ObjectGrid
               items={filteredCharacters}
               emptyLabel="characters"
@@ -1093,6 +1129,18 @@ function ObjectsContent() {
 
           {/* ── Backgrounds tab ── */}
           <TabsContent value="backgrounds">
+            <div className="flex justify-start mb-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleGenerateBackgrounds}
+                disabled={!currentScriptId}
+                className="gap-2"
+              >
+                <Sparkles className="h-4 w-4" />
+                Generate all backgrounds
+              </Button>
+            </div>
             {filteredBackgroundLocations.length === 0 ? (
               <Card>
                 <CardContent className="py-12 text-center text-muted-foreground">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
 import { CreditCard, Loader2, Wallet } from "lucide-react";
 import { AppHeader } from "@/components/Header";
@@ -18,6 +19,8 @@ interface ProfileData {
 const QUICK_AMOUNTS = [25, 50, 100];
 
 function CreditsPageContent() {
+  const searchParams = useSearchParams();
+  const fromChat = searchParams?.get("reason") === "chat";
   const [loading, setLoading] = useState(true);
   const [buying, setBuying] = useState(false);
   const [aiCredits, setAiCredits] = useState<number>(0);
@@ -93,6 +96,12 @@ function CreditsPageContent() {
             Credits Management
           </h1>
         </div>
+
+        {fromChat && (
+          <div className="p-3 rounded-md text-sm bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+            You need credits to use AI features. Top up below to continue.
+          </div>
+        )}
 
         {message && (
           <div

@@ -249,6 +249,8 @@ function MoodBoardContent() {
   const [canvasNote, setCanvasNote] = useState("");
   const [canvasAspectRatio, setCanvasAspectRatio] = useState("16:9");
   const [isScriptCollapsed, setIsScriptCollapsed] = useState(false);
+  const [visionPrompt, setVisionPrompt] = useState("");
+  const [moodboardGenerating, setMoodboardGenerating] = useState(false);
   const canvasRef = useRef<DrawingCanvasRef>(null);
 
   useEffect(() => {
@@ -350,7 +352,16 @@ function MoodBoardContent() {
     }
   }, [selectedTramLine, selectedTramLineId, loadCompositions]);
 
-  // Bridge: CoDesigner sidebar dispatches 'generateMoodboard' → this page runs generation
+  const handlePassButtonClick = useCallback(async (passType: string) => {
+    setMoodboardGenerating(true);
+    try {
+      await handleGenerateMoodboard(passType, visionPrompt.trim() || undefined);
+    } finally {
+      setMoodboardGenerating(false);
+    }
+  }, [handleGenerateMoodboard, visionPrompt]);
+
+  // Bridge: external dispatchers can still trigger generation via this event
   useEffect(() => {
     const handler = (e: Event) => {
       const { passType, vision } = (e as CustomEvent).detail ?? {};
@@ -586,6 +597,43 @@ function MoodBoardContent() {
                       <span className="text-sm text-muted-foreground italic opacity-50">Select a shot to view cast</span>
                     )}
                 </div>
+
+                {/* AI Generation — scene vision + pass buttons */}
+                <Card>
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        Scene Vision
+                      </label>
+                      <textarea
+                        value={visionPrompt}
+                        onChange={(e) => setVisionPrompt(e.target.value)}
+                        placeholder="Paste your agreed vision here, or leave blank to let CoDesigner interpret the scene..."
+                        rows={3}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground resize-y focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {PASS_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          disabled={moodboardGenerating || !selectedTramLineId}
+                          onClick={() => handlePassButtonClick(opt.value)}
+                          className="flex flex-col items-start p-2 rounded-md border border-border bg-background hover:bg-accent hover:border-teal-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-left"
+                        >
+                          <span className="text-xs font-medium leading-tight">{opt.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                    {moodboardGenerating && (
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-teal-400" />
+                        <span className="text-xs text-teal-400">Generating moodboard...</span>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
 
                 <Card>
                   <CardHeader>

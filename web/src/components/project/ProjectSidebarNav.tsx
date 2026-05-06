@@ -2,14 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Bot, ChevronDown, ChevronRight, FileText, FolderKanban, PanelLeftClose, PanelLeftOpen, Plus, Upload } from "lucide-react";
 import {
     PROJECT_EXTERNAL_NAV,
     PROJECT_TOOL_NAV,
 } from "@/app/project/[projectId]/projectNav";
 import { cn } from "@/lib/utils";
-import { CoProducerModal } from "@/components/CoProducerModal";
 import { api } from "@/lib/api";
 
 interface ScriptItem {
@@ -47,10 +46,10 @@ export function ProjectSidebarNav({
     activeAgent = "CoProducer",
 }: ProjectSidebarNavProps) {
     const pathname = usePathname();
+    const router = useRouter();
     const [scriptsExpanded, setScriptsExpanded] = useState(true);
     const [projectsExpanded, setProjectsExpanded] = useState(true);
     const [projects, setProjects] = useState<ProjectItem[]>([]);
-    const [modalOpen, setModalOpen] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -84,7 +83,7 @@ export function ProjectSidebarNav({
         if (hasCredits) {
             onCoproducerActivate();
         } else {
-            setModalOpen(true);
+            router.push("/credits");
         }
     }
 
@@ -347,7 +346,6 @@ export function ProjectSidebarNav({
                 </div>
             </aside>
 
-            <CoProducerModal open={modalOpen} onClose={() => setModalOpen(false)} />
         </>
     );
 }

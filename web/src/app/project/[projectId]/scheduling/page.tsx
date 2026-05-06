@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Calendar, CalendarClock, X, Check } from "lucide-react";
+import { api } from "@/lib/api";
 import { useScenes } from "./useScenes";
 import { SceneItem } from "./SceneItem";
 import { TramlineBoard } from "@/components/scheduling/TramlineBoard";
@@ -36,6 +37,8 @@ function SchedulingPageInner() {
   const [viewMode, setViewMode] = useState<"list" | "schedule" | "tramline">("list");
   const [selectedSceneIds, setSelectedSceneIds] = useState<string[]>([]);
   const [groupLocationName, setGroupLocationName] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
   const {
     loading,
@@ -62,6 +65,31 @@ function SchedulingPageInner() {
     window.addEventListener("scheduleGenerated", handler);
     return () => window.removeEventListener("scheduleGenerated", handler);
   }, [reloadScenes]);
+
+  async function handleGenerate() {
+    if (!scriptId) return;
+    setGenerating(true);
+    setGenerateError(null);
+    try {
+      await api.post(`/scripts/${scriptId}/schedule/generate`, {}, 120_000);
+      window.dispatchEvent(new Event("scheduleGenerated"));
+    } catch {
+      setGenerateError("Generate failed — please try again.");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  function handleShowBreakdown() {
+    window.dispatchEvent(new Event("openCoproducer"));
+    window.dispatchEvent(
+      new CustomEvent("coproducerSendMessage", {
+        detail: {
+          message: "Give me a breakdown of the shoot schedule by location with cast requirements and eighths per group",
+        },
+      })
+    );
+  }
 
   const handleToggleSelect = (sceneId: string) => {
     setSelectedSceneIds((prev) =>
@@ -189,11 +217,35 @@ function SchedulingPageInner() {
         )}
 
         <div className="max-w-6xl mx-auto space-y-6">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Calendar className="h-6 w-6 text-primary" />
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              Schedule
-            </h1>
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-6 w-6 text-primary" />
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                Schedule
+              </h1>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={handleGenerate}
+                disabled={generating || !scriptId}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
+              >
+                {generating && <Loader2 className="h-3 w-3 animate-spin" />}
+                Generate schedule
+              </button>
+              <button
+                type="button"
+                onClick={handleShowBreakdown}
+                disabled={!scriptId}
+                className="text-xs px-3 py-1.5 rounded-md border border-border bg-background hover:bg-accent disabled:opacity-60 transition-colors"
+              >
+                Show me the breakdown
+              </button>
+            </div>
+            {generateError && (
+              <p className="text-xs text-destructive w-full">{generateError}</p>
+            )}
           </div>
 
           <Card>

@@ -84,14 +84,12 @@ def _migrate_project_table():
 
 
 def _migrate_script_table():
-    """Add is_locked, page_count, is_soft_locked, soft_locked_at to script table if missing."""
+    """Add is_locked, page_count to script table if missing."""
     with engine.connect() as conn:
         with conn.begin():
             for col, typ in [
                 ("is_locked", "BOOLEAN NOT NULL DEFAULT FALSE"),
                 ("page_count", "INTEGER"),
-                ("is_soft_locked", "BOOLEAN NOT NULL DEFAULT FALSE"),
-                ("soft_locked_at", "TIMESTAMP"),
             ]:
                 try:
                     conn.execute(

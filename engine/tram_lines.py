@@ -2,8 +2,10 @@
 Tram Lines API: CRUD for shot coverage markers (tramlines) per scene.
 Prefix: /api/tram-lines. Matches legacy client paths.
 """
+import io
 import json
 import uuid
+from datetime import datetime, timezone
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,6 +14,14 @@ from sqlmodel import Session, select
 
 from db import get_session
 from models import ProjectMember, Scene, Script, TramLine
+from script_parser import document_to_bytes
+from storage import (
+    get_script_file_stream,
+    relative_file_path,
+    save_script_file,
+    script_json_path,
+    uses_spaces,
+)
 from supertokens_python.recipe.session.framework.fastapi import verify_session
 from supertokens_python.recipe.session import SessionContainer
 
@@ -36,17 +46,106 @@ def _ensure_scene_access(db: Session, scene_id: str, user_id: str) -> Scene:
     return scene
 
 
-def _ensure_not_soft_locked(db: Session, scene_id: uuid.UUID) -> None:
-    """Raise 403 if the script owning this scene is soft-locked."""
-    scene = db.get(Scene, scene_id)
-    if scene is None:
-        return
-    script = db.get(Script, scene.script_id)
-    if script and getattr(script, "is_soft_locked", False):
-        raise HTTPException(
-            status_code=403,
-            detail="Script is soft-locked. Unlock it to modify or delete shots.",
+def _tram_line_to_shot(line: TramLine, now_iso: str) -> dict:
+    """Convert a TramLine DB row to a shot embed dict for script.json."""
+    start_id, end_id, start_text, end_text = "", "", "", ""
+    if line.script_elements:
+        try:
+            els = json.loads(line.script_elements)
+            if isinstance(els, list) and els:
+                start_id = els[0].get("element_id") or ""
+                start_text = els[0].get("text") or ""
+                end_id = els[-1].get("element_id") or ""
+                end_text = els[-1].get("text") or ""
+        except Exception:
+            pass
+
+    chars: list[str] = []
+    if line.character_names:
+        chars = [c.strip() for c in line.character_names.split(",") if c.strip()]
+
+    return {
+        "id": str(line.id),
+        "line_number": line.line_number,
+        "shot_type": line.shot_type,
+        "camera_direction": line.camera_direction or "",
+        "color": line.color or "",
+        "characters": chars,
+        "start_element_id": start_id,
+        "end_element_id": end_id,
+        "start_element_text": start_text,
+        "end_element_text": end_text,
+        "scene_mood": line.scene_mood or "",
+        "scene_visual": line.scene_visual or "",
+        "x_position": line.x_position,
+        "embedded_at": now_iso,
+    }
+
+
+def _sync_shots_to_script_json(db: Session, scene_id: uuid.UUID) -> None:
+    """
+    Re-embed all tram lines for this scene into the shots[] array on the
+    matching scene_heading element in script.json. Called after every
+    tram line create/update/delete. Fails silently.
+    """
+    try:
+        scene = db.get(Scene, scene_id)
+        if scene is None:
+            return
+        script = db.get(Script, scene.script_id)
+        if script is None:
+            return
+
+        json_key = relative_file_path(
+            script.user_id, str(script.project_id), str(script.id), "script.json"
         )
+        if uses_spaces():
+            result = get_script_file_stream(json_key)
+            if result is None:
+                return
+            body, _ = result
+        else:
+            path = script_json_path(
+                script.user_id, str(script.project_id), str(script.id)
+            )
+            if not path.exists():
+                return
+            body = path.read_bytes()
+
+        data = json.loads(body.decode("utf-8", errors="replace"))
+        elements = data.get("elements")
+        if not isinstance(elements, list):
+            return
+
+        tram_lines = list(
+            db.exec(
+                select(TramLine)
+                .where(TramLine.scene_id == scene_id)
+                .order_by(TramLine.x_position)
+            ).all()
+        )
+
+        now_iso = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        for el in elements:
+            if (
+                el.get("type") == "scene_heading"
+                and el.get("scene_number") == scene.scene_number
+            ):
+                el["shots"] = [_tram_line_to_shot(tl, now_iso) for tl in tram_lines]
+                break
+
+        json_bytes = document_to_bytes(data)
+        save_script_file(
+            script.user_id,
+            str(script.project_id),
+            str(script.id),
+            "script.json",
+            io.BytesIO(json_bytes),
+            len(json_bytes),
+        )
+    except Exception:
+        pass  # Never break the API response if storage is unavailable
 
 
 def _ensure_tramline_access(db: Session, tramline_id: str, user_id: str) -> TramLine:
@@ -144,7 +243,6 @@ def create_tram_line(
 ):
     user_id = session.get_user_id()
     _ensure_scene_access(db, body.scene_id, user_id)
-    _ensure_not_soft_locked(db, uuid.UUID(body.scene_id))
     line = TramLine(
         scene_id=uuid.UUID(body.scene_id),
         user_id=user_id,
@@ -159,6 +257,7 @@ def create_tram_line(
     db.add(line)
     db.commit()
     db.refresh(line)
+    _sync_shots_to_script_json(db, line.scene_id)
     return {"success": True, "tramLine": _row_to_response(line)}
 
 
@@ -180,6 +279,7 @@ def update_tram_line(
     db.add(line)
     db.commit()
     db.refresh(line)
+    _sync_shots_to_script_json(db, line.scene_id)
     return {"success": True, "tramLine": _row_to_response(line)}
 
 
@@ -191,7 +291,8 @@ def delete_tram_line(
 ):
     user_id = session.get_user_id()
     line = _ensure_tramline_access(db, tramline_id, user_id)
-    _ensure_not_soft_locked(db, line.scene_id)
+    scene_id = line.scene_id
     db.delete(line)
     db.commit()
+    _sync_shots_to_script_json(db, scene_id)
     return {"success": True, "message": "Tram line deleted"}

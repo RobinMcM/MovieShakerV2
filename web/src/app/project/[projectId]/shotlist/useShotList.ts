@@ -152,20 +152,13 @@ export function useShotList(projectId: string | null) {
     }
   }, []);
 
-  const [currentScriptData, setCurrentScriptData] = useState<{
-    id: string;
-    is_current?: boolean;
-    page_count?: number;
-    is_soft_locked?: boolean;
-  } | null>(null);
-
   const loadScenesAndCharacters = useCallback(async () => {
     if (!projectId) return;
     try {
-      const scriptsRes = await api.get<{ scripts: { id: string; is_current?: boolean; page_count?: number; is_soft_locked?: boolean }[] }>(
+      const scriptsRes = await api.get<{ scripts: { id: string; is_current?: boolean; page_count?: number }[] }>(
         `projects/${projectId}/scripts`
       );
-      const scripts = (scriptsRes as { scripts?: { id: string; is_current?: boolean; page_count?: number; is_soft_locked?: boolean }[] }).scripts ?? [];
+      const scripts = (scriptsRes as { scripts?: { id: string; is_current?: boolean; page_count?: number }[] }).scripts ?? [];
       const currentScript = scripts.find((s) => s.is_current) ?? scripts[0];
       if (!currentScript) {
         setScenesData([]);
@@ -173,7 +166,6 @@ export function useShotList(projectId: string | null) {
       }
       setScriptId(currentScript.id);
       setScriptPageCount(currentScript.page_count ?? 0);
-      setCurrentScriptData(currentScript);
 
       const [scenesRes, sceneCharsRes, charsRes] = await Promise.all([
         api.get<{ success: boolean; data: Scene[] }>(`scripts/${currentScript.id}/scenes`),
@@ -430,7 +422,6 @@ export function useShotList(projectId: string | null) {
     scenesData,
     scriptId,
     scriptPageCount,
-    currentScriptData,
     selectedSceneId,
     sceneContent,
     isLoadingContent,

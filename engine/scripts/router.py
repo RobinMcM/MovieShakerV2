@@ -10,7 +10,7 @@ import logging
 import re
 import uuid
 import httpx
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Optional, Tuple
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
@@ -155,8 +155,6 @@ class ScriptResponse(BaseModel):
     episode: Optional[str] = None
     description: Optional[str] = None
     is_locked: bool = False
-    is_soft_locked: bool = False
-    soft_locked_at: Optional[datetime] = None
     page_count: Optional[int] = None
 
 
@@ -265,8 +263,6 @@ def _script_to_response(s: Script) -> ScriptResponse:
         episode=s.episode,
         description=s.description,
         is_locked=getattr(s, "is_locked", False),
-        is_soft_locked=getattr(s, "is_soft_locked", False),
-        soft_locked_at=getattr(s, "soft_locked_at", None),
         page_count=getattr(s, "page_count", None),
     )
 
@@ -982,103 +978,6 @@ def _tram_line_to_shot(line: TramLine, now_iso: str) -> dict:
     }
 
 
-@router.post("/scripts/{script_id}/soft-lock")
-def soft_lock_script(
-    script_id: str,
-    session: SessionContainer = Depends(verify_session()),
-    db: Session = Depends(get_session),
-):
-    """
-    Embed all tram-line shots into script.json (shots[] on each scene_heading)
-    and mark the script as soft-locked. Blocks re-parse and tram-line deletion
-    until unlocked.
-    """
-    user_id = session.get_user_id()
-    script = _get_script_and_ensure_access(db, script_id, user_id)
-
-    if getattr(script, "is_locked", False):
-        raise HTTPException(status_code=403, detail="Script is hard-locked. Unlock it first.")
-
-    result = _read_script_json(script)
-    if result is None:
-        raise HTTPException(status_code=404, detail="script.json not found. Parse the script first.")
-    elements, metadata = result
-
-    # Build scene_number → scene_id map from DB
-    scenes = db.exec(
-        select(Scene).where(Scene.script_id == script.id)
-    ).all()
-    scene_num_to_id: dict[int, uuid.UUID] = {
-        s.scene_number: s.id for s in scenes if s.scene_number is not None
-    }
-
-    now_iso = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-    # Embed shots into each scene_heading element
-    for el in elements:
-        if el.get("type") != "scene_heading":
-            continue
-        scene_no = el.get("scene_number")
-        scene_id = scene_num_to_id.get(scene_no)
-        if scene_id is None:
-            el["shots"] = []
-            continue
-        tram_lines = db.exec(
-            select(TramLine)
-            .where(TramLine.scene_id == scene_id)
-            .order_by(TramLine.x_position)
-        ).all()
-        el["shots"] = [_tram_line_to_shot(tl, now_iso) for tl in tram_lines]
-
-    doc = {"schema_version": "2.0", "metadata": metadata, "elements": elements}
-    _save_script_json(script, doc)
-
-    script.is_soft_locked = True
-    script.soft_locked_at = datetime.now(tz=timezone.utc)
-    db.add(script)
-    db.commit()
-    db.refresh(script)
-
-    total_shots = sum(len(el.get("shots", [])) for el in elements if el.get("type") == "scene_heading")
-    return {
-        "success": True,
-        "message": f"Script soft-locked. {total_shots} shots embedded across {len(scenes)} scenes.",
-        "data": _script_to_response(script).model_dump(),
-    }
-
-
-@router.post("/scripts/{script_id}/soft-unlock")
-def soft_unlock_script(
-    script_id: str,
-    session: SessionContainer = Depends(verify_session()),
-    db: Session = Depends(get_session),
-):
-    """
-    Clear the soft lock: remove all shots[] arrays from script.json and
-    allow re-parse and tram-line deletion again.
-    """
-    user_id = session.get_user_id()
-    script = _get_script_and_ensure_access(db, script_id, user_id)
-
-    if getattr(script, "is_locked", False):
-        raise HTTPException(status_code=403, detail="Script is hard-locked. Unlock it first.")
-
-    result = _read_script_json(script)
-    if result is not None:
-        elements, metadata = result
-        for el in elements:
-            if el.get("type") == "scene_heading":
-                el["shots"] = []
-        doc = {"schema_version": "2.0", "metadata": metadata, "elements": elements}
-        _save_script_json(script, doc)
-
-    script.is_soft_locked = False
-    script.soft_locked_at = None
-    db.add(script)
-    db.commit()
-    db.refresh(script)
-
-    return {"success": True, "message": "Script soft-unlocked.", "data": _script_to_response(script).model_dump()}
 
 
 def _get_script_file_bytes(script: Script) -> Tuple[bytes, bool]:
@@ -1214,8 +1113,6 @@ def parse_script(
     script = _get_script_and_ensure_access(db, script_id, user_id)
     if getattr(script, "is_locked", False):
         raise HTTPException(status_code=403, detail="Script is locked. Unlock it to re-parse.")
-    if getattr(script, "is_soft_locked", False):
-        raise HTTPException(status_code=403, detail="Script is soft-locked. Unlock it to re-parse.")
 
     body, is_pdf = _get_script_file_bytes(script)
 

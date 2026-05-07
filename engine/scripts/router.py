@@ -484,6 +484,117 @@ def create_script_upload(
     return _script_to_response(script)
 
 
+# ─── Text upload helpers ───────────────────────────────────────────────────────
+
+_SCENE_HEADING_TEXT_RE = re.compile(
+    r'^(INT\.|EXT\.|INT\./EXT\.|EXT\./INT\.|I/E\.?)\s', re.IGNORECASE
+)
+_TRANSITION_TEXT_RE = re.compile(
+    r'^(FADE\s+IN|FADE\s+OUT|FADE\s+TO|CUT\s+TO|SMASH\s+CUT|DISSOLVE\s+TO)',
+    re.IGNORECASE,
+)
+_KNOWN_TRANSITIONS = frozenset({
+    "FADE IN", "FADE OUT", "FADE TO BLACK", "CUT TO", "SMASH CUT",
+    "DISSOLVE TO", "IRIS OUT",
+})
+
+
+def _screenplay_text_to_elements(text: str) -> list[dict]:
+    """Parse raw screenplay text into {type, text} elements for parse_json_v1 enrichment."""
+    elements: list[dict] = []
+    in_speech = False
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            in_speech = False
+            continue
+        upper = line.upper()
+        if _SCENE_HEADING_TEXT_RE.match(upper):
+            in_speech = False
+            elements.append({"type": "scene_heading", "text": upper})
+            continue
+        if _TRANSITION_TEXT_RE.match(line) or (line == upper and line.rstrip(":") in _KNOWN_TRANSITIONS):
+            in_speech = False
+            elements.append({"type": "transition", "text": upper})
+            continue
+        if line.startswith("(") and line.endswith(")"):
+            elements.append({"type": "parenthetical", "text": line})
+            continue
+        if line == upper and 3 <= len(line) < 60 and not line.startswith("["):
+            elements.append({"type": "character", "text": line})
+            in_speech = True
+            continue
+        if in_speech:
+            elements.append({"type": "dialogue", "text": line})
+            continue
+        elements.append({"type": "action", "text": line})
+    return elements
+
+
+# POST /scripts/upload-text — create a Script record directly from plain screenplay text
+@router.post("/scripts/upload-text", response_model=ScriptResponse, status_code=201)
+def create_script_from_text(
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+    file: UploadFile = File(...),
+    project_id: str = Form(...),
+    name: str = Form(...),
+    description: Optional[str] = Form(None),
+):
+    user_id = session.get_user_id()
+    _ensure_project_member(db, project_id, user_id)
+
+    try:
+        raw_bytes = file.file.read()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to read file: {exc}")
+
+    text_content = raw_bytes.decode("utf-8", errors="replace")
+    elements = _screenplay_text_to_elements(text_content)
+    if not elements:
+        raise HTTPException(status_code=400, detail="No screenplay content found in the uploaded text")
+
+    v1_body = json.dumps({
+        "metadata": {"title": name.strip(), "author": "MovieShaker Documentary Studio"},
+        "elements": elements,
+    }).encode("utf-8")
+    doc = parse_json_v1(v1_body)
+    if doc is None:
+        raise HTTPException(status_code=500, detail="Failed to parse screenplay text into script format")
+
+    json_bytes = document_to_bytes(doc)
+    script_id = uuid.uuid4()
+    json_rel_path = relative_file_path(user_id, project_id, str(script_id), "script.json")
+
+    save_script_file(
+        user_id,
+        project_id,
+        str(script_id),
+        "script.json",
+        io.BytesIO(json_bytes),
+        len(json_bytes),
+    )
+
+    existing = db.exec(select(Script).where(Script.project_id == uuid.UUID(project_id))).first()
+    is_current = existing is None
+
+    script = Script(
+        id=script_id,
+        project_id=uuid.UUID(project_id),
+        user_id=user_id,
+        name=name.strip(),
+        description=description.strip() if description else None,
+        file_path=json_rel_path,
+        is_current=is_current,
+    )
+    db.add(script)
+    db.commit()
+    db.refresh(script)
+
+    cache_delete(scripts_list_key(project_id))
+    return _script_to_response(script)
+
+
 # GET /scripts/{script_id}/stats
 @router.get("/scripts/{script_id}/stats", response_model=StatsResponse)
 def get_script_stats(

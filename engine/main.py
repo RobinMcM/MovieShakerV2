@@ -46,6 +46,7 @@ from ai_assistant import router as ai_assistant_router
 from moodboard_generator import router as moodboard_generator_router
 from backgrounds import router as backgrounds_router
 from page_chat import router as page_chat_router
+from documentary import router as documentary_router
 
 settings = load_settings()
 
@@ -395,6 +396,7 @@ app.include_router(ai_assistant_router)
 app.include_router(moodboard_generator_router)
 app.include_router(backgrounds_router)
 app.include_router(page_chat_router)
+app.include_router(documentary_router)
 
 # --- Routes ---
 @app.get("/")

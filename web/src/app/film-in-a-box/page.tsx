@@ -1,664 +1,957 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useParams } from "next/navigation";
+import Link from "next/link";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
-import { Loader2, Clapperboard, Save, FileText, Video, User } from "lucide-react";
-
 import { AppHeader } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { api } from "@/lib/api";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { api, API_URL } from "@/lib/api";
+import {
+  CheckCircle,
+  ChevronRight,
+  Clapperboard,
+  FileText,
+  Film,
+  Loader2,
+  RefreshCw,
+  Upload,
+  Users,
+} from "lucide-react";
 
-type ContentType = "FILM" | "DOC";
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
-interface SavedItem {
-    id: string;
-    name: string;
-    type: ContentType;
-    project_id?: string | null;
-    created_at: string;
+type Stage = 1 | 2 | 3 | 4 | 5;
+type DialogueStyle = "monologue" | "interview" | "mixed";
+
+interface DocSession {
+  stage: Stage;
+  subjectName: string;
+  workingTitle: string;
+  context: string;
+  rawTranscript: string;
+  cleanedDialogue: string;
+  dialogueStyle: DialogueStyle;
+  generatedScript: string;
 }
 
-interface DocChapter {
-    chapterNumber: number;
-    title: string;
-    summary: string;
-    visuals: string;
+interface ShotSuggestion {
+  id: string;
+  description: string;
+  contextQuote: string;
+  sceneId?: string;
+  selected: boolean;
 }
 
-interface InterviewCandidate {
-    role: string;
-    description: string;
+interface Entity {
+  id: string;
+  name: string;
+  type: string;
+  objectType: string;
 }
 
-interface DocResult {
-    logline: string;
-    thematicStatement: string;
-    chapters: DocChapter[];
-    interviewCandidates: InterviewCandidate[];
-    visualStyle: string;
-    bRollWishlist: string[];
-    script?: string | Array<{ VIDEO?: string; AUDIO?: string; video?: string; audio?: string }>;
+const BASE = "/api/documentary/projects";
+
+const EMPTY_SESSION: DocSession = {
+  stage: 1,
+  subjectName: "",
+  workingTitle: "",
+  context: "",
+  rawTranscript: "",
+  cleanedDialogue: "",
+  dialogueStyle: "monologue",
+  generatedScript: "",
+};
+
+// ---------------------------------------------------------------------------
+// Step indicator
+// ---------------------------------------------------------------------------
+
+const STEP_LABELS = ["Source", "Transcript", "Dialogue", "Script", "Shots"];
+
+function StepIndicator({ current }: { current: Stage }) {
+  return (
+    <div className="flex items-center justify-center gap-1 sm:gap-2 mb-8">
+      {STEP_LABELS.map((label, i) => {
+        const step = (i + 1) as Stage;
+        const done = step < current;
+        const active = step === current;
+        return (
+          <div key={step} className="flex items-center gap-1 sm:gap-2">
+            <div className="flex flex-col items-center gap-1">
+              <div
+                className={[
+                  "w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors",
+                  done ? "bg-primary text-primary-foreground" : "",
+                  active ? "border-2 border-primary text-primary bg-primary/10" : "",
+                  !done && !active ? "border border-border text-muted-foreground bg-muted/30" : "",
+                ].join(" ")}
+              >
+                {done ? <CheckCircle className="w-4 h-4" /> : step}
+              </div>
+              <span className={`text-[10px] hidden sm:block ${active ? "text-primary font-medium" : "text-muted-foreground"}`}>
+                {label}
+              </span>
+            </div>
+            {i < STEP_LABELS.length - 1 && (
+              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0 mb-4" />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
-interface ProjectData {
-    id: string;
-    name: string;
-}
+// ---------------------------------------------------------------------------
+// Main page inner component
+// ---------------------------------------------------------------------------
 
-interface ConfigStatusResponse {
-    success: boolean;
-    config: {
-        gatewayConnected: boolean;
-        hasGatewayKey: boolean;
-        models: Array<{ id: string; name?: string; provider?: string }>;
-    };
-}
+function DocumentaryStudioInner() {
+  const params = useParams();
+  const projectId =
+    typeof params.projectId === "string" ? params.projectId : params.projectId?.[0];
 
-interface GatewayModel {
-    id: string;
-    name?: string;
-    provider?: string;
-}
+  const [doc, setDoc] = useState<DocSession>(EMPTY_SESSION);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
-interface ProfileDefaults {
-    model_fiab_text?: string | null;
-}
+  // Step 1
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
-function FilmInABoxPage() {
-    const modelOverride = (process.env.NEXT_PUBLIC_FILM_IN_A_BOX_MODEL || "").trim();
-    const router = useRouter();
-    const params = useParams<{ projectId?: string | string[] }>();
-    const searchParams = useSearchParams();
-    const projectIdFromPath =
-        typeof params.projectId === "string" ? params.projectId : params.projectId?.[0] ?? null;
-    const projectId = searchParams.get("project") ?? projectIdFromPath;
+  // Step 4
+  const [broll, setBroll] = useState<ShotSuggestion[]>([]);
+  const [scriptSaved, setScriptSaved] = useState(false);
 
-    const [title, setTitle] = useState("");
-    const [prompt, setPrompt] = useState("");
-    const [type, setType] = useState<ContentType>("FILM");
-    const [loading, setLoading] = useState(false);
-    const [saving, setSaving] = useState(false);
+  // Step 5
+  const [entities, setEntities] = useState<Entity[]>([]);
+  const [savedScriptId, setSavedScriptId] = useState<string | null>(null);
 
-    const [filmResult, setFilmResult] = useState<string | null>(null);
-    const [docResult, setDocResult] = useState<DocResult | null>(null);
-    const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
-    const [message, setMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
-    const [profileDefaults, setProfileDefaults] = useState<ProfileDefaults | null>(null);
-    const [lastCallCost, setLastCallCost] = useState<number | null>(null);
-    const [lastCallBalance, setLastCallBalance] = useState<number | null>(null);
+  const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const [projectDetails, setProjectDetails] = useState<ProjectData | null>(null);
-    const [configStatus, setConfigStatus] = useState<ConfigStatusResponse["config"] | null>(null);
-
-    const hasContent = Boolean(filmResult || docResult);
-
-    const clearMessage = () => setMessage(null);
-
-    const loadConfigStatus = useCallback(async () => {
-        try {
-            const res = await api.get<ConfigStatusResponse>("/api/config/status");
-            if (res?.success) {
-                setConfigStatus(res.config);
-            }
-        } catch {
-            setConfigStatus(null);
+  // Load session on mount
+  useEffect(() => {
+    if (!projectId) return;
+    api
+      .get<{ success: boolean; session: DocSession & { stage: number } }>(`${BASE}/${projectId}`)
+      .then((data) => {
+        if (data?.session) {
+          setDoc({
+            stage: (data.session.stage as Stage) ?? 1,
+            subjectName: data.session.subjectName ?? "",
+            workingTitle: data.session.workingTitle ?? "",
+            context: data.session.context ?? "",
+            rawTranscript: data.session.rawTranscript ?? "",
+            cleanedDialogue: data.session.cleanedDialogue ?? "",
+            dialogueStyle: (data.session.dialogueStyle as DialogueStyle) ?? "monologue",
+            generatedScript: data.session.generatedScript ?? "",
+          });
+          if (data.session.generatedScript) {
+            setBroll(extractBroll(data.session.generatedScript));
+          }
         }
-    }, []);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [projectId]);
 
-    const loadProjectDetails = useCallback(async () => {
-        if (!projectId) {
-            setProjectDetails(null);
-            return;
-        }
-        try {
-            const all = await api.get<ProjectData[]>("/projects/");
-            const found = (all || []).find((p) => p.id === projectId) || null;
-            setProjectDetails(found);
-            if (found?.name) {
-                setTitle(found.name);
-            }
-        } catch {
-            setProjectDetails(null);
-        }
-    }, [projectId]);
+  // Debounced auto-save on doc changes
+  const autosave = useCallback(
+    (updated: DocSession) => {
+      if (!projectId) return;
+      if (saveTimeout.current) clearTimeout(saveTimeout.current);
+      saveTimeout.current = setTimeout(() => {
+        api
+          .put(`${BASE}/${projectId}`, {
+            stage: updated.stage,
+            subjectName: updated.subjectName,
+            workingTitle: updated.workingTitle,
+            context: updated.context,
+            rawTranscript: updated.rawTranscript,
+            cleanedDialogue: updated.cleanedDialogue,
+            dialogueStyle: updated.dialogueStyle,
+            generatedScript: updated.generatedScript,
+          })
+          .catch(() => {});
+      }, 1200);
+    },
+    [projectId]
+  );
 
-    const loadProfileDefaults = useCallback(async () => {
-        try {
-            const data = await api.get<ProfileDefaults>("/profile/");
-            setProfileDefaults(data);
-        } catch {
-            setProfileDefaults(null);
-        }
-    }, []);
+  function updateDoc(patch: Partial<DocSession>) {
+    setDoc((prev) => {
+      const next = { ...prev, ...patch };
+      autosave(next);
+      return next;
+    });
+  }
 
-    const handleLoadItem = useCallback(
-        async (itemId: string) => {
-            setLoading(true);
-            clearMessage();
-            try {
-                const data = await api.get<{ type: ContentType; content: unknown }>(`/api/film-in-a-box/content/${itemId}`);
-                if (data.type === "FILM") {
-                    setType("FILM");
-                    setFilmResult(String(data.content ?? ""));
-                    setDocResult(null);
-                } else {
-                    setType("DOC");
-                    setDocResult((data.content as DocResult) || null);
-                    setFilmResult(null);
-                }
-            } catch (err) {
-                setMessage({
-                    kind: "error",
-                    text: err instanceof Error ? err.message : "Failed to load saved item.",
-                });
-            } finally {
-                setLoading(false);
-            }
-        },
-        []
-    );
+  function goToStage(stage: Stage) {
+    updateDoc({ stage });
+  }
 
-    const loadSavedItems = useCallback(async () => {
-        try {
-            const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
-            const data = await api.get<{ list: SavedItem[] }>(`/api/film-in-a-box/list${query}`);
-            const list = data?.list || [];
-            setSavedItems(list);
-            if (projectId && list.length > 0) {
-                await handleLoadItem(list[0].id);
-            }
-        } catch {
-            setSavedItems([]);
-        }
-    }, [projectId, handleLoadItem]);
+  function showError(msg: string) {
+    setError(msg);
+    setSuccess(null);
+  }
 
-    useEffect(() => {
-        loadConfigStatus();
-        loadProjectDetails();
-        loadProfileDefaults();
-    }, [loadConfigStatus, loadProjectDetails, loadProfileDefaults]);
+  function showSuccess(msg: string) {
+    setSuccess(msg);
+    setError(null);
+  }
 
-    useEffect(() => {
-        loadSavedItems();
-    }, [loadSavedItems]);
+  // ---------------------------------------------------------------------------
+  // Step 2 — Transcribe
+  // ---------------------------------------------------------------------------
 
-    const allModels = useMemo<GatewayModel[]>(() => {
-        return Array.isArray(configStatus?.models) ? configStatus.models : [];
-    }, [configStatus?.models]);
+  async function handleTranscribe() {
+    if (!projectId || selectedFiles.length === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      for (const file of selectedFiles) {
+        formData.append("files", file);
+      }
+      const res = await fetch(`${BASE}/${projectId}/transcribe`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || "Transcription failed");
+      }
+      const data: { transcript: string; segmentCount: number } = await res.json();
+      updateDoc({ rawTranscript: data.transcript, stage: 2 });
+      showSuccess(`Transcribed ${data.segmentCount} file(s) successfully`);
+    } catch (e) {
+      showError(e instanceof Error ? e.message : "Transcription failed");
+    } finally {
+      setBusy(false);
+    }
+  }
 
-    const profileModel = (profileDefaults?.model_fiab_text || "").trim();
-    const resolvedModelId = profileModel || modelOverride;
-    const resolvedModelData = useMemo(
-        () => allModels.find((model) => model.id === resolvedModelId),
-        [allModels, resolvedModelId]
-    );
-    const resolvedModelLabel = resolvedModelData?.name || resolvedModelId || "Not configured";
-    const resolvedModelMeta = resolvedModelData?.provider ? ` (${resolvedModelData.provider})` : "";
+  // ---------------------------------------------------------------------------
+  // Step 3 — Generate dialogue
+  // ---------------------------------------------------------------------------
 
-    const handleGenerate = async () => {
-        clearMessage();
-        if (!title.trim() || !prompt.trim()) {
-            setMessage({ kind: "error", text: "Title and prompt are required." });
-            return;
-        }
-        if (!configStatus?.gatewayConnected || !configStatus?.hasGatewayKey) {
-            setMessage({
-                kind: "error",
-                text: "AI gateway is not connected. Check gateway status and key configuration first.",
-            });
-            return;
-        }
+  async function handleGenerateDialogue() {
+    if (!projectId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.post<{ dialogue: string }>(`${BASE}/${projectId}/generate-dialogue`, {
+        style: doc.dialogueStyle,
+      });
+      updateDoc({ cleanedDialogue: res.dialogue });
+      showSuccess("Dialogue generated");
+    } catch (e) {
+      showError(e instanceof Error ? e.message : "Dialogue generation failed");
+    } finally {
+      setBusy(false);
+    }
+  }
 
-        const isContinuing = Boolean((type === "FILM" && filmResult) || (type === "DOC" && docResult));
+  // ---------------------------------------------------------------------------
+  // Step 4 — Generate script
+  // ---------------------------------------------------------------------------
 
-        if (!isContinuing) {
-            setFilmResult(null);
-            setDocResult(null);
-        }
+  async function handleGenerateScript() {
+    if (!projectId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.post<{ script: string; brollSuggestions: ShotSuggestion[] }>(
+        `${BASE}/${projectId}/generate-script`,
+        {}
+      );
+      const suggestions = (res.brollSuggestions || []).map((s) => ({ ...s, selected: false }));
+      updateDoc({ generatedScript: res.script });
+      setBroll(suggestions);
+      showSuccess("Script generated");
+    } catch (e) {
+      showError(e instanceof Error ? e.message : "Script generation failed");
+    } finally {
+      setBusy(false);
+    }
+  }
 
-        setLoading(true);
-        try {
-            const res = await api.post<{ result: string | DocResult; credits?: { cost?: number; balance?: number } }>(
-                "/api/film-in-a-box/generate",
-                {
-                title: title.trim(),
-                prompt: prompt.trim(),
-                type,
-                previousContent: isContinuing ? (type === "FILM" ? filmResult : docResult) : undefined,
-                }
-            );
-            if (typeof res.credits?.cost === "number") {
-                setLastCallCost(res.credits.cost);
-            }
-            if (typeof res.credits?.balance === "number") {
-                setLastCallBalance(res.credits.balance);
-            }
+  async function handleSaveScript() {
+    if (!projectId || !doc.generatedScript) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const blob = new Blob([doc.generatedScript], { type: "text/plain" });
+      const formData = new FormData();
+      formData.append("file", blob, `${doc.workingTitle || "documentary"}.txt`);
+      formData.append("project_id", projectId);
+      formData.append("name", doc.workingTitle || "Documentary Script");
 
-            if (type === "FILM") {
-                const next = String(res.result || "");
-                setFilmResult((prev) => (isContinuing && prev ? `${prev}\n\n${next}` : next));
-                setDocResult(null);
-            } else {
-                setDocResult((res.result as DocResult) || null);
-                setFilmResult(null);
-            }
-        } catch (err) {
-            setMessage({
-                kind: "error",
-                text: err instanceof Error ? err.message : "Failed to generate content.",
-            });
-        } finally {
-            setLoading(false);
-        }
-    };
+      const res = await fetch(`${API_URL}/scripts/upload-text`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSavedScriptId(data.id || data.script_id || null);
+        setScriptSaved(true);
+        showSuccess("Script saved to project");
+      } else {
+        setScriptSaved(true);
+        showSuccess("Script generated — navigate to Scripts to upload manually");
+      }
+    } catch {
+      setScriptSaved(true);
+      showSuccess("Script generated — navigate to Scripts to upload manually");
+    } finally {
+      setBusy(false);
+    }
+  }
 
-    const handleSave = async () => {
-        clearMessage();
-        const content = type === "FILM" ? filmResult : docResult;
-        if (!content) return;
+  // ---------------------------------------------------------------------------
+  // Step 5 — Apply shots and extract entities
+  // ---------------------------------------------------------------------------
 
-        setSaving(true);
-        try {
-            if (projectId) {
-                await api.post("/api/film-in-a-box/save", {
-                    projectId,
-                    title: title.trim(),
-                    type,
-                    content,
-                    prompt: prompt.trim() || undefined,
-                });
-                setMessage({ kind: "success", text: "Saved to project successfully." });
-                await loadSavedItems();
-            } else {
-                const res = await api.post<{ projectId: string }>("/api/film-in-a-box/create-project", {
-                    title: title.trim(),
-                    type,
-                    content,
-                    prompt: prompt.trim() || undefined,
-                });
-                setMessage({ kind: "success", text: "Project created successfully." });
-                router.push(`/project/${res.projectId}`);
-            }
-        } catch (err) {
-            setMessage({
-                kind: "error",
-                text: err instanceof Error ? err.message : "Failed to save.",
-            });
-        } finally {
-            setSaving(false);
-        }
-    };
+  async function handleApplyShots() {
+    if (!projectId) return;
+    const selected = broll.filter((s) => s.selected);
+    if (selected.length === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post(`${BASE}/${projectId}/apply-shots`, {
+        shots: selected.map((s) => ({
+          scene_id: s.sceneId || null,
+          description: s.description,
+          context_quote: s.contextQuote,
+        })),
+      });
+      showSuccess(`${selected.length} shot(s) added to project shot list`);
+    } catch (e) {
+      showError(e instanceof Error ? e.message : "Failed to apply shots");
+    } finally {
+      setBusy(false);
+    }
+  }
 
-    const gatewaySummary = useMemo(() => {
-        if (!configStatus) return "Gateway status unavailable";
-        const modelCount = Array.isArray(configStatus.models) ? configStatus.models.length : 0;
-        if (configStatus.gatewayConnected && configStatus.hasGatewayKey) {
-            return `Gateway connected (${modelCount} model${modelCount === 1 ? "" : "s"})`;
-        }
-        return "Gateway not ready";
-    }, [configStatus]);
+  async function handleExtractEntities() {
+    if (!projectId || !savedScriptId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.post<{ entities: Entity[]; created: number }>(
+        `${BASE}/${projectId}/extract-entities`,
+        { scriptId: savedScriptId }
+      );
+      setEntities(res.entities || []);
+      showSuccess(`${res.created} entities extracted and added to Objects`);
+    } catch (e) {
+      showError(e instanceof Error ? e.message : "Entity extraction failed");
+    } finally {
+      setBusy(false);
+    }
+  }
 
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
+
+  if (!projectId || loading) {
     return (
-        <div className="min-h-screen flex flex-col bg-background">
-            <AppHeader />
+      <div className="min-h-screen flex flex-col bg-background">
+        <AppHeader />
+        <main className="flex-1 flex items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </main>
+        <Footer />
+      </div>
+    );
+  }
 
-            <main className="flex-1 container mx-auto px-4 py-8 space-y-6">
-                <div className="text-right">
-                    <h1 className="text-2xl font-bold">CoWriter</h1>
-                    <p className="text-sm text-muted-foreground">AI-Powered Production Planning Suite</p>
+  return (
+    <div className="min-h-screen flex flex-col bg-background">
+      <AppHeader />
+      <main className="flex-1 container max-w-4xl px-4 py-8">
+        <div className="mb-6 flex items-center gap-3">
+          <Clapperboard className="h-6 w-6 text-primary" />
+          <div>
+            <h1 className="text-xl font-semibold">Documentary Studio</h1>
+            <p className="text-sm text-muted-foreground">
+              Turn an interview into a documentary script
+            </p>
+          </div>
+        </div>
+
+        <StepIndicator current={doc.stage} />
+
+        {/* Alerts */}
+        {error && (
+          <div className="mb-4 p-3 rounded-md bg-destructive/10 border border-destructive/30 text-destructive text-sm">
+            {error}
+          </div>
+        )}
+        {success && (
+          <div className="mb-4 p-3 rounded-md bg-green-500/10 border border-green-500/30 text-green-700 dark:text-green-400 text-sm">
+            {success}
+          </div>
+        )}
+
+        {/* ------------------------------------------------------------------ */}
+        {/* STEP 1 — Source Material                                            */}
+        {/* ------------------------------------------------------------------ */}
+        {doc.stage === 1 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Film className="w-5 h-5" />
+                Source Material
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label>Subject Name *</Label>
+                  <Input
+                    className="mt-1"
+                    placeholder="e.g. John Smith"
+                    value={doc.subjectName}
+                    onChange={(e) => updateDoc({ subjectName: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label>Working Title</Label>
+                  <Input
+                    className="mt-1"
+                    placeholder="e.g. A Life in Three Acts"
+                    value={doc.workingTitle}
+                    onChange={(e) => updateDoc({ workingTitle: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label>Story Context</Label>
+                <Textarea
+                  className="mt-1"
+                  rows={3}
+                  placeholder="Briefly describe the story, key themes, and time period…"
+                  value={doc.context}
+                  onChange={(e) => updateDoc({ context: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <Label>Interview Files</Label>
+                <div
+                  className="mt-1 border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
+                  onClick={() => document.getElementById("file-input")?.click()}
+                >
+                  <Upload className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
+                  <p className="text-sm text-muted-foreground">
+                    Click to select video or audio files (MP4, MOV, MP3, M4A…)
+                  </p>
+                  <p className="text-xs text-muted-foreground/70 mt-1">
+                    Multiple files supported — all will be transcribed in sequence
+                  </p>
+                  <input
+                    id="file-input"
+                    type="file"
+                    multiple
+                    accept="video/*,audio/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []);
+                      setSelectedFiles(files);
+                    }}
+                  />
                 </div>
 
-                <Card>
-                    <CardContent className="pt-6">
-                        <div className="flex items-center justify-between gap-3">
-                            <div className="space-y-1">
-                                <div className="text-sm text-muted-foreground">{gatewaySummary}</div>
-                                {(lastCallCost !== null || lastCallBalance !== null) && (
-                                    <div className="text-xs text-muted-foreground">
-                                        {lastCallCost !== null ? `Last call cost: ${lastCallCost} credit${lastCallCost === 1 ? "" : "s"}` : ""}
-                                        {lastCallCost !== null && lastCallBalance !== null ? " · " : ""}
-                                        {lastCallBalance !== null ? `Balance: ${lastCallBalance}` : ""}
-                                    </div>
-                                )}
-                            </div>
-                            <div
-                                className={`text-xs px-2 py-1 rounded-full ${
-                                    configStatus?.gatewayConnected && configStatus?.hasGatewayKey
-                                        ? "bg-green-500/10 text-green-600 dark:text-green-400"
-                                        : "bg-destructive/10 text-destructive"
-                                }`}
-                            >
-                                {configStatus?.gatewayConnected && configStatus?.hasGatewayKey ? "AI Ready" : "AI Not Ready"}
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
+                {selectedFiles.length > 0 && (
+                  <div className="mt-3 space-y-1">
+                    {selectedFiles.map((f, i) => (
+                      <div key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <FileText className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">{f.name}</span>
+                        <span className="shrink-0 text-xs">
+                          ({(f.size / 1024 / 1024).toFixed(1)} MB)
+                        </span>
+                      </div>
+                    ))}
+                    <p className="text-xs text-muted-foreground/70 pt-1">
+                      Total:{" "}
+                      {(selectedFiles.reduce((a, f) => a + f.size, 0) / 1024 / 1024).toFixed(1)} MB
+                    </p>
+                  </div>
+                )}
+              </div>
 
-                {message && (
-                    <div
-                        className={`p-3 rounded-md text-sm ${
-                            message.kind === "error"
-                                ? "bg-destructive/10 text-destructive border border-destructive/20"
-                                : "bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20"
-                        }`}
+              <div className="flex flex-wrap gap-3 pt-2">
+                <Button
+                  onClick={() => {
+                    goToStage(2);
+                    if (selectedFiles.length > 0) handleTranscribe();
+                  }}
+                  disabled={!doc.subjectName.trim() || selectedFiles.length === 0 || busy}
+                >
+                  {busy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                  Next: Transcribe
+                </Button>
+                {doc.rawTranscript && (
+                  <Button variant="outline" onClick={() => goToStage(2)}>
+                    Continue with existing transcript
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ------------------------------------------------------------------ */}
+        {/* STEP 2 — Transcript                                                 */}
+        {/* ------------------------------------------------------------------ */}
+        {doc.stage === 2 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="w-5 h-5" />
+                Transcript
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {busy && !doc.rawTranscript && (
+                <div className="flex items-center gap-3 p-4 bg-muted/40 rounded-md">
+                  <Loader2 className="w-5 h-5 animate-spin text-primary shrink-0" />
+                  <p className="text-sm text-muted-foreground">
+                    Transcribing your interview… this may take a minute
+                  </p>
+                </div>
+              )}
+
+              {/* Speaker label renaming */}
+              <div className="flex flex-wrap gap-4">
+                <div>
+                  <Label className="text-xs">Rename &ldquo;INTERVIEWER&rdquo; to</Label>
+                  <Input
+                    className="mt-0.5 h-8 text-sm w-40"
+                    defaultValue="INTERVIEWER"
+                    onBlur={(e) => {
+                      const val = e.target.value.trim().toUpperCase();
+                      if (val && val !== "INTERVIEWER") {
+                        updateDoc({
+                          rawTranscript: doc.rawTranscript.replace(/INTERVIEWER:/g, `${val}:`),
+                        });
+                      }
+                    }}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Rename &ldquo;SUBJECT&rdquo; to</Label>
+                  <Input
+                    className="mt-0.5 h-8 text-sm w-40"
+                    defaultValue={doc.subjectName.toUpperCase() || "SUBJECT"}
+                    onBlur={(e) => {
+                      const val = e.target.value.trim().toUpperCase();
+                      const orig = (doc.subjectName || "SUBJECT").toUpperCase();
+                      if (val && val !== orig) {
+                        updateDoc({
+                          rawTranscript: doc.rawTranscript
+                            .replace(new RegExp(`${orig}:`, "g"), `${val}:`)
+                            .replace(/\[SUBJECT NAME\]/g, val),
+                        });
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+
+              <Textarea
+                rows={18}
+                className="font-mono text-sm"
+                placeholder="Transcript will appear here after transcription, or paste it directly…"
+                value={doc.rawTranscript}
+                onChange={(e) => updateDoc({ rawTranscript: e.target.value })}
+              />
+
+              <div className="flex flex-wrap gap-3 pt-1">
+                <Button
+                  onClick={() => goToStage(3)}
+                  disabled={!doc.rawTranscript.trim()}
+                >
+                  Transcript looks good → Continue
+                </Button>
+                <Button variant="outline" onClick={() => goToStage(1)}>
+                  ← Back
+                </Button>
+                {selectedFiles.length > 0 && (
+                  <Button variant="outline" onClick={handleTranscribe} disabled={busy}>
+                    {busy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                    Re-transcribe
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ------------------------------------------------------------------ */}
+        {/* STEP 3 — Story Dialogue                                             */}
+        {/* ------------------------------------------------------------------ */}
+        {doc.stage === 3 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Story Dialogue</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {/* Style picker */}
+              <div>
+                <Label className="mb-2 block">Dialogue style</Label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {(
+                    [
+                      {
+                        value: "monologue",
+                        label: "Monologue",
+                        desc: `${doc.subjectName || "Subject"} speaks alone — interviewer questions removed`,
+                      },
+                      {
+                        value: "interview",
+                        label: "Interview",
+                        desc: "Q&A preserved as clean dialogue between interviewer and subject",
+                      },
+                      {
+                        value: "mixed",
+                        label: "Mixed Documentary",
+                        desc: "Narrator bridges sections; subject's key quotes as direct speech",
+                      },
+                    ] as { value: DialogueStyle; label: string; desc: string }[]
+                  ).map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => updateDoc({ dialogueStyle: opt.value })}
+                      className={[
+                        "text-left p-3 rounded-lg border transition-colors",
+                        doc.dialogueStyle === opt.value
+                          ? "border-primary bg-primary/10"
+                          : "border-border hover:border-primary/40",
+                      ].join(" ")}
                     >
-                        {message.text}
-                    </div>
+                      <p className="font-medium text-sm">{opt.label}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{opt.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <Button onClick={handleGenerateDialogue} disabled={busy}>
+                {busy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                Generate Dialogue
+              </Button>
+
+              {/* Side-by-side panels */}
+              {(doc.rawTranscript || doc.cleanedDialogue) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-1 block">
+                      Raw transcript (original)
+                    </Label>
+                    <Textarea
+                      rows={16}
+                      className="font-mono text-xs bg-muted/30"
+                      readOnly
+                      value={doc.rawTranscript}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-1 block">
+                      Cleaned dialogue (editable)
+                    </Label>
+                    <Textarea
+                      rows={16}
+                      className="font-mono text-xs"
+                      value={doc.cleanedDialogue}
+                      onChange={(e) => updateDoc({ cleanedDialogue: e.target.value })}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-3 pt-1">
+                <Button
+                  onClick={() => goToStage(4)}
+                  disabled={!doc.cleanedDialogue.trim()}
+                >
+                  Use this dialogue → Continue
+                </Button>
+                <Button variant="outline" onClick={() => goToStage(2)}>
+                  ← Back
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ------------------------------------------------------------------ */}
+        {/* STEP 4 — Documentary Script                                         */}
+        {/* ------------------------------------------------------------------ */}
+        {doc.stage === 4 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ScrollTextIcon className="w-5 h-5" />
+                Documentary Script
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-3">
+                <Button onClick={handleGenerateScript} disabled={busy}>
+                  {busy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                  {doc.generatedScript ? "Regenerate" : "Generate Script"}
+                </Button>
+                {doc.generatedScript && !scriptSaved && (
+                  <Button variant="outline" onClick={handleSaveScript} disabled={busy}>
+                    Save as Project Script
+                  </Button>
+                )}
+                {scriptSaved && (
+                  <Badge variant="secondary" className="flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3" /> Saved
+                  </Badge>
+                )}
+              </div>
+
+              {busy && !doc.generatedScript && (
+                <div className="flex items-center gap-3 p-4 bg-muted/40 rounded-md">
+                  <Loader2 className="w-5 h-5 animate-spin text-primary shrink-0" />
+                  <p className="text-sm text-muted-foreground">
+                    Writing your documentary screenplay…
+                  </p>
+                </div>
+              )}
+
+              {doc.generatedScript && (
+                <div
+                  className="rounded-md border bg-muted/20 p-4 overflow-auto max-h-[60vh] font-mono text-xs whitespace-pre-wrap leading-relaxed"
+                >
+                  {doc.generatedScript}
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-3 pt-1">
+                <Button
+                  onClick={() => goToStage(5)}
+                  disabled={!doc.generatedScript}
+                >
+                  Continue to Shot List →
+                </Button>
+                <Button variant="outline" onClick={() => goToStage(3)}>
+                  ← Back
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ------------------------------------------------------------------ */}
+        {/* STEP 5 — Shot List & Entities                                       */}
+        {/* ------------------------------------------------------------------ */}
+        {doc.stage === 5 && (
+          <div className="space-y-6">
+            {/* B-Roll suggestions */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Film className="w-5 h-5" />
+                  B-Roll Suggestions
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {!scriptSaved && (
+                  <p className="text-sm text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded p-3">
+                    Save the script in Step 4 first to link shots to scenes in the project.
+                  </p>
                 )}
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <Card className="h-fit">
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                            <div className="space-y-1">
-                                <CardTitle>Project Details</CardTitle>
-                                <CardDescription>Define your story parameters.</CardDescription>
-                            </div>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            {!projectId && savedItems.length > 0 && (
-                                <div className="space-y-2">
-                                    <Label>Load Previous Generation</Label>
-                                    <Select onValueChange={handleLoadItem}>
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select from history..." />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {savedItems.map((item) => (
-                                                <SelectItem key={item.id} value={item.id}>
-                                                    {item.name}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
+                {broll.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No B-ROLL markers found in the script. Go back to Step 4 and generate a script first.
+                  </p>
+                ) : (
+                  <>
+                    <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                      {broll.map((shot) => (
+                        <div
+                          key={shot.id}
+                          className={[
+                            "flex items-start gap-3 p-3 rounded-md border cursor-pointer transition-colors",
+                            shot.selected ? "border-primary bg-primary/5" : "border-border hover:border-primary/30",
+                          ].join(" ")}
+                          onClick={() =>
+                            setBroll((prev) =>
+                              prev.map((s) =>
+                                s.id === shot.id ? { ...s, selected: !s.selected } : s
+                              )
+                            )
+                          }
+                        >
+                          <input
+                            type="checkbox"
+                            checked={shot.selected}
+                            readOnly
+                            className="mt-0.5 shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium">{shot.description}</p>
+                            {shot.contextQuote && (
+                              <p className="text-xs text-muted-foreground mt-1 italic truncate">
+                                &ldquo;{shot.contextQuote}&rdquo;
+                              </p>
                             )}
-
-                            <div className="space-y-2">
-                                <Label htmlFor="type">Project Type</Label>
-                                <Select
-                                    value={type}
-                                    onValueChange={(v) => setType(v as ContentType)}
-                                    disabled={hasContent || Boolean(projectId)}
-                                >
-                                    <SelectTrigger id="type">
-                                        <SelectValue placeholder="Select type" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="FILM">Short Film Script</SelectItem>
-                                        <SelectItem value="DOC">Documentary Plan</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="title">Title</Label>
-                                <Input
-                                    id="title"
-                                    value={title}
-                                    onChange={(e) => setTitle(e.target.value)}
-                                    placeholder="e.g. The Last Barista"
-                                    disabled={hasContent || Boolean(projectId)}
-                                    readOnly={Boolean(projectId)}
-                                    className={projectId ? "bg-muted" : ""}
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="prompt">Idea / Synopsis</Label>
-                                <Textarea
-                                    id="prompt"
-                                    className="min-h-[160px]"
-                                    value={prompt}
-                                    onChange={(e) => setPrompt(e.target.value)}
-                                    placeholder={
-                                        hasContent
-                                            ? "Describe what should happen next..."
-                                            : "Describe your story idea, characters, and tone..."
-                                    }
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label>Model</Label>
-                                <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
-                                    {resolvedModelLabel}
-                                    {resolvedModelMeta}
-                                </div>
-                            </div>
-                        </CardContent>
-                        <div className="p-6 pt-0">
-                            <Button onClick={handleGenerate} disabled={loading} className="w-full">
-                                {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Clapperboard className="mr-2 h-4 w-4" />}
-                                {hasContent ? "Generate / Continue" : "Generate Script / Plan"}
-                            </Button>
+                          </div>
                         </div>
-                    </Card>
-
-                    <div className="lg:col-span-2">
-                        <Tabs defaultValue="draft" className="w-full">
-                            <TabsList className="grid w-full grid-cols-2 mb-4">
-                                <TabsTrigger value="draft">Draft</TabsTrigger>
-                                <TabsTrigger value="suggestions">Suggestions</TabsTrigger>
-                            </TabsList>
-
-                            <TabsContent value="draft" className="mt-0 space-y-4">
-                                {hasContent && (
-                                    <div className="flex justify-end">
-                                        <Button onClick={handleSave} disabled={saving} variant="secondary">
-                                            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                                            {projectId ? "Save Script" : "Create Project"}
-                                        </Button>
-                                    </div>
-                                )}
-
-                                {loading && (
-                                    <div className="min-h-[360px] flex items-center justify-center border border-dashed rounded-lg">
-                                        <div className="text-center space-y-3">
-                                            <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" />
-                                            <p className="text-muted-foreground">Generating your content...</p>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {!loading && !filmResult && !docResult && (
-                                    <div className="min-h-[360px] flex items-center justify-center border border-dashed rounded-lg bg-muted/40">
-                                        <div className="text-center text-muted-foreground">
-                                            <Clapperboard className="h-12 w-12 mx-auto mb-4 opacity-60" />
-                                            <p>Enter your idea and click generate to begin.</p>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {!loading && filmResult && (
-                                    <Card>
-                                        <CardHeader>
-                                            <CardTitle>Screenplay Draft</CardTitle>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <Textarea
-                                                className="min-h-[420px] font-mono text-sm"
-                                                value={filmResult}
-                                                onChange={(e) => setFilmResult(e.target.value)}
-                                                placeholder="Your screenplay draft will appear here..."
-                                            />
-                                        </CardContent>
-                                    </Card>
-                                )}
-
-                                {!loading && docResult && (
-                                    <Tabs defaultValue="script" className="w-full">
-                                        <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 mb-4 h-auto gap-1">
-                                            <TabsTrigger value="script">Script</TabsTrigger>
-                                            <TabsTrigger value="outline">Creative Outline</TabsTrigger>
-                                            <TabsTrigger value="production">Production Plan</TabsTrigger>
-                                        </TabsList>
-
-                                        <TabsContent value="script" className="space-y-4">
-                                            <Card>
-                                                <CardHeader>
-                                                    <CardTitle className="flex items-center gap-2">
-                                                        <FileText className="h-5 w-5" />
-                                                        Documentary Script
-                                                    </CardTitle>
-                                                </CardHeader>
-                                                <CardContent>
-                                                    {Array.isArray(docResult.script) ? (
-                                                        <div className="border rounded-md overflow-x-auto">
-                                                            <table className="w-full text-sm">
-                                                                <thead className="bg-muted">
-                                                                    <tr>
-                                                                        <th className="px-4 py-2 text-left w-1/2 border-r">VIDEO</th>
-                                                                        <th className="px-4 py-2 text-left w-1/2">AUDIO</th>
-                                                                    </tr>
-                                                                </thead>
-                                                                <tbody className="divide-y">
-                                                                    {docResult.script.map((scene, idx) => (
-                                                                        <tr key={idx}>
-                                                                            <td className="px-4 py-3 align-top border-r whitespace-pre-wrap">
-                                                                                {scene.VIDEO || scene.video || ""}
-                                                                            </td>
-                                                                            <td className="px-4 py-3 align-top whitespace-pre-wrap">
-                                                                                {scene.AUDIO || scene.audio || ""}
-                                                                            </td>
-                                                                        </tr>
-                                                                    ))}
-                                                                </tbody>
-                                                            </table>
-                                                        </div>
-                                                    ) : (
-                                                        <pre className="whitespace-pre-wrap text-sm bg-muted p-4 rounded-md">
-                                                            {String(docResult.script || "")}
-                                                        </pre>
-                                                    )}
-                                                </CardContent>
-                                            </Card>
-                                        </TabsContent>
-
-                                        <TabsContent value="outline" className="space-y-4">
-                                            <Card>
-                                                <CardHeader>
-                                                    <CardTitle className="flex items-center gap-2">
-                                                        <Video className="h-5 w-5" />
-                                                        Creative Outline
-                                                    </CardTitle>
-                                                </CardHeader>
-                                                <CardContent className="space-y-4">
-                                                    <div>
-                                                        <h3 className="font-semibold mb-1">Logline</h3>
-                                                        <p className="text-sm text-muted-foreground">{docResult.logline}</p>
-                                                    </div>
-                                                    <div>
-                                                        <h3 className="font-semibold mb-1">Thematic Statement</h3>
-                                                        <p className="text-sm text-muted-foreground">{docResult.thematicStatement}</p>
-                                                    </div>
-                                                    <div>
-                                                        <h3 className="font-semibold mb-2">Chapters</h3>
-                                                        <div className="space-y-3">
-                                                            {(docResult.chapters || []).map((chapter, idx) => (
-                                                                <div key={idx} className="border rounded-md p-3">
-                                                                    <p className="font-medium">
-                                                                        {chapter.chapterNumber}. {chapter.title}
-                                                                    </p>
-                                                                    <p className="text-sm text-muted-foreground mt-1">{chapter.summary}</p>
-                                                                    <p className="text-sm mt-2">
-                                                                        <span className="font-medium">Visuals:</span> {chapter.visuals}
-                                                                    </p>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                </CardContent>
-                                            </Card>
-                                        </TabsContent>
-
-                                        <TabsContent value="production" className="space-y-4">
-                                            <Card>
-                                                <CardHeader>
-                                                    <CardTitle className="flex items-center gap-2">
-                                                        <User className="h-5 w-5" />
-                                                        Production Plan
-                                                    </CardTitle>
-                                                </CardHeader>
-                                                <CardContent className="space-y-4">
-                                                    <div>
-                                                        <h3 className="font-semibold mb-1">Interview Candidates</h3>
-                                                        <div className="space-y-2">
-                                                            {(docResult.interviewCandidates || []).map((item, idx) => (
-                                                                <div key={idx} className="border rounded-md p-3">
-                                                                    <p className="font-medium">{item.role}</p>
-                                                                    <p className="text-sm text-muted-foreground">{item.description}</p>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                    <div>
-                                                        <h3 className="font-semibold mb-1">Visual Style</h3>
-                                                        <p className="text-sm text-muted-foreground">{docResult.visualStyle}</p>
-                                                    </div>
-                                                    <div>
-                                                        <h3 className="font-semibold mb-1">B-Roll Wishlist</h3>
-                                                        <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
-                                                            {(docResult.bRollWishlist || []).map((item, idx) => (
-                                                                <li key={idx}>{item}</li>
-                                                            ))}
-                                                        </ul>
-                                                    </div>
-                                                </CardContent>
-                                            </Card>
-                                        </TabsContent>
-                                    </Tabs>
-                                )}
-                            </TabsContent>
-
-                            <TabsContent value="suggestions" className="mt-0">
-                                {type === "FILM" ? (
-                                    <Card>
-                                        <CardHeader>
-                                            <CardTitle>Short Film Suggestions</CardTitle>
-                                        </CardHeader>
-                                        <CardContent className="text-sm text-muted-foreground space-y-3">
-                                            <p>Define one strong central idea and avoid subplots.</p>
-                                            <p>Plan your ending early and build toward it.</p>
-                                            <p>Keep scope practical: fewer locations, fewer characters, tighter runtime.</p>
-                                            <p>Write visually first; dialogue should support action, not replace it.</p>
-                                        </CardContent>
-                                    </Card>
-                                ) : (
-                                    <Card>
-                                        <CardHeader>
-                                            <CardTitle>Documentary Suggestions</CardTitle>
-                                        </CardHeader>
-                                        <CardContent className="text-sm text-muted-foreground space-y-3">
-                                            <p>Start with the core question and why it matters now.</p>
-                                            <p>Define your documentary point of view early.</p>
-                                            <p>Do research and pre-interviews before fixing structure.</p>
-                                            <p>Build a flexible outline with clear stakes and narrative change.</p>
-                                        </CardContent>
-                                    </Card>
-                                )}
-                            </TabsContent>
-                        </Tabs>
+                      ))}
                     </div>
-                </div>
-            </main>
 
-            <Footer />
-        </div>
-    );
+                    <div className="flex flex-wrap gap-3">
+                      <Button
+                        onClick={handleApplyShots}
+                        disabled={busy || broll.every((s) => !s.selected)}
+                      >
+                        {busy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                        Add Selected to Shot List ({broll.filter((s) => s.selected).length})
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() =>
+                          setBroll((prev) => prev.map((s) => ({ ...s, selected: true })))
+                        }
+                      >
+                        Select All
+                      </Button>
+                      {projectId && (
+                        <Link href={`/project/${projectId}/shotlist`}>
+                          <Button variant="outline">View Shot List →</Button>
+                        </Link>
+                      )}
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Entity extraction */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="w-5 h-5" />
+                  People &amp; Places
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Extract named people, places, and organisations from the interview. They will
+                  be added to your project Objects for use in the Moodboard and Shot List.
+                </p>
+
+                {!savedScriptId ? (
+                  <p className="text-sm text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded p-3">
+                    Save the script first (Step 4) to attach entities to the project.
+                  </p>
+                ) : (
+                  <Button
+                    onClick={handleExtractEntities}
+                    disabled={busy}
+                    variant="outline"
+                  >
+                    {busy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                    Extract People &amp; Places
+                  </Button>
+                )}
+
+                {entities.length > 0 && (
+                  <div className="space-y-1">
+                    {entities.map((e) => (
+                      <div key={e.id} className="flex items-center gap-2 text-sm">
+                        <Badge variant="outline" className="shrink-0 text-xs">
+                          {e.objectType}
+                        </Badge>
+                        <span>{e.name}</span>
+                      </div>
+                    ))}
+                    {projectId && (
+                      <Link href={`/project/${projectId}/objects`} className="mt-2 inline-block">
+                        <Button variant="link" className="p-0 h-auto text-sm">
+                          View in Objects →
+                        </Button>
+                      </Link>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={() => goToStage(4)}>
+                ← Back to Script
+              </Button>
+            </div>
+          </div>
+        )}
+      </main>
+      <Footer />
+    </div>
+  );
 }
 
-export default function FilmInABoxRoute() {
-    return (
-        <SessionAuth>
-            <FilmInABoxPage />
-        </SessionAuth>
-    );
+// Tiny inline icon to avoid importing ScrollText (may not be available)
+function ScrollTextIcon({ className }: { className?: string }) {
+  return <FileText className={className} />;
+}
+
+function extractBroll(script: string): ShotSuggestion[] {
+  const pattern = /\[B-ROLL:\s*([^\]]+)\]/gi;
+  const lines = script.split("\n");
+  const results: ShotSuggestion[] = [];
+  lines.forEach((line, i) => {
+    let match;
+    const re = /\[B-ROLL:\s*([^\]]+)\]/gi;
+    while ((match = re.exec(line)) !== null) {
+      const context = [
+        i > 0 ? lines[i - 1].trim() : "",
+        i < lines.length - 1 ? lines[i + 1].trim() : "",
+      ]
+        .filter(Boolean)
+        .join(" … ");
+      results.push({
+        id: crypto.randomUUID(),
+        description: match[1].trim(),
+        contextQuote: context,
+        selected: false,
+      });
+    }
+  });
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Export with auth wrapper
+// ---------------------------------------------------------------------------
+
+export default function DocumentaryStudioPage() {
+  return (
+    <SessionAuth>
+      <DocumentaryStudioInner />
+    </SessionAuth>
+  );
 }

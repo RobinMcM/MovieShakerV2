@@ -395,6 +395,24 @@ class FilmInABoxItem(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class DocumentarySession(SQLModel, table=True):
+    """One documentary workflow session per project — stores all stages from transcript to script."""
+    __tablename__ = "documentary_session"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    project_id: uuid.UUID = Field(foreign_key="project.id", unique=True, index=True)
+    user_id: str = Field(index=True)
+    subject_name: str = Field(default="")
+    working_title: str = Field(default="")
+    context: str = Field(default="")
+    stage: int = Field(default=1)
+    raw_transcript: Optional[str] = Field(default=None)
+    cleaned_dialogue: Optional[str] = Field(default=None)
+    dialogue_style: str = Field(default="monologue")
+    generated_script: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class ContactSubmission(SQLModel, table=True):
     """Public contact form submissions (no auth required)."""
     __tablename__ = "contact_submission"

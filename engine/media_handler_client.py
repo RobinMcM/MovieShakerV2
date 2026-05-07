@@ -137,6 +137,20 @@ class MediaHandlerClient:
 
         raise MediaHandlerClientError(last_error or "Media-handler did not return a frame image")
 
+    def transcribe_video(self, file_bytes: bytes, filename: str, content_type: str) -> dict[str, Any]:
+        """Send audio/video bytes to the media handler Whisper endpoint and return the transcript."""
+        if not self.base_url:
+            raise MediaHandlerClientError("Media-handler base URL is not configured")
+        with httpx.Client(timeout=300.0, verify=self.verify_tls) as client:
+            response = client.post(
+                f"{self.base_url}/api/transcribe",
+                files={"file": (filename, file_bytes, content_type)},
+                headers={"X-Internal-API-Key": self.api_key},
+            )
+        if response.status_code >= 400:
+            raise MediaHandlerClientError(f"Transcription failed: {response.text}")
+        return response.json()
+
     def stitch_videos(self, video_urls: list[str], aspect_ratio: str = "16:9") -> dict[str, Any]:
         if len(video_urls) < 2:
             raise MediaHandlerClientError("At least two videos are required for stitching")

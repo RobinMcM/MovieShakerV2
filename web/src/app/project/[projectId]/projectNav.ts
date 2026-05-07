@@ -106,7 +106,7 @@ export const PROJECT_EXTERNAL_NAV: ProjectNavItem[] = [
   },
   {
     id: "film-in-a-box",
-    label: "CoWriter",
+    label: "Documentary Studio",
     href: (projectId) => `/project/${projectId}/film-in-a-box`,
     icon: Clapperboard,
   },

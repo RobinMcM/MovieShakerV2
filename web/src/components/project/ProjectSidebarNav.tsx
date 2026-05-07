@@ -48,7 +48,7 @@ export function ProjectSidebarNav({
     const pathname = usePathname();
     const router = useRouter();
     const [scriptsExpanded, setScriptsExpanded] = useState(true);
-    const [projectsExpanded, setProjectsExpanded] = useState(true);
+    const [projectsExpanded, setProjectsExpanded] = useState(false);
     const [projects, setProjects] = useState<ProjectItem[]>([]);
 
     useEffect(() => {
@@ -58,7 +58,6 @@ export function ProjectSidebarNav({
                 if (cancelled) return;
                 const list = Array.isArray(data) ? data : [];
                 setProjects(list);
-                setProjectsExpanded(list.length <= 3);
             })
             .catch(() => {
                 if (!cancelled) setProjects([]);
@@ -115,40 +114,8 @@ export function ProjectSidebarNav({
                 {/* Scrollable nav area */}
                 <div className="flex-1 min-h-0 overflow-y-auto pt-5 pb-4 px-3">
 
-                    {/* Project Navigation — only when a project is selected */}
-                    {projectId && (
-                        <>
-                            <div className="flex items-center gap-2 px-2 mb-4">
-                                <FolderKanban className="h-5 w-5 text-primary" />
-                                <h2 className="text-sm font-semibold">Project Navigation</h2>
-                            </div>
-                            <nav className="space-y-1">
-                                {PROJECT_TOOL_NAV.map((item) => {
-                                    const href = item.href(projectId);
-                                    const isActive = pathname === href;
-                                    const Icon = item.icon;
-                                    return (
-                                        <Link
-                                            key={item.id}
-                                            href={href}
-                                            className={cn(
-                                                "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors",
-                                                isActive
-                                                    ? "bg-primary/15 text-primary font-medium"
-                                                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                                            )}
-                                        >
-                                            <Icon className="h-4 w-4" />
-                                            <span>{item.label}</span>
-                                        </Link>
-                                    );
-                                })}
-                            </nav>
-                        </>
-                    )}
-
                     {/* Projects section */}
-                    <div className={cn("pt-4 border-t", projectId ? "mt-5" : "mt-0 border-t-0")}>
+                    <div>
                         <button
                             type="button"
                             onClick={() => setProjectsExpanded((v) => !v)}
@@ -200,6 +167,34 @@ export function ProjectSidebarNav({
                             </div>
                         )}
                     </div>
+
+                    {/* Project tool nav — only when a project is selected */}
+                    {projectId && (
+                        <div className="mt-5 pt-4 border-t">
+                            <nav className="space-y-1">
+                                {PROJECT_TOOL_NAV.map((item) => {
+                                    const href = item.href(projectId);
+                                    const isActive = pathname === href;
+                                    const Icon = item.icon;
+                                    return (
+                                        <Link
+                                            key={item.id}
+                                            href={href}
+                                            className={cn(
+                                                "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors",
+                                                isActive
+                                                    ? "bg-primary/15 text-primary font-medium"
+                                                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                                            )}
+                                        >
+                                            <Icon className="h-4 w-4" />
+                                            <span>{item.label}</span>
+                                        </Link>
+                                    );
+                                })}
+                            </nav>
+                        </div>
+                    )}
 
                     {/* Scripts section */}
                     <div className="mt-5 pt-4 border-t">

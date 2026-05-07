@@ -130,28 +130,6 @@ export function useSceneCosts(projectId: string | null) {
     }
   }, [projectId, showToast]);
 
-  const handleUpdateConfig = useCallback(
-    async (shootDays: number) => {
-      if (!projectId) return;
-      try {
-        await api.put<{ success: boolean; config: SceneCostConfig }>(
-          `${BASE}/${projectId}/config`,
-          { shootDays }
-        );
-        await handleCalculate();
-        showToast("Config Updated", "Settings saved and costs recalculated");
-      } catch (e) {
-        console.error("Error updating config:", e);
-        showToast(
-          "Error",
-          e instanceof Error ? e.message : "Failed to update configuration",
-          "destructive"
-        );
-      }
-    },
-    [projectId, handleCalculate, showToast]
-  );
-
   const handleUpdateModifiers = useCallback(
     async (sceneId: string, modifiers: SceneModifiers) => {
       try {
@@ -192,7 +170,6 @@ export function useSceneCosts(projectId: string | null) {
     clearToast: () => setToastMessage(null),
     refresh: loadData,
     handleCalculate,
-    handleUpdateConfig,
     handleUpdateModifiers,
   };
 }

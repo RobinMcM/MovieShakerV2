@@ -3,6 +3,7 @@ Scene Costs API: GET/POST project scene costs, PUT config, PUT scene modifiers, 
 Prefix: /api/scene-costs. Matches legacy client paths.
 """
 import logging
+import math
 import uuid
 from typing import Any, Optional
 
@@ -137,6 +138,38 @@ def _infer_scene_complexity(heading: str, description: Optional[str] = None) -> 
     }
 
 
+def _estimate_shoot_days(scenes: list) -> int:
+    """Estimate shoot days from scene data using industry-standard pacing (24 eighths/day)."""
+    BASE = 24  # eighths per shooting day (3 script pages — typical indie pace)
+    total: float = 0.0
+    for scene in scenes:
+        eighths = scene.length_in_eighths or 1
+        location_type = scene.location_type
+        is_night = scene.is_night_shoot
+        has_stunts = scene.has_stunts
+        has_vfx = scene.has_vfx
+        if location_type is None and is_night is None and has_stunts is None and has_vfx is None:
+            inf = _infer_scene_complexity(
+                scene.heading,
+                getattr(scene, "scene_details", None) or getattr(scene, "location_details", None),
+            )
+            location_type = inf["location_type"]
+            is_night = inf["is_night_shoot"]
+            has_stunts = inf["has_stunts"]
+            has_vfx = inf["has_vfx"]
+        f = 1.0
+        if is_night:
+            f *= 1.4
+        if location_type == "remote":
+            f *= 1.3
+        if has_stunts:
+            f *= 1.5
+        if has_vfx:
+            f *= 1.2
+        total += eighths * f
+    return max(1, math.ceil(total / BASE))
+
+
 def _infer_cast_tier(appearance_count: int, total_scenes: int) -> str:
     if total_scenes == 0:
         return "day_player"
@@ -251,7 +284,7 @@ def _calculate_one_scene(
 # --- Request/Response schemas ---
 
 class ConfigUpdateBody(BaseModel):
-    shootDays: int
+    pass
 
 
 class SceneModifiersBody(BaseModel):
@@ -413,10 +446,6 @@ def calculate_scene_costs(
         db.commit()
         db.refresh(config_row)
 
-    shoot_days = config_row.shoot_days
-    allocatable = _calculate_allocatable_budget(total_budget, strategy_id)
-    base_cost_per_eighth = _calculate_base_cost_per_eighth(allocatable, shoot_days)
-
     scenes = list(
         db.exec(
             select(Scene)
@@ -429,6 +458,13 @@ def calculate_scene_costs(
             status_code=400,
             detail="No scenes found for this project.",
         )
+
+    shoot_days = _estimate_shoot_days(scenes)
+    config_row.shoot_days = shoot_days
+    db.add(config_row)
+    db.commit()
+    allocatable = _calculate_allocatable_budget(total_budget, strategy_id)
+    base_cost_per_eighth = _calculate_base_cost_per_eighth(allocatable, shoot_days)
 
     scene_characters = list(
         db.exec(
@@ -565,7 +601,7 @@ def update_scene_cost_config(
     session: SessionContainer = Depends(verify_session()),
     db: Session = Depends(get_session),
 ):
-    """Update shoot days and strategy; clear cached costs."""
+    """Clear cached costs (shoot days and strategy are now auto-calculated)."""
     user_id = session.get_user_id()
     _ensure_project_member(db, project_id, user_id)
 
@@ -577,12 +613,9 @@ def update_scene_cost_config(
     if not config_row:
         config_row = SceneCostConfig(
             project_id=uuid.UUID(project_id),
-            shoot_days=body.shootDays,
         )
         db.add(config_row)
     else:
-        config_row.shoot_days = body.shootDays
-        db.add(config_row)
         for row in db.exec(select(SceneCost).where(SceneCost.config_id == config_row.id)).all():
             db.delete(row)
     db.commit()

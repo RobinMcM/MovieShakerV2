@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
@@ -9,7 +9,6 @@ import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -376,17 +375,8 @@ function SceneCostsPageInner() {
     toastMessage,
     clearToast,
     handleCalculate,
-    handleUpdateConfig,
     handleUpdateModifiers,
   } = useSceneCosts(projectId ?? null);
-
-  const [editShootDays, setEditShootDays] = useState(30);
-
-  useEffect(() => {
-    if (config) {
-      setEditShootDays(config.shootDays);
-    }
-  }, [config]);
 
   const maxCost = Math.max(...sceneCosts.map((s) => s.finalCost), 1);
   const selectedScene = sceneCosts.find((s) => s.sceneId === selectedSceneId);
@@ -422,10 +412,6 @@ function SceneCostsPageInner() {
       </div>
     );
   }
-
-  const onApplyConfig = () => {
-    handleUpdateConfig(editShootDays);
-  };
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -469,17 +455,17 @@ function SceneCostsPageInner() {
             <CardContent>
               <div className="flex flex-wrap items-end gap-4">
                 <div className="flex-1 min-w-[200px]">
-                  <Label>Shoot Days</Label>
-                  <Input
-                    type="number"
-                    value={editShootDays}
-                    onChange={(e) =>
-                      setEditShootDays(parseInt(e.target.value, 10) || 30)
-                    }
-                    min={1}
-                    max={365}
-                    className="mt-1"
-                  />
+                  <Label>Estimated Shoot Days</Label>
+                  <div className="mt-1 flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
+                    <span className="flex-1 text-foreground">
+                      {config?.shootDays ? `${config.shootDays} days` : "Run calculation to estimate"}
+                    </span>
+                    {config?.shootDays && (
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        auto-calculated
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex-1 min-w-[250px]">
                   <Label>Budget Strategy</Label>
@@ -495,7 +481,7 @@ function SceneCostsPageInner() {
                     </Link>
                   </div>
                 </div>
-                <Button onClick={onApplyConfig} disabled={calculating} className="w-full sm:w-auto">
+                <Button onClick={handleCalculate} disabled={calculating} className="w-full sm:w-auto">
                   <RefreshCw
                     className={`w-4 h-4 mr-2 ${calculating ? "animate-spin" : ""}`}
                   />

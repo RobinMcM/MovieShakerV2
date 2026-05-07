@@ -653,24 +653,11 @@ function DocumentaryStudioInner() {
 
               <div className="flex flex-wrap gap-3 pt-2">
                 <Button
-                  onClick={() => {
-                    goToStage(2);
-                    handleTranscribe();
-                  }}
-                  disabled={
-                    !doc.subjectName.trim() ||
-                    (selectedFiles.length === 0 && selectedLocalNames.size === 0) ||
-                    busy
-                  }
+                  onClick={() => goToStage(2)}
+                  disabled={!doc.subjectName.trim() || busy}
                 >
-                  {busy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                  Next: Transcribe
+                  Next: Set Up Transcript →
                 </Button>
-                {doc.rawTranscript && (
-                  <Button variant="outline" onClick={() => goToStage(2)}>
-                    Continue with existing transcript
-                  </Button>
-                )}
               </div>
             </CardContent>
           </Card>
@@ -688,59 +675,89 @@ function DocumentaryStudioInner() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {busy && !doc.rawTranscript && (
+              {/* Auto-transcription section — only shown when files are selected */}
+              {(selectedFiles.length > 0 || selectedLocalNames.size > 0) && (
+                <div className="flex items-center justify-between gap-3 p-3 rounded-md bg-muted/30 border">
+                  <p className="text-sm text-muted-foreground">
+                    {selectedFiles.length + selectedLocalNames.size} file(s) selected
+                    {" — "}transcription requires the media service to be active.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleTranscribe}
+                    disabled={busy}
+                  >
+                    {busy
+                      ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      : <RefreshCw className="w-4 h-4 mr-2" />}
+                    {doc.rawTranscript ? "Re-transcribe" : "Transcribe"}
+                  </Button>
+                </div>
+              )}
+
+              {busy && (
                 <div className="flex items-center gap-3 p-4 bg-muted/40 rounded-md">
                   <Loader2 className="w-5 h-5 animate-spin text-primary shrink-0" />
                   <p className="text-sm text-muted-foreground">
-                    Transcribing your interview… this may take a minute
+                    Transcribing… this may take several minutes for long recordings
                   </p>
                 </div>
               )}
 
-              {/* Speaker label renaming */}
-              <div className="flex flex-wrap gap-4">
-                <div>
-                  <Label className="text-xs">Rename &ldquo;INTERVIEWER&rdquo; to</Label>
-                  <Input
-                    className="mt-0.5 h-8 text-sm w-40"
-                    defaultValue="INTERVIEWER"
-                    onBlur={(e) => {
-                      const val = e.target.value.trim().toUpperCase();
-                      if (val && val !== "INTERVIEWER") {
-                        updateDoc({
-                          rawTranscript: doc.rawTranscript.replace(/INTERVIEWER:/g, `${val}:`),
-                        });
-                      }
-                    }}
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">Rename &ldquo;SUBJECT&rdquo; to</Label>
-                  <Input
-                    className="mt-0.5 h-8 text-sm w-40"
-                    defaultValue={doc.subjectName.toUpperCase() || "SUBJECT"}
-                    onBlur={(e) => {
-                      const val = e.target.value.trim().toUpperCase();
-                      const orig = (doc.subjectName || "SUBJECT").toUpperCase();
-                      if (val && val !== orig) {
-                        updateDoc({
-                          rawTranscript: doc.rawTranscript
-                            .replace(new RegExp(`${orig}:`, "g"), `${val}:`)
-                            .replace(/\[SUBJECT NAME\]/g, val),
-                        });
-                      }
-                    }}
-                  />
-                </div>
+              <div>
+                <Label>Transcript</Label>
+                <p className="text-xs text-muted-foreground mb-1">
+                  Paste your transcript below, or use the Transcribe button above if the media service is running.
+                </p>
+                <Textarea
+                  rows={18}
+                  className="font-mono text-sm mt-1"
+                  placeholder="Paste transcript here, or use SPEAKER NAME: format e.g.&#10;&#10;INTERVIEWER: Tell me about your childhood.&#10;UNCLE BILL: It started in a small town in Yorkshire…"
+                  value={doc.rawTranscript}
+                  onChange={(e) => updateDoc({ rawTranscript: e.target.value })}
+                />
               </div>
 
-              <Textarea
-                rows={18}
-                className="font-mono text-sm"
-                placeholder="Transcript will appear here after transcription, or paste it directly…"
-                value={doc.rawTranscript}
-                onChange={(e) => updateDoc({ rawTranscript: e.target.value })}
-              />
+              {/* Speaker label renaming — only useful once there's content */}
+              {doc.rawTranscript && (
+                <div className="flex flex-wrap gap-4 p-3 bg-muted/20 rounded-md">
+                  <p className="w-full text-xs text-muted-foreground font-medium">Rename speaker labels (find &amp; replace):</p>
+                  <div>
+                    <Label className="text-xs">Replace &ldquo;INTERVIEWER&rdquo; with</Label>
+                    <Input
+                      className="mt-0.5 h-8 text-sm w-44"
+                      placeholder="e.g. ROBIN"
+                      onBlur={(e) => {
+                        const val = e.target.value.trim().toUpperCase();
+                        if (val && val !== "INTERVIEWER") {
+                          updateDoc({
+                            rawTranscript: doc.rawTranscript.replace(/INTERVIEWER:/g, `${val}:`),
+                          });
+                        }
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Replace &ldquo;SUBJECT&rdquo; with</Label>
+                    <Input
+                      className="mt-0.5 h-8 text-sm w-44"
+                      placeholder={doc.subjectName.toUpperCase() || "e.g. BILL"}
+                      onBlur={(e) => {
+                        const val = e.target.value.trim().toUpperCase();
+                        const orig = (doc.subjectName || "SUBJECT").toUpperCase();
+                        if (val && val !== orig) {
+                          updateDoc({
+                            rawTranscript: doc.rawTranscript
+                              .replace(new RegExp(`\\b${orig}:`, "g"), `${val}:`)
+                              .replace(/\[SUBJECT NAME\]/g, val),
+                          });
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="flex flex-wrap gap-3 pt-1">
                 <Button
@@ -752,12 +769,6 @@ function DocumentaryStudioInner() {
                 <Button variant="outline" onClick={() => goToStage(1)}>
                   ← Back
                 </Button>
-                {selectedFiles.length > 0 && (
-                  <Button variant="outline" onClick={handleTranscribe} disabled={busy}>
-                    {busy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-                    Re-transcribe
-                  </Button>
-                )}
                 {localDir && doc.rawTranscript && (
                   <Button variant="outline" onClick={() => saveToFolder(doc.rawTranscript, "transcript")}>
                     <FolderOpen className="w-4 h-4 mr-2" />

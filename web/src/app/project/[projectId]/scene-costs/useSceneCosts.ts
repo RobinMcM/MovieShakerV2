@@ -131,12 +131,12 @@ export function useSceneCosts(projectId: string | null) {
   }, [projectId, showToast]);
 
   const handleUpdateConfig = useCallback(
-    async (shootDays: number, strategyId: string) => {
+    async (shootDays: number) => {
       if (!projectId) return;
       try {
         await api.put<{ success: boolean; config: SceneCostConfig }>(
           `${BASE}/${projectId}/config`,
-          { shootDays, strategyId }
+          { shootDays }
         );
         await handleCalculate();
         showToast("Config Updated", "Settings saved and costs recalculated");

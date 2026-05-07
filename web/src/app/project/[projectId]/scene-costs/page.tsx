@@ -381,12 +381,10 @@ function SceneCostsPageInner() {
   } = useSceneCosts(projectId ?? null);
 
   const [editShootDays, setEditShootDays] = useState(30);
-  const [editStrategy, setEditStrategy] = useState("producer-centric");
 
   useEffect(() => {
     if (config) {
       setEditShootDays(config.shootDays);
-      setEditStrategy(config.strategyId);
     }
   }, [config]);
 
@@ -426,7 +424,7 @@ function SceneCostsPageInner() {
   }
 
   const onApplyConfig = () => {
-    handleUpdateConfig(editShootDays, editStrategy);
+    handleUpdateConfig(editShootDays);
   };
 
   return (
@@ -485,21 +483,17 @@ function SceneCostsPageInner() {
                 </div>
                 <div className="flex-1 min-w-[250px]">
                   <Label>Budget Strategy</Label>
-                  <Select
-                    value={editStrategy}
-                    onValueChange={setEditStrategy}
-                  >
-                    <SelectTrigger className="mt-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {BUDGET_STRATEGIES.map((s) => (
-                        <SelectItem key={s.value} value={s.value}>
-                          {s.label} ({s.description})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="mt-1 flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
+                    <span className="flex-1 text-foreground">
+                      {BUDGET_STRATEGIES.find((s) => s.value === config?.strategyId)?.label ?? "—"}
+                    </span>
+                    <Link
+                      href={`/project/${projectId}/budgeting`}
+                      className="shrink-0 text-xs text-primary/80 hover:text-primary hover:underline"
+                    >
+                      Change in Budgeting →
+                    </Link>
+                  </div>
                 </div>
                 <Button onClick={onApplyConfig} disabled={calculating} className="w-full sm:w-auto">
                   <RefreshCw

@@ -252,7 +252,6 @@ def _calculate_one_scene(
 
 class ConfigUpdateBody(BaseModel):
     shootDays: int
-    strategyId: str
 
 
 class SceneModifiersBody(BaseModel):
@@ -301,7 +300,7 @@ def get_scene_costs(
 
     config_response = {
         "shootDays": config_row.shoot_days,
-        "strategyId": config_row.strategy_id,
+        "strategyId": strategy_id,
         "totalBudget": total_budget,
     }
     if config_row.base_cost_per_eighth is not None:
@@ -415,7 +414,7 @@ def calculate_scene_costs(
         db.refresh(config_row)
 
     shoot_days = config_row.shoot_days
-    allocatable = _calculate_allocatable_budget(total_budget, config_row.strategy_id)
+    allocatable = _calculate_allocatable_budget(total_budget, strategy_id)
     base_cost_per_eighth = _calculate_base_cost_per_eighth(allocatable, shoot_days)
 
     scenes = list(
@@ -579,12 +578,10 @@ def update_scene_cost_config(
         config_row = SceneCostConfig(
             project_id=uuid.UUID(project_id),
             shoot_days=body.shootDays,
-            strategy_id=body.strategyId,
         )
         db.add(config_row)
     else:
         config_row.shoot_days = body.shootDays
-        config_row.strategy_id = body.strategyId
         db.add(config_row)
         for row in db.exec(select(SceneCost).where(SceneCost.config_id == config_row.id)).all():
             db.delete(row)
@@ -595,11 +592,12 @@ def update_scene_cost_config(
         select(Budget).where(Budget.project_id == uuid.UUID(project_id))
     ).first()
     total_budget = float(budget.total_budget) if budget else 0.0
+    strategy_id = (budget.template_id or DEFAULT_STRATEGY) if budget else DEFAULT_STRATEGY
     return {
         "success": True,
         "config": {
             "shootDays": config_row.shoot_days,
-            "strategyId": config_row.strategy_id,
+            "strategyId": strategy_id,
             "totalBudget": total_budget,
         },
         "message": "Config updated. Costs will be recalculated on next request.",

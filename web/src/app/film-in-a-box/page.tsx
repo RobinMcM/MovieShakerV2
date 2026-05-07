@@ -19,11 +19,20 @@ import {
   Clapperboard,
   FileText,
   Film,
+  FolderOpen,
   Loader2,
   RefreshCw,
   Upload,
   Users,
 } from "lucide-react";
+import {
+  supportsLocalDirectory,
+  saveDirectoryHandle,
+  loadDirectoryHandle,
+  listMediaFiles,
+  verifyPermission,
+  type LocalFile,
+} from "@/lib/localFileStore";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -126,8 +135,15 @@ function DocumentaryStudioInner() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // Step 1
+  // Step 1 — file picker
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+
+  // Step 1 — local working directory (Filesystem Access API)
+  const [localDir, setLocalDir] = useState<FileSystemDirectoryHandle | null>(null);
+  const [localDirName, setLocalDirName] = useState<string>("");
+  const [localFiles, setLocalFiles] = useState<LocalFile[]>([]);
+  const [selectedLocalNames, setSelectedLocalNames] = useState<Set<string>>(new Set());
+  const [loadingDir, setLoadingDir] = useState(false);
 
   // Step 4
   const [broll, setBroll] = useState<ShotSuggestion[]>([]);
@@ -164,6 +180,63 @@ function DocumentaryStudioInner() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [projectId]);
+
+  // Restore persisted working directory handle on mount
+  useEffect(() => {
+    if (!supportsLocalDirectory()) return;
+    loadDirectoryHandle().then(async (handle) => {
+      if (!handle) return;
+      const ok = await verifyPermission(handle);
+      if (!ok) return;
+      setLocalDir(handle);
+      setLocalDirName(handle.name);
+      setLoadingDir(true);
+      listMediaFiles(handle)
+        .then(setLocalFiles)
+        .finally(() => setLoadingDir(false));
+    });
+  }, []);
+
+  async function pickDirectory() {
+    if (!supportsLocalDirectory()) return;
+    try {
+      // @ts-expect-error — showDirectoryPicker not in all TS defs yet
+      const handle: FileSystemDirectoryHandle = await window.showDirectoryPicker({ mode: "read" });
+      await saveDirectoryHandle(handle);
+      setLocalDir(handle);
+      setLocalDirName(handle.name);
+      setSelectedLocalNames(new Set());
+      setLoadingDir(true);
+      listMediaFiles(handle)
+        .then(setLocalFiles)
+        .finally(() => setLoadingDir(false));
+    } catch {
+      // user cancelled picker
+    }
+  }
+
+  function toggleLocalFile(name: string) {
+    setSelectedLocalNames((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
+
+  async function getFilesForTranscription(): Promise<File[]> {
+    const files: File[] = [...selectedFiles];
+    for (const lf of localFiles) {
+      if (!selectedLocalNames.has(lf.name)) continue;
+      try {
+        const file = await lf.handle.getFile();
+        files.push(file);
+      } catch {
+        // handle expired — skip
+      }
+    }
+    return files;
+  }
 
   // Debounced auto-save on doc changes
   const autosave = useCallback(
@@ -215,15 +288,21 @@ function DocumentaryStudioInner() {
   // ---------------------------------------------------------------------------
 
   async function handleTranscribe() {
-    if (!projectId || selectedFiles.length === 0) return;
+    if (!projectId) return;
     setBusy(true);
     setError(null);
     try {
+      const files = await getFilesForTranscription();
+      if (files.length === 0) {
+        showError("Please select at least one video or audio file");
+        setBusy(false);
+        return;
+      }
       const formData = new FormData();
-      for (const file of selectedFiles) {
+      for (const file of files) {
         formData.append("files", file);
       }
-      const res = await fetch(`${BASE}/${projectId}/transcribe`, {
+      const res = await fetch(`${API_URL}${BASE}/${projectId}/transcribe`, {
         method: "POST",
         body: formData,
         credentials: "include",
@@ -452,58 +531,121 @@ function DocumentaryStudioInner() {
                 />
               </div>
 
-              <div>
+              <div className="space-y-3">
                 <Label>Interview Files</Label>
-                <div
-                  className="mt-1 border-2 border-dashed border-border rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
-                  onClick={() => document.getElementById("file-input")?.click()}
-                >
-                  <Upload className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
-                  <p className="text-sm text-muted-foreground">
-                    Click to select video or audio files (MP4, MOV, MP3, M4A…)
-                  </p>
-                  <p className="text-xs text-muted-foreground/70 mt-1">
-                    Multiple files supported — all will be transcribed in sequence
-                  </p>
-                  <input
-                    id="file-input"
-                    type="file"
-                    multiple
-                    accept="video/*,audio/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const files = Array.from(e.target.files || []);
-                      setSelectedFiles(files);
-                    }}
-                  />
-                </div>
 
-                {selectedFiles.length > 0 && (
-                  <div className="mt-3 space-y-1">
-                    {selectedFiles.map((f, i) => (
-                      <div key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <FileText className="w-3.5 h-3.5 shrink-0" />
-                        <span className="truncate">{f.name}</span>
-                        <span className="shrink-0 text-xs">
-                          ({(f.size / 1024 / 1024).toFixed(1)} MB)
+                {/* Local working directory (Filesystem Access API — Chrome/Edge) */}
+                {supportsLocalDirectory() && (
+                  <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FolderOpen className="w-4 h-4 text-primary shrink-0" />
+                        <span className="text-sm font-medium truncate">
+                          {localDirName || "No working directory set"}
                         </span>
                       </div>
-                    ))}
-                    <p className="text-xs text-muted-foreground/70 pt-1">
-                      Total:{" "}
-                      {(selectedFiles.reduce((a, f) => a + f.size, 0) / 1024 / 1024).toFixed(1)} MB
-                    </p>
+                      <Button size="sm" variant="outline" onClick={pickDirectory}>
+                        {localDir ? "Change" : "Set Directory"}
+                      </Button>
+                    </div>
+
+                    {localDir && (
+                      <>
+                        {loadingDir && (
+                          <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Loader2 className="w-3 h-3 animate-spin" /> Scanning folder…
+                          </p>
+                        )}
+                        {!loadingDir && localFiles.length === 0 && (
+                          <p className="text-xs text-muted-foreground">
+                            No video or audio files found in this folder.
+                          </p>
+                        )}
+                        {!loadingDir && localFiles.length > 0 && (
+                          <div className="space-y-1 max-h-48 overflow-y-auto">
+                            {localFiles.map((lf) => (
+                              <label
+                                key={lf.name}
+                                className="flex items-center gap-2 text-sm cursor-pointer rounded px-2 py-1 hover:bg-muted/40"
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="rounded"
+                                  checked={selectedLocalNames.has(lf.name)}
+                                  onChange={() => toggleLocalFile(lf.name)}
+                                />
+                                <FileText className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                                <span className="truncate flex-1">{lf.name}</span>
+                                <span className="text-xs text-muted-foreground shrink-0">
+                                  {(lf.size / 1024 / 1024).toFixed(1)} MB
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                        {selectedLocalNames.size > 0 && (
+                          <p className="text-xs text-muted-foreground">
+                            {selectedLocalNames.size} file(s) selected from directory
+                          </p>
+                        )}
+                      </>
+                    )}
+
+                    {!localDir && (
+                      <p className="text-xs text-muted-foreground">
+                        Set a local folder once — files stay on your Mac and are never stored on our servers.
+                      </p>
+                    )}
                   </div>
                 )}
+
+                {/* Standard file picker fallback */}
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    {supportsLocalDirectory() ? "Or upload files directly:" : "Select video or audio files:"}
+                  </p>
+                  <div
+                    className="border-2 border-dashed border-border rounded-lg p-4 text-center cursor-pointer hover:border-primary/50 transition-colors"
+                    onClick={() => document.getElementById("file-input")?.click()}
+                  >
+                    <Upload className="w-6 h-6 mx-auto text-muted-foreground mb-1" />
+                    <p className="text-sm text-muted-foreground">
+                      Click to select files (MP4, MOV, MP3, M4A…)
+                    </p>
+                    <input
+                      id="file-input"
+                      type="file"
+                      multiple
+                      accept="video/*,audio/*"
+                      className="hidden"
+                      onChange={(e) => setSelectedFiles(Array.from(e.target.files || []))}
+                    />
+                  </div>
+                  {selectedFiles.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {selectedFiles.map((f, i) => (
+                        <div key={i} className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <FileText className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">{f.name}</span>
+                          <span className="shrink-0 text-xs">({(f.size / 1024 / 1024).toFixed(1)} MB)</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="flex flex-wrap gap-3 pt-2">
                 <Button
                   onClick={() => {
                     goToStage(2);
-                    if (selectedFiles.length > 0) handleTranscribe();
+                    handleTranscribe();
                   }}
-                  disabled={!doc.subjectName.trim() || selectedFiles.length === 0 || busy}
+                  disabled={
+                    !doc.subjectName.trim() ||
+                    (selectedFiles.length === 0 && selectedLocalNames.size === 0) ||
+                    busy
+                  }
                 >
                   {busy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
                   Next: Transcribe

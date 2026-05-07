@@ -192,7 +192,7 @@ def _extract_broll_markers(script_text: str) -> list[dict]:
 # --- Routes ---
 
 @router.get("/projects/{project_id}")
-def get_session(
+def get_documentary_session(
     project_id: str,
     session: SessionContainer = Depends(verify_session()),
     db: Session = Depends(get_session),

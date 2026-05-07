@@ -31,6 +31,7 @@ import {
   loadDirectoryHandle,
   listMediaFiles,
   verifyPermission,
+  writeFileToDirectory,
   type LocalFile,
 } from "@/lib/localFileStore";
 
@@ -201,7 +202,7 @@ function DocumentaryStudioInner() {
     if (!supportsLocalDirectory()) return;
     try {
       // @ts-expect-error — showDirectoryPicker not in all TS defs yet
-      const handle: FileSystemDirectoryHandle = await window.showDirectoryPicker({ mode: "read" });
+      const handle: FileSystemDirectoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
       await saveDirectoryHandle(handle);
       setLocalDir(handle);
       setLocalDirName(handle.name);
@@ -236,6 +237,21 @@ function DocumentaryStudioInner() {
       }
     }
     return files;
+  }
+
+  function slugTitle(): string {
+    return (doc.workingTitle || "documentary").toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+  }
+
+  async function saveToFolder(content: string, suffix: string) {
+    if (!localDir || !content) return;
+    try {
+      const filename = `${slugTitle()}-${suffix}.txt`;
+      await writeFileToDirectory(localDir, filename, content);
+      showSuccess(`Saved ${filename} to ${localDirName}`);
+    } catch (e) {
+      showError(e instanceof Error ? e.message : "Failed to save file to directory");
+    }
   }
 
   // Debounced auto-save on doc changes
@@ -742,6 +758,12 @@ function DocumentaryStudioInner() {
                     Re-transcribe
                   </Button>
                 )}
+                {localDir && doc.rawTranscript && (
+                  <Button variant="outline" onClick={() => saveToFolder(doc.rawTranscript, "transcript")}>
+                    <FolderOpen className="w-4 h-4 mr-2" />
+                    Save to {localDirName}
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -839,6 +861,12 @@ function DocumentaryStudioInner() {
                 <Button variant="outline" onClick={() => goToStage(2)}>
                   ← Back
                 </Button>
+                {localDir && doc.cleanedDialogue && (
+                  <Button variant="outline" onClick={() => saveToFolder(doc.cleanedDialogue, "dialogue")}>
+                    <FolderOpen className="w-4 h-4 mr-2" />
+                    Save to {localDirName}
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -900,6 +928,12 @@ function DocumentaryStudioInner() {
                 <Button variant="outline" onClick={() => goToStage(3)}>
                   ← Back
                 </Button>
+                {localDir && doc.generatedScript && (
+                  <Button variant="outline" onClick={() => saveToFolder(doc.generatedScript, "screenplay")}>
+                    <FolderOpen className="w-4 h-4 mr-2" />
+                    Save to {localDirName}
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>

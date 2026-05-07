@@ -91,18 +91,30 @@ export async function listMediaFiles(
   return files.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** Verify that a persisted handle still has permission (re-requests if needed). */
+/** Verify that a persisted handle still has read-write permission (re-requests if needed). */
 export async function verifyPermission(
   handle: FileSystemDirectoryHandle
 ): Promise<boolean> {
   try {
     // @ts-expect-error — queryPermission is not yet in all TS lib defs
-    const perm = await handle.queryPermission({ mode: "read" });
+    const perm = await handle.queryPermission({ mode: "readwrite" });
     if (perm === "granted") return true;
     // @ts-expect-error
-    const req = await handle.requestPermission({ mode: "read" });
+    const req = await handle.requestPermission({ mode: "readwrite" });
     return req === "granted";
   } catch {
     return false;
   }
+}
+
+/** Write (or overwrite) a text file in the working directory. */
+export async function writeFileToDirectory(
+  dir: FileSystemDirectoryHandle,
+  filename: string,
+  content: string
+): Promise<void> {
+  const fileHandle = await dir.getFileHandle(filename, { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(content);
+  await writable.close();
 }

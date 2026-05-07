@@ -4,12 +4,14 @@ Canonical media pattern: video bytes streamed to media handler for Whisper trans
 immediately discarded. Only text/entities persist (PostgreSQL). Scripts go to DO Spaces.
 Prefix: /api/documentary
 """
+import asyncio
 import json
 import re
 import uuid
 from datetime import datetime
 from typing import Any, List, Optional
 
+import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlmodel import Session, select
@@ -264,16 +266,41 @@ async def transcribe(
     if not files:
         raise HTTPException(status_code=400, detail="At least one file is required")
 
-    client = _media_handler_client()
-    segments: list[str] = []
+    # Fast async health check — avoids reading any file bytes if service is down.
+    # Short timeout so Caddy never times out waiting for us.
+    try:
+        async with httpx.AsyncClient(timeout=5.0, verify=not getattr(settings, "disable_tls_verify", False)) as hc:
+            probe = await hc.get(f"{settings.media_handler_base_url}/health")
+            if probe.status_code >= 500:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Media handler unavailable — transcription service is not responding",
+                )
+    except httpx.RequestError:
+        raise HTTPException(
+            status_code=503,
+            detail="Media handler unavailable — cannot reach transcription service",
+        )
 
+    # Read all file bytes (async, non-blocking) before entering thread executor.
+    uploads: list[tuple[str, str, bytes]] = []
     for upload in files:
         content_type = upload.content_type or "application/octet-stream"
         filename = upload.filename or "interview"
         file_bytes = await upload.read()
+        uploads.append((filename, content_type, file_bytes))
 
+    client = _media_handler_client()
+    loop = asyncio.get_running_loop()
+    segments: list[str] = []
+
+    for filename, content_type, file_bytes in uploads:
         try:
-            result = client.transcribe_video(file_bytes, filename, content_type)
+            # Run synchronous httpx.Client call in a thread so the event loop stays free.
+            result = await loop.run_in_executor(
+                None,
+                lambda fb=file_bytes, fn=filename, ct=content_type: client.transcribe_video(fb, fn, ct),
+            )
         except MediaHandlerClientError as exc:
             raise HTTPException(status_code=503, detail=f"Transcription failed for '{filename}': {exc}")
 

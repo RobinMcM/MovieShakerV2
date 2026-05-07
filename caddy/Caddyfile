@@ -5,6 +5,14 @@
 api.movieshaker.com {
     @auth path /auth /auth/*
     handle @auth {
+        header Access-Control-Allow-Origin "https://movieshaker.com"
+        header Access-Control-Allow-Credentials "true"
+        header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        header Access-Control-Allow-Headers "Content-Type, rid, anti-csrf, fdi-version, st-auth-mode, Authorization"
+        @preflight method OPTIONS
+        handle @preflight {
+            respond "" 204
+        }
         reverse_proxy https://auth.rapidmvp.io
     }
 

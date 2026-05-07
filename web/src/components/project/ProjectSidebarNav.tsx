@@ -47,7 +47,7 @@ export function ProjectSidebarNav({
 }: ProjectSidebarNavProps) {
     const pathname = usePathname();
     const router = useRouter();
-    const [scriptsExpanded, setScriptsExpanded] = useState(true);
+    const [scriptsExpanded, setScriptsExpanded] = useState(false);
     const [projectsExpanded, setProjectsExpanded] = useState(false);
     const [projects, setProjects] = useState<ProjectItem[]>([]);
 
@@ -168,36 +168,8 @@ export function ProjectSidebarNav({
                         )}
                     </div>
 
-                    {/* Project tool nav — only when a project is selected */}
-                    {projectId && (
-                        <div className="mt-5 pt-4 border-t">
-                            <nav className="space-y-1">
-                                {PROJECT_TOOL_NAV.map((item) => {
-                                    const href = item.href(projectId);
-                                    const isActive = pathname === href;
-                                    const Icon = item.icon;
-                                    return (
-                                        <Link
-                                            key={item.id}
-                                            href={href}
-                                            className={cn(
-                                                "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors",
-                                                isActive
-                                                    ? "bg-primary/15 text-primary font-medium"
-                                                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                                            )}
-                                        >
-                                            <Icon className="h-4 w-4" />
-                                            <span>{item.label}</span>
-                                        </Link>
-                                    );
-                                })}
-                            </nav>
-                        </div>
-                    )}
-
                     {/* Scripts section */}
-                    <div className="mt-5 pt-4 border-t">
+                    <div className="mt-2 pt-2 border-t">
                         <button
                             type="button"
                             onClick={() => setScriptsExpanded((v) => !v)}
@@ -270,6 +242,34 @@ export function ProjectSidebarNav({
                             </div>
                         )}
                     </div>
+
+                    {/* Project tool nav — only when a project is selected */}
+                    {projectId && (
+                        <div className="mt-5 pt-4 border-t">
+                            <nav className="space-y-1">
+                                {PROJECT_TOOL_NAV.map((item) => {
+                                    const href = item.href(projectId);
+                                    const isActive = pathname === href;
+                                    const Icon = item.icon;
+                                    return (
+                                        <Link
+                                            key={item.id}
+                                            href={href}
+                                            className={cn(
+                                                "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors",
+                                                isActive
+                                                    ? "bg-primary/15 text-primary font-medium"
+                                                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                                            )}
+                                        >
+                                            <Icon className="h-4 w-4" />
+                                            <span>{item.label}</span>
+                                        </Link>
+                                    );
+                                })}
+                            </nav>
+                        </div>
+                    )}
 
                     {/* Additional Tools — only when a project is selected */}
                     {projectId && (

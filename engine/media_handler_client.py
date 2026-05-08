@@ -151,6 +151,28 @@ class MediaHandlerClient:
             raise MediaHandlerClientError(f"Transcription failed: {response.text}")
         return response.json()
 
+    def trim_video(
+        self,
+        file_bytes: bytes,
+        filename: str,
+        content_type: str,
+        in_time: float,
+        out_time: float,
+    ) -> bytes:
+        """Trim video via FFmpeg on the media handler. Returns raw trimmed video bytes."""
+        if not self.base_url:
+            raise MediaHandlerClientError("Media-handler base URL is not configured")
+        with httpx.Client(timeout=300.0, verify=self.verify_tls) as client:
+            response = client.post(
+                f"{self.base_url}/api/ffmpeg/trim",
+                files={"file": (filename, file_bytes, content_type)},
+                data={"in_time": str(in_time), "out_time": str(out_time)},
+                headers={"X-Internal-API-Key": self.api_key},
+            )
+        if response.status_code >= 400:
+            raise MediaHandlerClientError(f"Trim failed: {response.text}")
+        return response.content
+
     def stitch_videos(self, video_urls: list[str], aspect_ratio: str = "16:9") -> dict[str, Any]:
         if len(video_urls) < 2:
             raise MediaHandlerClientError("At least two videos are required for stitching")

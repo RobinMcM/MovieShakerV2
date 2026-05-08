@@ -118,3 +118,15 @@ export async function writeFileToDirectory(
   await writable.write(content);
   await writable.close();
 }
+
+/** Write (or overwrite) a binary file (ArrayBuffer or Blob) in the working directory. */
+export async function writeBinaryFileToDirectory(
+  dir: FileSystemDirectoryHandle,
+  filename: string,
+  content: ArrayBuffer | Blob,
+): Promise<void> {
+  const fileHandle = await dir.getFileHandle(filename, { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(content);
+  await writable.close();
+}

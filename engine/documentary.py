@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Any, List, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
@@ -319,6 +319,44 @@ async def transcribe(
     db.commit()
 
     return {"success": True, "transcript": combined, "segmentCount": len(segments)}
+
+
+@router.post("/trim")
+async def trim_clip(
+    file: UploadFile = File(...),
+    in_time: float = Form(...),
+    out_time: float = Form(...),
+    session: SessionContainer = Depends(verify_session()),
+):
+    """
+    Trim a video clip to in_time→out_time using FFmpeg on the media handler.
+    Returns the trimmed video bytes directly for the browser to save locally.
+    """
+    if not settings.media_handler_base_url:
+        raise HTTPException(status_code=503, detail="Media handler unavailable — trim service not configured")
+
+    if out_time <= in_time:
+        raise HTTPException(status_code=400, detail="out_time must be greater than in_time")
+
+    content_type = file.content_type or "video/mp4"
+    filename = file.filename or "clip.mp4"
+    file_bytes = await file.read()
+
+    client = _media_handler_client()
+    loop = asyncio.get_running_loop()
+    try:
+        trimmed_bytes = await loop.run_in_executor(
+            None,
+            lambda: client.trim_video(file_bytes, filename, content_type, in_time, out_time),
+        )
+    except MediaHandlerClientError as exc:
+        raise HTTPException(status_code=503, detail=f"Trim failed: {exc}")
+
+    return Response(
+        content=trimmed_bytes,
+        media_type=content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/projects/{project_id}/generate-dialogue")

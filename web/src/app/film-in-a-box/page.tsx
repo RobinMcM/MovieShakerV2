@@ -4,13 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
 import { AppHeader } from "@/components/Header";
 import { Button } from "@/components/ui/button";
-import { Film, FolderOpen, Play } from "lucide-react";
+import { Film, FolderOpen, Loader2, Play, Scissors, X } from "lucide-react";
+import { API_URL } from "@/lib/api";
 import {
   supportsLocalDirectory,
   saveDirectoryHandle,
   loadDirectoryHandle,
   listMediaFiles,
   verifyPermission,
+  writeBinaryFileToDirectory,
   type LocalFile,
 } from "@/lib/localFileStore";
 
@@ -23,6 +25,15 @@ function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function formatTimecode(seconds: number): string {
+  if (!isFinite(seconds) || seconds < 0) return "00:00:00";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  if (h > 0) return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -114,11 +125,7 @@ function ClipCard({ clip, active, thumbnail, duration, onClick }: ClipCardProps)
     >
       <div className="relative w-full h-24 bg-zinc-800 flex items-center justify-center">
         {thumbnail ? (
-          <img
-            src={thumbnail}
-            alt={clip.name}
-            className="w-full h-full object-cover"
-          />
+          <img src={thumbnail} alt={clip.name} className="w-full h-full object-cover" />
         ) : (
           <Film className="w-8 h-8 text-zinc-600" />
         )}
@@ -144,7 +151,9 @@ function ClipCard({ clip, active, thumbnail, duration, onClick }: ClipCardProps)
 
 function RushesViewer() {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const timelineRef = useRef<HTMLDivElement>(null);
 
+  // --- directory / clip state ---
   const [localDir, setLocalDir] = useState<FileSystemDirectoryHandle | null>(null);
   const [localDirName, setLocalDirName] = useState("");
   const [localFiles, setLocalFiles] = useState<LocalFile[]>([]);
@@ -153,6 +162,19 @@ function RushesViewer() {
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
   const [durations, setDurations] = useState<Record<string, number>>({});
   const [loadingDir, setLoadingDir] = useState(false);
+
+  // --- timeline state ---
+  const [playheadTime, setPlayheadTime] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [inPoint, setInPoint] = useState<number | null>(null);
+  const [outPoint, setOutPoint] = useState<number | null>(null);
+  const dragStartX = useRef<number | null>(null);
+  const dragStartTime = useRef<number | null>(null);
+
+  // --- extraction state ---
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractError, setExtractError] = useState<string | null>(null);
+  const [extractCount, setExtractCount] = useState<Record<string, number>>({});
 
   // Restore persisted directory handle on mount
   useEffect(() => {
@@ -173,7 +195,7 @@ function RushesViewer() {
     restore();
   }, []);
 
-  // Generate thumbnails and durations for all clips whenever the list changes
+  // Generate thumbnails and durations whenever the file list changes
   useEffect(() => {
     if (localFiles.length === 0) return;
     let cancelled = false;
@@ -190,12 +212,28 @@ function RushesViewer() {
     return () => { cancelled = true; };
   }, [localFiles]);
 
+  // Auto-play when objectURL changes
+  useEffect(() => {
+    if (currentUrl && videoRef.current) {
+      videoRef.current.load();
+      videoRef.current.play().catch(() => {});
+    }
+    // Reset timeline region when clip changes
+    setInPoint(null);
+    setOutPoint(null);
+    setPlayheadTime(0);
+    setVideoDuration(0);
+    setExtractError(null);
+  }, [currentUrl]);
+
+  // ---- directory actions ----
+
   const pickDirectory = useCallback(async () => {
     if (!supportsLocalDirectory()) return;
     setLoadingDir(true);
     try {
       // @ts-expect-error — showDirectoryPicker not in all TS lib defs
-      const handle: FileSystemDirectoryHandle = await window.showDirectoryPicker({ mode: "read" });
+      const handle: FileSystemDirectoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
       await saveDirectoryHandle(handle);
       const files = await listMediaFiles(handle);
       setLocalDir(handle);
@@ -211,6 +249,8 @@ function RushesViewer() {
       setLoadingDir(false);
     }
   }, [currentUrl]);
+
+  // ---- clip actions ----
 
   const selectClip = useCallback(async (clip: LocalFile) => {
     if (currentUrl) URL.revokeObjectURL(currentUrl);
@@ -232,17 +272,94 @@ function RushesViewer() {
     }
   }, [currentClip, localFiles, selectClip]);
 
-  // Auto-play when URL changes
-  useEffect(() => {
-    if (currentUrl && videoRef.current) {
-      videoRef.current.load();
-      videoRef.current.play().catch(() => {});
+  // ---- timeline interaction ----
+
+  function timeFromPointer(clientX: number): number {
+    const el = timelineRef.current;
+    if (!el || !videoDuration) return 0;
+    const rect = el.getBoundingClientRect();
+    const fraction = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    return fraction * videoDuration;
+  }
+
+  function handleTimelinePointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (!videoDuration) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const t = timeFromPointer(e.clientX);
+    dragStartX.current = e.clientX;
+    dragStartTime.current = t;
+    // Seek on click; region is set when drag completes
+    if (videoRef.current) videoRef.current.currentTime = t;
+    setInPoint(null);
+    setOutPoint(null);
+  }
+
+  function handleTimelinePointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (dragStartTime.current === null || dragStartX.current === null) return;
+    // Only start a region drag after a small threshold (4px) to distinguish click from drag
+    if (Math.abs(e.clientX - dragStartX.current) < 4) return;
+    const t = timeFromPointer(e.clientX);
+    const a = Math.min(dragStartTime.current, t);
+    const b = Math.max(dragStartTime.current, t);
+    setInPoint(a);
+    setOutPoint(b);
+  }
+
+  function handleTimelinePointerUp() {
+    dragStartX.current = null;
+    dragStartTime.current = null;
+  }
+
+  // ---- extract action ----
+
+  async function handleExtract() {
+    if (!currentClip || inPoint === null || outPoint === null || !localDir) return;
+    setIsExtracting(true);
+    setExtractError(null);
+    try {
+      const file = await currentClip.handle.getFile();
+      const dotIdx = currentClip.name.lastIndexOf(".");
+      const base = dotIdx > 0 ? currentClip.name.slice(0, dotIdx) : currentClip.name;
+      const ext = dotIdx > 0 ? currentClip.name.slice(dotIdx + 1) : "mp4";
+      const count = (extractCount[base] ?? 0) + 1;
+      const outputName = `${base}-${String(count).padStart(3, "0")}.${ext}`;
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("in_time", String(inPoint));
+      formData.append("out_time", String(outPoint));
+
+      const res = await fetch(`${API_URL}/api/documentary/trim`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error((err as { detail?: string }).detail || "Extraction failed");
+      }
+      const blob = await res.blob();
+      await writeBinaryFileToDirectory(localDir, outputName, blob);
+      setExtractCount((prev) => ({ ...prev, [base]: count }));
+      // Refresh the clip strip so the new file appears
+      const files = await listMediaFiles(localDir);
+      setLocalFiles(files);
+    } catch (e) {
+      setExtractError(e instanceof Error ? e.message : "Extraction failed");
+    } finally {
+      setIsExtracting(false);
     }
-  }, [currentUrl]);
+  }
 
   const currentIndex = currentClip
     ? localFiles.findIndex((f) => f.name === currentClip.name)
     : -1;
+
+  const hasRegion = inPoint !== null && outPoint !== null;
+  const regionDuration = hasRegion ? (outPoint! - inPoint!) : 0;
+  const playheadPct = videoDuration > 0 ? (playheadTime / videoDuration) * 100 : 0;
+  const inPct = videoDuration > 0 && inPoint !== null ? (inPoint / videoDuration) * 100 : 0;
+  const outPct = videoDuration > 0 && outPoint !== null ? (outPoint / videoDuration) * 100 : 0;
 
   // -------------------------------------------------------------------------
   // Empty states
@@ -280,12 +397,7 @@ function RushesViewer() {
                 Select the folder on your Mac where your raw clips are stored. They&apos;ll play directly from disk — nothing is uploaded.
               </p>
             </div>
-            <Button
-              onClick={pickDirectory}
-              disabled={loadingDir}
-              size="lg"
-              className="gap-2"
-            >
+            <Button onClick={pickDirectory} disabled={loadingDir} size="lg" className="gap-2">
               <FolderOpen className="w-5 h-5" />
               {loadingDir ? "Opening…" : "Open Footage Folder"}
             </Button>
@@ -352,6 +464,8 @@ function RushesViewer() {
               src={currentUrl}
               controls
               onEnded={handleVideoEnded}
+              onTimeUpdate={() => setPlayheadTime(videoRef.current?.currentTime ?? 0)}
+              onLoadedMetadata={() => setVideoDuration(videoRef.current?.duration ?? 0)}
               className="w-full h-full object-contain"
             />
             {currentClip && (
@@ -366,6 +480,102 @@ function RushesViewer() {
             <p className="text-sm">Select a clip below to play</p>
           </div>
         )}
+      </div>
+
+      {/* Timeline section */}
+      <div className="flex-shrink-0 bg-zinc-950 border-t border-zinc-800 px-4 py-2 space-y-2">
+        {/* Info bar — only shown when a region is selected */}
+        {hasRegion && (
+          <div className="flex items-center gap-3 text-xs text-zinc-300 flex-wrap">
+            <span className="font-mono">IN {formatTimecode(inPoint!)}</span>
+            <span className="text-zinc-600">→</span>
+            <span className="font-mono">OUT {formatTimecode(outPoint!)}</span>
+            <span className="text-zinc-500">({formatTimecode(regionDuration)})</span>
+            <button
+              onClick={() => { setInPoint(null); setOutPoint(null); setExtractError(null); }}
+              className="text-zinc-500 hover:text-zinc-300 ml-1"
+              title="Clear selection"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+            <div className="ml-auto flex items-center gap-2">
+              {extractError && (
+                <span className="text-red-400 text-xs">{extractError}</span>
+              )}
+              <Button
+                size="sm"
+                onClick={handleExtract}
+                disabled={isExtracting || !localDir}
+                className="gap-1.5 h-7 text-xs"
+              >
+                {isExtracting ? (
+                  <><Loader2 className="w-3.5 h-3.5 animate-spin" />Extracting…</>
+                ) : (
+                  <><Scissors className="w-3.5 h-3.5" />Extract Clip</>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Scrubber bar */}
+        <div
+          ref={timelineRef}
+          className={`relative w-full h-8 rounded cursor-pointer select-none ${
+            videoDuration > 0 ? "bg-zinc-800" : "bg-zinc-900 opacity-40 pointer-events-none"
+          }`}
+          onPointerDown={handleTimelinePointerDown}
+          onPointerMove={handleTimelinePointerMove}
+          onPointerUp={handleTimelinePointerUp}
+        >
+          {/* Region highlight */}
+          {hasRegion && (
+            <div
+              className="absolute top-0 h-full bg-primary/40 rounded"
+              style={{ left: `${inPct}%`, width: `${outPct - inPct}%` }}
+            />
+          )}
+
+          {/* In/Out markers */}
+          {inPoint !== null && (
+            <div
+              className="absolute top-0 h-full w-0.5 bg-primary"
+              style={{ left: `${inPct}%` }}
+            />
+          )}
+          {outPoint !== null && (
+            <div
+              className="absolute top-0 h-full w-0.5 bg-primary"
+              style={{ left: `${outPct}%` }}
+            />
+          )}
+
+          {/* Playhead */}
+          {videoDuration > 0 && (
+            <div
+              className="absolute top-0 h-full w-0.5 bg-white/80 pointer-events-none"
+              style={{ left: `${playheadPct}%` }}
+            />
+          )}
+
+          {/* Timecode labels at edges */}
+          {videoDuration > 0 && (
+            <>
+              <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500 font-mono pointer-events-none">
+                {formatTimecode(0)}
+              </span>
+              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500 font-mono pointer-events-none">
+                {formatTimecode(videoDuration)}
+              </span>
+            </>
+          )}
+
+          {!videoDuration && (
+            <span className="absolute inset-0 flex items-center justify-center text-[10px] text-zinc-600">
+              Play a clip to use the timeline
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Clip strip */}

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
 import { AppHeader } from "@/components/Header";
 import { Button } from "@/components/ui/button";
-import { Film, FolderOpen, Loader2, Play, Scissors, X } from "lucide-react";
+import { Film, FolderOpen, Loader2, MapPin, Play, Scissors, X } from "lucide-react";
 import { API_URL } from "@/lib/api";
 import {
   supportsLocalDirectory,
@@ -15,6 +15,13 @@ import {
   writeBinaryFileToDirectory,
   type LocalFile,
 } from "@/lib/localFileStore";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+type TimelineMode = "section" | "place" | null;
+type SectionStep = 0 | 1 | 2; // 0=nothing, 1=start set, 2=complete
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -28,7 +35,7 @@ function formatDuration(seconds: number): string {
 }
 
 function formatTimecode(seconds: number): string {
-  if (!isFinite(seconds) || seconds < 0) return "00:00:00";
+  if (!isFinite(seconds) || seconds < 0) return "00:00";
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = Math.floor(seconds % 60);
@@ -87,10 +94,7 @@ async function readDuration(clip: LocalFile): Promise<number> {
       const video = document.createElement("video");
       video.preload = "metadata";
       video.src = url;
-      video.onloadedmetadata = () => {
-        URL.revokeObjectURL(url);
-        resolve(video.duration);
-      };
+      video.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(video.duration); };
       video.onerror = () => { URL.revokeObjectURL(url); resolve(0); };
     });
   } catch {
@@ -166,10 +170,11 @@ function RushesViewer() {
   // --- timeline state ---
   const [playheadTime, setPlayheadTime] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
+  const [timelineMode, setTimelineMode] = useState<TimelineMode>(null);
+  const [sectionStep, setSectionStep] = useState<SectionStep>(0);
   const [inPoint, setInPoint] = useState<number | null>(null);
   const [outPoint, setOutPoint] = useState<number | null>(null);
-  const dragStartX = useRef<number | null>(null);
-  const dragStartTime = useRef<number | null>(null);
+  const [placePoint, setPlacePoint] = useState<number | null>(null);
 
   // --- extraction state ---
   const [isExtracting, setIsExtracting] = useState(false);
@@ -212,15 +217,16 @@ function RushesViewer() {
     return () => { cancelled = true; };
   }, [localFiles]);
 
-  // Auto-play when objectURL changes
+  // Reset timeline state when clip changes
   useEffect(() => {
     if (currentUrl && videoRef.current) {
       videoRef.current.load();
       videoRef.current.play().catch(() => {});
     }
-    // Reset timeline region when clip changes
     setInPoint(null);
     setOutPoint(null);
+    setPlacePoint(null);
+    setSectionStep(0);
     setPlayheadTime(0);
     setVideoDuration(0);
     setExtractError(null);
@@ -267,47 +273,56 @@ function RushesViewer() {
   const handleVideoEnded = useCallback(() => {
     if (!currentClip) return;
     const idx = localFiles.findIndex((f) => f.name === currentClip.name);
-    if (idx >= 0 && idx < localFiles.length - 1) {
-      selectClip(localFiles[idx + 1]);
-    }
+    if (idx >= 0 && idx < localFiles.length - 1) selectClip(localFiles[idx + 1]);
   }, [currentClip, localFiles, selectClip]);
 
-  // ---- timeline interaction ----
+  // ---- mode buttons ----
 
-  function timeFromPointer(clientX: number): number {
+  function activateMode(mode: TimelineMode) {
+    if (timelineMode === mode) {
+      // Toggle off
+      setTimelineMode(null);
+    } else {
+      setTimelineMode(mode);
+      if (mode === "section") {
+        setInPoint(null);
+        setOutPoint(null);
+        setSectionStep(0);
+      }
+    }
+  }
+
+  // ---- bar click ----
+
+  function timeFromClick(clientX: number): number {
     const el = timelineRef.current;
     if (!el || !videoDuration) return 0;
     const rect = el.getBoundingClientRect();
-    const fraction = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    return fraction * videoDuration;
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * videoDuration;
   }
 
-  function handleTimelinePointerDown(e: React.PointerEvent<HTMLDivElement>) {
+  function handleBarClick(e: React.MouseEvent<HTMLDivElement>) {
     if (!videoDuration) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    const t = timeFromPointer(e.clientX);
-    dragStartX.current = e.clientX;
-    dragStartTime.current = t;
-    // Seek on click; region is set when drag completes
-    if (videoRef.current) videoRef.current.currentTime = t;
-    setInPoint(null);
-    setOutPoint(null);
-  }
+    const t = timeFromClick(e.clientX);
 
-  function handleTimelinePointerMove(e: React.PointerEvent<HTMLDivElement>) {
-    if (dragStartTime.current === null || dragStartX.current === null) return;
-    // Only start a region drag after a small threshold (4px) to distinguish click from drag
-    if (Math.abs(e.clientX - dragStartX.current) < 4) return;
-    const t = timeFromPointer(e.clientX);
-    const a = Math.min(dragStartTime.current, t);
-    const b = Math.max(dragStartTime.current, t);
-    setInPoint(a);
-    setOutPoint(b);
-  }
-
-  function handleTimelinePointerUp() {
-    dragStartX.current = null;
-    dragStartTime.current = null;
+    if (timelineMode === "section") {
+      if (sectionStep === 0) {
+        setInPoint(t);
+        setOutPoint(null);
+        setSectionStep(1);
+      } else if (sectionStep === 1) {
+        // Normalise so in < out
+        const newIn = Math.min(inPoint!, t);
+        const newOut = Math.max(inPoint!, t);
+        setInPoint(newIn);
+        setOutPoint(newOut);
+        setSectionStep(2);
+      }
+      // sectionStep === 2: no-op — section is locked
+    } else if (timelineMode === "place") {
+      setPlacePoint(t);
+    }
+    // null mode: bar is passive, no action
   }
 
   // ---- extract action ----
@@ -341,7 +356,6 @@ function RushesViewer() {
       const blob = await res.blob();
       await writeBinaryFileToDirectory(localDir, outputName, blob);
       setExtractCount((prev) => ({ ...prev, [base]: count }));
-      // Refresh the clip strip so the new file appears
       const files = await listMediaFiles(localDir);
       setLocalFiles(files);
     } catch (e) {
@@ -351,15 +365,33 @@ function RushesViewer() {
     }
   }
 
-  const currentIndex = currentClip
-    ? localFiles.findIndex((f) => f.name === currentClip.name)
-    : -1;
+  // ---- derived values ----
 
-  const hasRegion = inPoint !== null && outPoint !== null;
-  const regionDuration = hasRegion ? (outPoint! - inPoint!) : 0;
+  const currentIndex = currentClip ? localFiles.findIndex((f) => f.name === currentClip.name) : -1;
+  const hasSection = inPoint !== null && outPoint !== null;
+  const regionDuration = hasSection ? outPoint! - inPoint! : 0;
   const playheadPct = videoDuration > 0 ? (playheadTime / videoDuration) * 100 : 0;
   const inPct = videoDuration > 0 && inPoint !== null ? (inPoint / videoDuration) * 100 : 0;
   const outPct = videoDuration > 0 && outPoint !== null ? (outPoint / videoDuration) * 100 : 0;
+  const placePct = videoDuration > 0 && placePoint !== null ? (placePoint / videoDuration) * 100 : 0;
+
+  const modeButtonClass = (mode: TimelineMode) =>
+    `gap-1.5 h-7 text-xs border transition-colors ${
+      timelineMode === mode
+        ? "border-primary text-primary bg-primary/10 hover:bg-primary/20"
+        : "border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500"
+    }`;
+
+  const barCursor = timelineMode && videoDuration > 0 ? "cursor-crosshair" : "cursor-default";
+
+  // ---- hint text ----
+  let hintText: string | null = null;
+  if (timelineMode === "section") {
+    if (sectionStep === 0) hintText = "Click the bar to set section start";
+    else if (sectionStep === 1) hintText = "Click the bar to set section end";
+  } else if (timelineMode === "place") {
+    if (placePoint === null) hintText = "Click the bar to drop a placement marker";
+  }
 
   // -------------------------------------------------------------------------
   // Empty states
@@ -484,81 +516,127 @@ function RushesViewer() {
 
       {/* Timeline section */}
       <div className="flex-shrink-0 bg-zinc-950 border-t border-zinc-800 px-4 py-2 space-y-2">
-        {/* Info bar — only shown when a region is selected */}
-        {hasRegion && (
-          <div className="flex items-center gap-3 text-xs text-zinc-300 flex-wrap">
-            <span className="font-mono">IN {formatTimecode(inPoint!)}</span>
-            <span className="text-zinc-600">→</span>
-            <span className="font-mono">OUT {formatTimecode(outPoint!)}</span>
-            <span className="text-zinc-500">({formatTimecode(regionDuration)})</span>
-            <button
-              onClick={() => { setInPoint(null); setOutPoint(null); setExtractError(null); }}
-              className="text-zinc-500 hover:text-zinc-300 ml-1"
-              title="Clear selection"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-            <div className="ml-auto flex items-center gap-2">
-              {extractError && (
-                <span className="text-red-400 text-xs">{extractError}</span>
-              )}
+
+        {/* Mode buttons + status row */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Section button */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => activateMode("section")}
+            className={modeButtonClass("section")}
+          >
+            <Scissors className="w-3.5 h-3.5" />
+            Section
+          </Button>
+
+          {/* Place button */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => activateMode("place")}
+            className={modeButtonClass("place")}
+          >
+            <MapPin className="w-3.5 h-3.5" />
+            Place
+          </Button>
+
+          {/* Hint text */}
+          {hintText && (
+            <span className="text-xs text-zinc-500 italic ml-1">{hintText}</span>
+          )}
+
+          {/* Section complete: IN/OUT info + clear + extract */}
+          {hasSection && (
+            <div className="flex items-center gap-2 ml-auto flex-wrap">
+              <span className="font-mono text-xs text-zinc-300">
+                IN {formatTimecode(inPoint!)}
+              </span>
+              <span className="text-zinc-600 text-xs">→</span>
+              <span className="font-mono text-xs text-zinc-300">
+                OUT {formatTimecode(outPoint!)}
+              </span>
+              <span className="text-zinc-500 text-xs">({formatTimecode(regionDuration)})</span>
+              <button
+                onClick={() => { setInPoint(null); setOutPoint(null); setSectionStep(0); setExtractError(null); }}
+                className="text-zinc-500 hover:text-zinc-300"
+                title="Clear section"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+              {extractError && <span className="text-red-400 text-xs">{extractError}</span>}
               <Button
                 size="sm"
                 onClick={handleExtract}
                 disabled={isExtracting || !localDir}
                 className="gap-1.5 h-7 text-xs"
               >
-                {isExtracting ? (
-                  <><Loader2 className="w-3.5 h-3.5 animate-spin" />Extracting…</>
-                ) : (
-                  <><Scissors className="w-3.5 h-3.5" />Extract Clip</>
-                )}
+                {isExtracting
+                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Extracting…</>
+                  : <><Scissors className="w-3.5 h-3.5" />Extract Clip</>
+                }
               </Button>
             </div>
-          </div>
-        )}
+          )}
+
+          {/* Place point info + clear */}
+          {placePoint !== null && !hasSection && (
+            <div className="flex items-center gap-2 ml-auto">
+              <MapPin className="w-3.5 h-3.5 text-yellow-400" />
+              <span className="font-mono text-xs text-yellow-300">
+                PLACE {formatTimecode(placePoint)}
+              </span>
+              <button
+                onClick={() => setPlacePoint(null)}
+                className="text-zinc-500 hover:text-zinc-300"
+                title="Clear marker"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Scrubber bar */}
         <div
           ref={timelineRef}
-          className={`relative w-full h-8 rounded cursor-pointer select-none ${
+          onClick={handleBarClick}
+          className={`relative w-full h-8 rounded select-none transition-opacity ${barCursor} ${
             videoDuration > 0 ? "bg-zinc-800" : "bg-zinc-900 opacity-40 pointer-events-none"
           }`}
-          onPointerDown={handleTimelinePointerDown}
-          onPointerMove={handleTimelinePointerMove}
-          onPointerUp={handleTimelinePointerUp}
         >
-          {/* Region highlight */}
-          {hasRegion && (
+          {/* Section region highlight */}
+          {hasSection && (
             <div
               className="absolute top-0 h-full bg-primary/40 rounded"
               style={{ left: `${inPct}%`, width: `${outPct - inPct}%` }}
             />
           )}
 
-          {/* In/Out markers */}
+          {/* Section in/out markers */}
           {inPoint !== null && (
-            <div
-              className="absolute top-0 h-full w-0.5 bg-primary"
-              style={{ left: `${inPct}%` }}
-            />
+            <div className="absolute top-0 h-full w-0.5 bg-primary" style={{ left: `${inPct}%` }} />
           )}
           {outPoint !== null && (
-            <div
-              className="absolute top-0 h-full w-0.5 bg-primary"
-              style={{ left: `${outPct}%` }}
-            />
+            <div className="absolute top-0 h-full w-0.5 bg-primary" style={{ left: `${outPct}%` }} />
+          )}
+
+          {/* Place marker */}
+          {placePoint !== null && (
+            <div className="absolute top-0 h-full w-0.5 bg-yellow-400" style={{ left: `${placePct}%` }}>
+              <MapPin className="absolute -top-0.5 -left-[5px] w-3 h-3 text-yellow-400 fill-yellow-400" />
+            </div>
           )}
 
           {/* Playhead */}
           {videoDuration > 0 && (
             <div
-              className="absolute top-0 h-full w-0.5 bg-white/80 pointer-events-none"
+              className="absolute top-0 h-full w-0.5 bg-white/70 pointer-events-none"
               style={{ left: `${playheadPct}%` }}
             />
           )}
 
-          {/* Timecode labels at edges */}
+          {/* Edge timecodes */}
           {videoDuration > 0 && (
             <>
               <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500 font-mono pointer-events-none">

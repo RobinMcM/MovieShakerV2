@@ -364,11 +364,21 @@ async def trim_clip(
 # Rushes endpoints — /api/documentary/{project_id}/rushes/
 # ---------------------------------------------------------------------------
 
-class RushesExtractBody(BaseModel):
-    input_key: str
+class RushesSelectBody(BaseModel):
+    source_key: str
+    source_filename: str
     in_time: float
     out_time: float
-    output_filename: str
+    label: Optional[str] = None
+
+
+def _fmt_tc(seconds: float) -> str:
+    s = int(seconds)
+    m, sec = divmod(s, 60)
+    h, m = divmod(m, 60)
+    if h > 0:
+        return f"{h}:{m:02d}:{sec:02d}"
+    return f"{m:02d}:{sec:02d}"
 
 
 @router.post("/projects/{project_id}/rushes/upload")
@@ -386,8 +396,16 @@ async def rushes_upload(
     content_type = file.content_type or "video/mp4"
     key = storage_module.rushes_original_key(user_id, project_id, filename)
 
+    # Ensure we're at the start of the file (FastAPI may have already read it)
+    await file.seek(0)
+    file_obj = file.file
+
     try:
-        storage_module.upload_rushes_file(key, file.file, content_type)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            None,
+            lambda: storage_module.upload_rushes_file(key, file_obj, content_type),
+        )
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Upload failed: {exc}")
 
@@ -400,45 +418,72 @@ def rushes_list(
     session: SessionContainer = Depends(verify_session()),
     db: Session = Depends(get_session),
 ):
-    """List all clips (originals + extracts) for a project with presigned playback URLs."""
+    """List all clips (originals) and saved selects for a project with presigned playback URLs."""
     user_id = session.get_user_id()
     _ensure_project_member(db, project_id, user_id)
 
     clips = storage_module.list_rushes_clips(user_id, project_id)
     for clip in clips:
         clip["url"] = storage_module.generate_rushes_url(clip["key"], expires_seconds=7200) or ""
-    return {"clips": clips}
+
+    selects = storage_module.read_selects(user_id, project_id)
+    for sel in selects:
+        sel["source_url"] = storage_module.generate_rushes_url(sel.get("source_key", ""), expires_seconds=7200) or ""
+
+    return {"clips": clips, "selects": selects}
 
 
-@router.post("/projects/{project_id}/rushes/extract")
-async def rushes_extract(
+@router.post("/projects/{project_id}/rushes/selects")
+def rushes_save_select(
     project_id: str,
-    body: RushesExtractBody,
+    body: RushesSelectBody,
     session: SessionContainer = Depends(verify_session()),
     db: Session = Depends(get_session),
 ):
-    """Trigger server-side FFmpeg trim on media handler (Spaces key → Spaces key, near-instant)."""
+    """Save a select (JSON metadata only — no file is copied to Spaces)."""
     user_id = session.get_user_id()
     _ensure_project_member(db, project_id, user_id)
 
-    if not settings.media_handler_base_url:
-        raise HTTPException(status_code=503, detail="Media handler not configured")
     if body.out_time <= body.in_time:
         raise HTTPException(status_code=400, detail="out_time must be greater than in_time")
 
-    output_key = storage_module.rushes_extract_key(user_id, project_id, body.output_filename)
-    client = _media_handler_client()
-    loop = asyncio.get_running_loop()
-    try:
-        result = await loop.run_in_executor(
-            None,
-            lambda: client.trim_from_spaces(body.input_key, body.in_time, body.out_time, output_key),
-        )
-    except MediaHandlerClientError as exc:
-        raise HTTPException(status_code=503, detail=f"Extraction failed: {exc}")
+    duration = round(body.out_time - body.in_time, 3)
+    label = (body.label or "").strip() or (
+        f"{body.source_filename} ({_fmt_tc(body.in_time)} → {_fmt_tc(body.out_time)})"
+    )
+    new_select = {
+        "id": str(uuid.uuid4()),
+        "label": label,
+        "source_key": body.source_key,
+        "source_filename": body.source_filename,
+        "in_time": body.in_time,
+        "out_time": body.out_time,
+        "duration": duration,
+        "created_at": datetime.utcnow().isoformat() + "Z",
+    }
 
-    url = storage_module.generate_rushes_url(output_key, expires_seconds=7200) or ""
-    return {"key": output_key, "url": url, "media_handler_result": result}
+    selects = storage_module.read_selects(user_id, project_id)
+    selects.append(new_select)
+    storage_module.write_selects(user_id, project_id, selects)
+    return new_select
+
+
+@router.delete("/projects/{project_id}/rushes/selects/{select_id}")
+def rushes_delete_select(
+    project_id: str,
+    select_id: str,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    """Remove a saved select from selects.json — no Spaces file is deleted."""
+    user_id = session.get_user_id()
+    _ensure_project_member(db, project_id, user_id)
+
+    selects = storage_module.read_selects(user_id, project_id)
+    original_count = len(selects)
+    selects = [s for s in selects if s.get("id") != select_id]
+    storage_module.write_selects(user_id, project_id, selects)
+    return {"success": len(selects) < original_count}
 
 
 @router.delete("/projects/{project_id}/rushes/{clip_name:path}")

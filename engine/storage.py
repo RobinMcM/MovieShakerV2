@@ -2,6 +2,7 @@
 Script file storage: local STORAGE_ROOT or DigitalOcean Spaces (when DO_* env vars are set).
 Path convention: {user_id}/{project_id}/{script_id}/script.pdf
 """
+import json
 import logging
 import mimetypes
 import os
@@ -410,7 +411,7 @@ def list_rushes_clips(user_id: str, project_id: str) -> list[dict]:
             for obj in page.get("Contents") or []:
                 k = obj["Key"]
                 filename = k.split("/")[-1]
-                if not filename:
+                if not filename or filename.endswith(".json"):
                     continue
                 modified = obj.get("LastModified")
                 clips.append({
@@ -428,7 +429,7 @@ def list_rushes_clips(user_id: str, project_id: str) -> list[dict]:
         return []
     clips = []
     for path in sorted(prefix_path.rglob("*")):
-        if path.is_file():
+        if path.is_file() and not path.name.endswith(".json"):
             k = str(path.relative_to(STORAGE_ROOT)).replace("\\", "/")
             clips.append({
                 "key": k,
@@ -474,6 +475,43 @@ def delete_rushes_file(key: str) -> bool:
         return True
     except Exception:
         return False
+
+
+def selects_key(user_id: str, project_id: str) -> str:
+    return f"{user_id}/{project_id}/rushes/selects.json"
+
+
+def read_selects(user_id: str, project_id: str) -> list[dict]:
+    key = selects_key(user_id, project_id)
+    if uses_spaces():
+        try:
+            client = _spaces_client()
+            resp = client.get_object(Bucket=DO_SPACES_BUCKET, Key=key)
+            return json.loads(resp["Body"].read())
+        except Exception:
+            return []
+    path = STORAGE_ROOT / key
+    if not path.is_file():
+        return []
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return []
+
+
+def write_selects(user_id: str, project_id: str, selects: list[dict]) -> None:
+    key = selects_key(user_id, project_id)
+    body = json.dumps(selects, indent=2).encode()
+    if uses_spaces():
+        client = _spaces_client()
+        client.put_object(
+            Bucket=DO_SPACES_BUCKET, Key=key,
+            Body=body, ContentType="application/json",
+        )
+        return
+    path = STORAGE_ROOT / key
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(body)
 
 
 def save_character_image(

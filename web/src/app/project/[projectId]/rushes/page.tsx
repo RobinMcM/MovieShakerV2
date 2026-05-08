@@ -496,9 +496,6 @@ function RushesViewer({ projectId }: { projectId: string }) {
               }}
               className="w-full h-full object-contain"
             />
-            <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-sm text-white text-xs px-3 py-1.5 rounded-full pointer-events-none">
-              {videoLabel}
-            </div>
           </>
         ) : clipsLoading ? (
           <div className="text-center space-y-3 text-zinc-600">

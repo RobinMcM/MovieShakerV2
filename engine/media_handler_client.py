@@ -173,6 +173,38 @@ class MediaHandlerClient:
             raise MediaHandlerClientError(f"Trim failed: {response.text}")
         return response.content
 
+    def trim_from_spaces(
+        self,
+        input_key: str,
+        in_time: float,
+        out_time: float,
+        output_key: str,
+    ) -> dict[str, Any]:
+        """
+        Tell the media handler to trim a clip stored in Spaces and save the result
+        back to Spaces. No file bytes travel through the engine — the media handler
+        reads/writes Spaces directly (same as concat_spaces).
+
+        Requires POST /api/ffmpeg/trim_spaces on media.rapidmvp.io:
+          body: {input_key, in_time, out_time, output_key}
+          returns: {output_key, success: true}
+        """
+        response = self._post_json("/api/ffmpeg/trim_spaces", {
+            "input_key": input_key,
+            "in_time": in_time,
+            "out_time": out_time,
+            "output_key": output_key,
+        })
+        if not response.content:
+            return {"success": True, "output_key": output_key}
+        try:
+            data = response.json()
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+        return {"success": True, "output_key": output_key}
+
     def stitch_videos(self, video_urls: list[str], aspect_ratio: str = "16:9") -> dict[str, Any]:
         if len(video_urls) < 2:
             raise MediaHandlerClientError("At least two videos are required for stitching")

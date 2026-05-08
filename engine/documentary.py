@@ -21,6 +21,7 @@ from credits import apply_credit_cost, ensure_user_can_generate, extract_credit_
 from db import get_session
 from gateway_client import GatewayClient, GatewayClientError
 from media_handler_client import MediaHandlerClient, MediaHandlerClientError
+import storage as storage_module
 from models import (
     Character,
     DocumentarySession,
@@ -357,6 +358,106 @@ async def trim_clip(
         media_type=content_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# Rushes endpoints — /api/documentary/{project_id}/rushes/
+# ---------------------------------------------------------------------------
+
+class RushesExtractBody(BaseModel):
+    input_key: str
+    in_time: float
+    out_time: float
+    output_filename: str
+
+
+@router.post("/projects/{project_id}/rushes/upload")
+async def rushes_upload(
+    project_id: str,
+    file: UploadFile = File(...),
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    """Upload a raw footage clip to Spaces. Streams directly — no size limit."""
+    user_id = session.get_user_id()
+    _ensure_project_member(db, project_id, user_id)
+
+    filename = (file.filename or "clip.mp4").replace(" ", "_")
+    content_type = file.content_type or "video/mp4"
+    key = storage_module.rushes_original_key(user_id, project_id, filename)
+
+    try:
+        storage_module.upload_rushes_file(key, file.file, content_type)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Upload failed: {exc}")
+
+    return {"key": key, "filename": filename}
+
+
+@router.get("/projects/{project_id}/rushes")
+def rushes_list(
+    project_id: str,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    """List all clips (originals + extracts) for a project with presigned playback URLs."""
+    user_id = session.get_user_id()
+    _ensure_project_member(db, project_id, user_id)
+
+    clips = storage_module.list_rushes_clips(user_id, project_id)
+    for clip in clips:
+        clip["url"] = storage_module.generate_rushes_url(clip["key"], expires_seconds=7200) or ""
+    return {"clips": clips}
+
+
+@router.post("/projects/{project_id}/rushes/extract")
+async def rushes_extract(
+    project_id: str,
+    body: RushesExtractBody,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    """Trigger server-side FFmpeg trim on media handler (Spaces key → Spaces key, near-instant)."""
+    user_id = session.get_user_id()
+    _ensure_project_member(db, project_id, user_id)
+
+    if not settings.media_handler_base_url:
+        raise HTTPException(status_code=503, detail="Media handler not configured")
+    if body.out_time <= body.in_time:
+        raise HTTPException(status_code=400, detail="out_time must be greater than in_time")
+
+    output_key = storage_module.rushes_extract_key(user_id, project_id, body.output_filename)
+    client = _media_handler_client()
+    loop = asyncio.get_running_loop()
+    try:
+        result = await loop.run_in_executor(
+            None,
+            lambda: client.trim_from_spaces(body.input_key, body.in_time, body.out_time, output_key),
+        )
+    except MediaHandlerClientError as exc:
+        raise HTTPException(status_code=503, detail=f"Extraction failed: {exc}")
+
+    url = storage_module.generate_rushes_url(output_key, expires_seconds=7200) or ""
+    return {"key": output_key, "url": url, "media_handler_result": result}
+
+
+@router.delete("/projects/{project_id}/rushes/{clip_name:path}")
+def rushes_delete(
+    project_id: str,
+    clip_name: str,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    """Delete a rushes clip by filename (originals or extracts)."""
+    user_id = session.get_user_id()
+    _ensure_project_member(db, project_id, user_id)
+
+    # Reconstruct the full Spaces key (clip_name is the filename, not the full key)
+    # Determine subfolder from the name pattern
+    key_original = storage_module.rushes_original_key(user_id, project_id, clip_name)
+    key_extract = storage_module.rushes_extract_key(user_id, project_id, clip_name)
+    deleted = storage_module.delete_rushes_file(key_original) or storage_module.delete_rushes_file(key_extract)
+    return {"success": deleted}
 
 
 @router.post("/projects/{project_id}/generate-dialogue")

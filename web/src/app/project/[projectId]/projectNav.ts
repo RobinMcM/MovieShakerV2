@@ -5,6 +5,7 @@ import {
   Clapperboard,
   CreditCard,
   Eye,
+  Film,
   List,
   MessageCircle,
   Palette,
@@ -72,6 +73,12 @@ export const PROJECT_TOOL_NAV: ProjectNavItem[] = [
     label: "Visualize",
     href: (projectId) => `/project/${projectId}/visualize`,
     icon: Eye,
+  },
+  {
+    id: "rushes",
+    label: "Rushes",
+    href: (projectId) => `/project/${projectId}/rushes`,
+    icon: Film,
   },
 ];
 

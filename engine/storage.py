@@ -368,6 +368,114 @@ def character_image_relative_path(
     return f"{user_id}/{project_id}/objects/{filename}"
 
 
+# ---------------------------------------------------------------------------
+# Rushes storage — {user_id}/{project_id}/rushes/originals/{filename}
+#                   {user_id}/{project_id}/rushes/extracts/{filename}
+# No size limit (raw camera footage can be many GB).
+# ---------------------------------------------------------------------------
+
+def rushes_original_key(user_id: str, project_id: str, filename: str) -> str:
+    return f"{user_id}/{project_id}/rushes/originals/{filename}"
+
+
+def rushes_extract_key(user_id: str, project_id: str, filename: str) -> str:
+    return f"{user_id}/{project_id}/rushes/extracts/{filename}"
+
+
+def upload_rushes_file(key: str, file_obj, content_type: str) -> None:
+    """Stream-upload a rushes clip to Spaces (boto3 multipart, no size limit)."""
+    if uses_spaces():
+        client = _spaces_client()
+        client.upload_fileobj(
+            file_obj,
+            DO_SPACES_BUCKET,
+            key,
+            ExtraArgs={"ContentType": content_type},
+        )
+        return
+    dest = STORAGE_ROOT / key
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with open(dest, "wb") as f:
+        shutil.copyfileobj(file_obj, f)
+
+
+def list_rushes_clips(user_id: str, project_id: str) -> list[dict]:
+    """Return metadata for all clips under {user_id}/{project_id}/rushes/."""
+    prefix = f"{user_id}/{project_id}/rushes/"
+    if uses_spaces():
+        client = _spaces_client()
+        paginator = client.get_paginator("list_objects_v2")
+        clips: list[dict] = []
+        for page in paginator.paginate(Bucket=DO_SPACES_BUCKET, Prefix=prefix):
+            for obj in page.get("Contents") or []:
+                k = obj["Key"]
+                filename = k.split("/")[-1]
+                if not filename:
+                    continue
+                modified = obj.get("LastModified")
+                clips.append({
+                    "key": k,
+                    "filename": filename,
+                    "size": obj.get("Size", 0),
+                    "last_modified": modified.isoformat() if modified else "",
+                    "is_extract": "/rushes/extracts/" in k,
+                })
+        clips.sort(key=lambda c: c["last_modified"], reverse=True)
+        return clips
+    # local dev fallback
+    prefix_path = STORAGE_ROOT / user_id / str(project_id) / "rushes"
+    if not prefix_path.exists():
+        return []
+    clips = []
+    for path in sorted(prefix_path.rglob("*")):
+        if path.is_file():
+            k = str(path.relative_to(STORAGE_ROOT)).replace("\\", "/")
+            clips.append({
+                "key": k,
+                "filename": path.name,
+                "size": path.stat().st_size,
+                "last_modified": "",
+                "is_extract": "rushes/extracts" in k,
+            })
+    return clips
+
+
+def generate_rushes_url(key: str, expires_seconds: int = 3600) -> Optional[str]:
+    """Presigned GET URL for a rushes clip. None if Spaces not configured."""
+    if not key or ".." in key or not uses_spaces():
+        return None
+    try:
+        client = _spaces_client()
+        return client.generate_presigned_url(
+            ClientMethod="get_object",
+            Params={"Bucket": DO_SPACES_BUCKET, "Key": key},
+            ExpiresIn=max(60, int(expires_seconds)),
+        )
+    except Exception:
+        return None
+
+
+def delete_rushes_file(key: str) -> bool:
+    """Delete a rushes clip by its Spaces key."""
+    if not key or ".." in key:
+        return False
+    if uses_spaces():
+        try:
+            client = _spaces_client()
+            client.delete_object(Bucket=DO_SPACES_BUCKET, Key=key)
+            return True
+        except Exception:
+            return False
+    path = STORAGE_ROOT / key
+    if not path.is_file():
+        return False
+    try:
+        path.unlink()
+        return True
+    except Exception:
+        return False
+
+
 def save_character_image(
     user_id: str,
     project_id: str,

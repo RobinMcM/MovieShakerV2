@@ -278,23 +278,20 @@ function RushesViewer() {
 
   // ---- mode buttons ----
 
-  function activateMode(mode: TimelineMode) {
-    if (timelineMode === mode) {
-      // Toggle off
-      setTimelineMode(null);
+  function activateMode(mode: NonNullable<TimelineMode>) {
+    setTimelineMode(mode);
+    if (mode === "section") {
+      setInPoint(null);
+      setOutPoint(null);
+      setSectionStep(0);
     } else {
-      setTimelineMode(mode);
-      if (mode === "section") {
-        setInPoint(null);
-        setOutPoint(null);
-        setSectionStep(0);
-      }
+      setPlacePoint(null);
     }
   }
 
-  // ---- bar click ----
+  // ---- bar click / marker drag ----
 
-  function timeFromClick(clientX: number): number {
+  function timeFromBarX(clientX: number): number {
     const el = timelineRef.current;
     if (!el || !videoDuration) return 0;
     const rect = el.getBoundingClientRect();
@@ -303,7 +300,7 @@ function RushesViewer() {
 
   function handleBarClick(e: React.MouseEvent<HTMLDivElement>) {
     if (!videoDuration) return;
-    const t = timeFromClick(e.clientX);
+    const t = timeFromBarX(e.clientX);
 
     if (timelineMode === "section") {
       if (sectionStep === 0) {
@@ -525,6 +522,7 @@ function RushesViewer() {
             size="sm"
             onClick={() => activateMode("section")}
             className={modeButtonClass("section")}
+            title="Click to set a section (always resets previous)"
           >
             <Scissors className="w-3.5 h-3.5" />
             Section
@@ -536,6 +534,7 @@ function RushesViewer() {
             size="sm"
             onClick={() => activateMode("place")}
             className={modeButtonClass("place")}
+            title="Click to drop a placement marker (always resets previous)"
           >
             <MapPin className="w-3.5 h-3.5" />
             Place
@@ -608,24 +607,83 @@ function RushesViewer() {
           {/* Section region highlight */}
           {hasSection && (
             <div
-              className="absolute top-0 h-full bg-primary/40 rounded"
+              className="absolute top-0 h-full bg-primary/40 rounded pointer-events-none"
               style={{ left: `${inPct}%`, width: `${outPct - inPct}%` }}
             />
           )}
 
-          {/* Section in/out markers */}
+          {/* In-point marker + drag handle */}
           {inPoint !== null && (
-            <div className="absolute top-0 h-full w-0.5 bg-primary" style={{ left: `${inPct}%` }} />
-          )}
-          {outPoint !== null && (
-            <div className="absolute top-0 h-full w-0.5 bg-primary" style={{ left: `${outPct}%` }} />
+            <>
+              <div
+                className="absolute top-0 h-full w-0.5 bg-primary pointer-events-none"
+                style={{ left: `${inPct}%` }}
+              />
+              <div
+                className="absolute top-0 h-full w-4 -translate-x-1/2 cursor-ew-resize z-10"
+                style={{ left: `${inPct}%` }}
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                }}
+                onPointerMove={(e) => {
+                  if (e.buttons === 0) return;
+                  const t = timeFromBarX(e.clientX);
+                  setInPoint(Math.max(0, Math.min(t, outPoint ?? videoDuration)));
+                }}
+              />
+            </>
           )}
 
-          {/* Place marker */}
+          {/* Out-point marker + drag handle */}
+          {outPoint !== null && (
+            <>
+              <div
+                className="absolute top-0 h-full w-0.5 bg-primary pointer-events-none"
+                style={{ left: `${outPct}%` }}
+              />
+              <div
+                className="absolute top-0 h-full w-4 -translate-x-1/2 cursor-ew-resize z-10"
+                style={{ left: `${outPct}%` }}
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                }}
+                onPointerMove={(e) => {
+                  if (e.buttons === 0) return;
+                  const t = timeFromBarX(e.clientX);
+                  setOutPoint(Math.max(inPoint ?? 0, Math.min(t, videoDuration)));
+                }}
+              />
+            </>
+          )}
+
+          {/* Place marker + drag handle */}
           {placePoint !== null && (
-            <div className="absolute top-0 h-full w-0.5 bg-yellow-400" style={{ left: `${placePct}%` }}>
-              <MapPin className="absolute -top-0.5 -left-[5px] w-3 h-3 text-yellow-400 fill-yellow-400" />
-            </div>
+            <>
+              <div
+                className="absolute top-0 h-full w-0.5 bg-yellow-400 pointer-events-none"
+                style={{ left: `${placePct}%` }}
+              >
+                <MapPin className="absolute -top-0.5 -left-[5px] w-3 h-3 text-yellow-400 fill-yellow-400" />
+              </div>
+              <div
+                className="absolute top-0 h-full w-4 -translate-x-1/2 cursor-ew-resize z-10"
+                style={{ left: `${placePct}%` }}
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                }}
+                onPointerMove={(e) => {
+                  if (e.buttons === 0) return;
+                  const t = timeFromBarX(e.clientX);
+                  setPlacePoint(Math.max(0, Math.min(t, videoDuration)));
+                }}
+              />
+            </>
           )}
 
           {/* Playhead */}

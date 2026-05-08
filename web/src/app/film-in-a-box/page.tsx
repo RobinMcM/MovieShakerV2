@@ -362,8 +362,8 @@ function RushesViewer() {
       await ff.writeFile(inputName, await fetchFile(file));
       await ff.exec(["-i", inputName, "-ss", String(inPoint), "-to", String(outPoint), "-c", "copy", outName]);
 
-      const data = await ff.readFile(outName);
-      const blob = new Blob([data as Uint8Array], { type: file.type || `video/${ext}` });
+      const data = await ff.readFile(outName) as Uint8Array;
+      const blob = new Blob([new Uint8Array(data)], { type: file.type || `video/${ext}` });
       await writeBinaryFileToDirectory(localDir, outputName, blob);
 
       await ff.deleteFile(inputName).catch(() => {});

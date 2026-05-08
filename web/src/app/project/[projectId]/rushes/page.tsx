@@ -91,24 +91,24 @@ function ClipCard({ clip, active, onClick }: ClipCardProps) {
         flex-shrink-0 w-44 rounded-lg overflow-hidden text-left transition-all
         border-2 focus:outline-none
         ${active
-          ? "border-primary ring-2 ring-primary ring-offset-2 ring-offset-black"
-          : "border-zinc-700 hover:border-zinc-500"
+          ? "border-primary ring-2 ring-primary ring-offset-2 ring-offset-background"
+          : "border-border hover:border-muted-foreground"
         }
       `}
     >
-      <div className="relative w-full h-24 bg-zinc-800 flex items-center justify-center">
-        <Film className="w-8 h-8 text-zinc-600" />
+      <div className="relative w-full h-24 bg-muted flex items-center justify-center">
+        <Film className="w-8 h-8 text-muted-foreground" />
         {active && (
           <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-            <Play className="w-8 h-8 text-white fill-white" />
+            <Play className="w-8 h-8 text-foreground fill-foreground" />
           </div>
         )}
-        <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] px-1 rounded">
+        <span className="absolute bottom-1 right-1 bg-background/70 text-foreground text-[10px] px-1 rounded">
           {formatSize(clip.size)}
         </span>
       </div>
-      <div className="px-2 py-1 bg-zinc-900">
-        <p className="text-xs text-zinc-200 truncate leading-tight">{clip.filename}</p>
+      <div className="px-2 py-1 bg-card">
+        <p className="text-xs text-foreground truncate leading-tight">{clip.filename}</p>
       </div>
     </button>
   );
@@ -130,33 +130,33 @@ function SelectCard({ select, active, onClick, onDelete }: SelectCardProps) {
     <div className={`
       flex-shrink-0 w-44 rounded-lg overflow-hidden text-left transition-all border-2
       ${active
-        ? "border-primary ring-2 ring-primary ring-offset-2 ring-offset-black"
-        : "border-zinc-700 hover:border-zinc-500"
+        ? "border-primary ring-2 ring-primary ring-offset-2 ring-offset-background"
+        : "border-border hover:border-muted-foreground"
       }
     `}>
       <button onClick={onClick} className="block w-full focus:outline-none">
-        <div className="relative w-full h-20 bg-zinc-800 flex items-center justify-center">
-          <Bookmark className="w-7 h-7 text-zinc-600" />
+        <div className="relative w-full h-20 bg-muted flex items-center justify-center">
+          <Bookmark className="w-7 h-7 text-muted-foreground" />
           {active && (
             <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-              <Play className="w-7 h-7 text-white fill-white" />
+              <Play className="w-7 h-7 text-foreground fill-foreground" />
             </div>
           )}
-          <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] px-1 rounded">
+          <span className="absolute bottom-1 right-1 bg-background/70 text-foreground text-[10px] px-1 rounded">
             {formatDuration(select.duration)}
           </span>
         </div>
-        <div className="px-2 pt-1 pb-0.5 bg-zinc-900 text-left">
-          <p className="text-xs text-zinc-200 truncate leading-tight">{select.source_filename}</p>
-          <p className="text-[10px] text-zinc-500 font-mono">
+        <div className="px-2 pt-1 pb-0.5 bg-card text-left">
+          <p className="text-xs text-foreground truncate leading-tight">{select.source_filename}</p>
+          <p className="text-[10px] text-muted-foreground font-mono">
             {formatTimecode(select.in_time)} → {formatTimecode(select.out_time)}
           </p>
         </div>
       </button>
-      <div className="bg-zinc-900 border-t border-zinc-800 flex justify-end px-1.5 pb-1.5 pt-0.5">
+      <div className="bg-card border-t border-border flex justify-end px-1.5 pb-1.5 pt-0.5">
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className="text-zinc-600 hover:text-red-400 transition-colors"
+          className="text-muted-foreground hover:text-red-400 transition-colors"
           title="Delete select"
         >
           <Trash2 className="w-3 h-3" />
@@ -188,7 +188,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  // timeline state
+  // timeline state — mode is intentionally NOT reset on clip change (matches documentary studio)
   const [playheadTime, setPlayheadTime] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
   const [timelineMode, setTimelineMode] = useState<TimelineMode>(null);
@@ -201,10 +201,10 @@ function RushesViewer({ projectId }: { projectId: string }) {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // derived
+  // Stable ID for the active item — changes whenever the playing item changes.
+  // Drives the load+play effect (same pattern as film-in-a-box's currentUrl effect).
+  const videoId = currentClip?.key ?? (currentSelect ? `select:${currentSelect.id}` : "");
   const videoSrc = currentClip?.url ?? currentSelect?.source_url ?? "";
-  const videoKey = currentClip?.key ?? (currentSelect ? `select-${currentSelect.id}` : "empty");
-  const hasCurrentItem = currentClip !== null || currentSelect !== null;
 
   // ---- fetch ----
 
@@ -228,32 +228,40 @@ function RushesViewer({ projectId }: { projectId: string }) {
 
   useEffect(() => { fetchClips(); }, [fetchClips]);
 
-  // ---- play actions ----
-
-  function playClip(clip: ClipMeta) {
-    setCurrentClip(clip);
-    setCurrentSelect(null);
+  // Load + play whenever the active item changes — mirrors film-in-a-box's useEffect([currentUrl]).
+  // Timeline mode is preserved; only markers are reset (same behaviour as documentary studio).
+  useEffect(() => {
+    const vid = videoRef.current;
     setInPoint(null);
     setOutPoint(null);
     setPlacePoint(null);
     setSectionStep(0);
-    setTimelineMode(null);
     setPlayheadTime(0);
     setVideoDuration(0);
     setSaveError(null);
-  }
+    if (!vid || !videoId) return;
+    vid.load();
+    vid.play().catch(() => {});
+  }, [videoId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function playSelect(select: SelectMeta) {
+  // ---- play actions ----
+
+  const playClip = useCallback((clip: ClipMeta) => {
+    setCurrentClip(clip);
+    setCurrentSelect(null);
+  }, []);
+
+  const playSelect = useCallback((select: SelectMeta) => {
     setCurrentSelect(select);
     setCurrentClip(null);
-    setInPoint(null);
-    setOutPoint(null);
-    setPlacePoint(null);
-    setSectionStep(0);
-    setTimelineMode(null);
-    setPlayheadTime(0);
-    setVideoDuration(0);
-  }
+  }, []);
+
+  // Auto-advance to next clip on video end (mirrors film-in-a-box handleVideoEnded)
+  const handleVideoEnded = useCallback(() => {
+    if (!currentClip || clips.length === 0) return;
+    const idx = clips.findIndex((c) => c.key === currentClip.key);
+    if (idx >= 0 && idx < clips.length - 1) playClip(clips[idx + 1]);
+  }, [currentClip, clips, playClip]);
 
   // ---- upload ----
 
@@ -290,7 +298,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
     xhr.send(formData);
   }, [projectId, fetchClips]);
 
-  // ---- mode buttons ----
+  // ---- mode buttons — always resets markers, preserves mode between clips ----
 
   function activateMode(mode: NonNullable<TimelineMode>) {
     setTimelineMode(mode);
@@ -303,7 +311,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
     }
   }
 
-  // ---- timeline interaction ----
+  // ---- bar interaction — identical to film-in-a-box ----
 
   function timeFromBarX(clientX: number): number {
     const el = timelineRef.current;
@@ -323,9 +331,11 @@ function RushesViewer({ projectId }: { projectId: string }) {
         const newOut = Math.max(inPoint!, t);
         setInPoint(newIn); setOutPoint(newOut); setSectionStep(2);
       }
+      // sectionStep === 2: no-op — section is locked
     } else if (timelineMode === "place") {
       setPlacePoint(t);
     }
+    // null mode: bar is passive, no action
   }
 
   // ---- save select ----
@@ -375,7 +385,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
       setSelects((prev) => prev.filter((s) => s.id !== selectId));
       if (currentSelect?.id === selectId) setCurrentSelect(null);
     } catch {
-      // silent — list still shows correct state
+      // silent
     }
   }
 
@@ -392,9 +402,10 @@ function RushesViewer({ projectId }: { projectId: string }) {
     `gap-1.5 h-7 text-xs border transition-colors ${
       timelineMode === mode
         ? "border-primary text-primary bg-primary/10 hover:bg-primary/20"
-        : "border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500"
+        : "border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground"
     }`;
 
+  // Crosshair only when in a mode, video loaded, and not playing a select
   const barCursor = timelineMode && videoDuration > 0 && !currentSelect ? "cursor-crosshair" : "cursor-default";
 
   let hintText: string | null = null;
@@ -407,25 +418,21 @@ function RushesViewer({ projectId }: { projectId: string }) {
     }
   }
 
-  const videoLabel = currentClip
-    ? currentClip.filename
-    : currentSelect
-    ? `${currentSelect.source_filename} · ${formatTimecode(currentSelect.in_time)} → ${formatTimecode(currentSelect.out_time)}`
-    : "";
+  const hasCurrentItem = currentClip !== null || currentSelect !== null;
 
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
 
   return (
-    <div className="flex flex-col h-screen bg-black text-white overflow-hidden">
+    <div className="flex flex-col h-screen bg-background text-foreground overflow-hidden">
       <AppHeader />
 
       {/* Toolbar */}
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-zinc-800 flex-shrink-0">
-        <Film className="w-4 h-4 text-zinc-400 flex-shrink-0" />
-        <span className="text-sm text-zinc-300 font-medium">Rushes</span>
-        <span className="text-xs text-zinc-600 flex-shrink-0">
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-border flex-shrink-0">
+        <Film className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+        <span className="text-sm text-foreground font-medium">Rushes</span>
+        <span className="text-xs text-muted-foreground flex-shrink-0">
           {clips.length} clips · {selects.length} selects
         </span>
 
@@ -433,14 +440,14 @@ function RushesViewer({ projectId }: { projectId: string }) {
 
         {uploading && (
           <div className="flex items-center gap-2 ml-2">
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-400" />
-            <div className="w-32 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+            <div className="w-32 h-1.5 bg-muted rounded-full overflow-hidden">
               <div
                 className="h-full bg-primary rounded-full transition-all"
                 style={{ width: `${uploadProgress}%` }}
               />
             </div>
-            <span className="text-xs text-zinc-400">{uploadProgress}%</span>
+            <span className="text-xs text-muted-foreground">{uploadProgress}%</span>
           </div>
         )}
 
@@ -457,7 +464,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
           size="sm"
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading}
-          className="ml-auto flex-shrink-0 gap-1.5 border-zinc-700 text-zinc-300 hover:text-white"
+          className="ml-auto flex-shrink-0 gap-1.5"
         >
           <Upload className="w-3.5 h-3.5" />
           {uploading ? "Uploading…" : "Upload Clip"}
@@ -465,48 +472,45 @@ function RushesViewer({ projectId }: { projectId: string }) {
       </div>
 
       {/* Main player */}
-      <div className="relative flex-1 bg-black flex items-center justify-center overflow-hidden min-h-0">
+      <div className="relative flex-1 bg-background flex items-center justify-center overflow-hidden min-h-0">
         {hasCurrentItem ? (
-          <>
-            <video
-              key={videoKey}
-              ref={videoRef}
-              src={videoSrc}
-              controls
-              onLoadedMetadata={() => {
-                const vid = videoRef.current;
-                if (!vid) return;
-                if (currentSelect) {
-                  setVideoDuration(currentSelect.out_time - currentSelect.in_time);
-                  vid.currentTime = currentSelect.in_time;
-                } else {
-                  setVideoDuration(vid.duration ?? 0);
-                }
-              }}
-              onTimeUpdate={() => {
-                const vid = videoRef.current;
-                if (!vid) return;
-                if (currentSelect) {
-                  const t = vid.currentTime;
-                  setPlayheadTime(Math.max(0, t - currentSelect.in_time));
-                  if (t >= currentSelect.out_time) vid.pause();
-                } else {
-                  setPlayheadTime(vid.currentTime ?? 0);
-                }
-              }}
-              className="w-full h-full object-contain"
-            />
-          </>
+          <video
+            ref={videoRef}
+            src={videoSrc}
+            controls
+            onEnded={handleVideoEnded}
+            onLoadedMetadata={() => {
+              const vid = videoRef.current;
+              if (!vid) return;
+              if (currentSelect) {
+                setVideoDuration(currentSelect.out_time - currentSelect.in_time);
+                vid.currentTime = currentSelect.in_time;
+              } else {
+                setVideoDuration(vid.duration ?? 0);
+              }
+            }}
+            onTimeUpdate={() => {
+              const vid = videoRef.current;
+              if (!vid) return;
+              if (currentSelect) {
+                setPlayheadTime(Math.max(0, vid.currentTime - currentSelect.in_time));
+                if (vid.currentTime >= currentSelect.out_time) vid.pause();
+              } else {
+                setPlayheadTime(vid.currentTime ?? 0);
+              }
+            }}
+            className="w-full h-full object-contain"
+          />
         ) : clipsLoading ? (
-          <div className="text-center space-y-3 text-zinc-600">
+          <div className="text-center space-y-3 text-muted-foreground">
             <Loader2 className="w-10 h-10 mx-auto animate-spin opacity-40" />
             <p className="text-sm">Loading clips…</p>
           </div>
         ) : clips.length === 0 ? (
-          <div className="text-center space-y-4 text-zinc-600 max-w-sm px-4">
+          <div className="text-center space-y-4 text-muted-foreground max-w-sm px-4">
             <Film className="w-16 h-16 mx-auto opacity-30" />
-            <p className="text-sm text-zinc-400">No footage uploaded yet</p>
-            <p className="text-xs text-zinc-600">
+            <p className="text-sm">No footage uploaded yet</p>
+            <p className="text-xs">
               Click "Upload Clip" in the toolbar to add your raw footage. Files are stored securely
               in your project on DigitalOcean Spaces.
             </p>
@@ -515,14 +519,14 @@ function RushesViewer({ projectId }: { projectId: string }) {
               size="sm"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
-              className="gap-1.5 border-zinc-600"
+              className="gap-1.5"
             >
               <Upload className="w-4 h-4" />
               Upload Clip
             </Button>
           </div>
         ) : (
-          <div className="text-center space-y-3 text-zinc-600 select-none">
+          <div className="text-center space-y-3 text-muted-foreground select-none">
             <Play className="w-16 h-16 mx-auto opacity-30" />
             <p className="text-sm">Select a clip below to play</p>
           </div>
@@ -530,18 +534,18 @@ function RushesViewer({ projectId }: { projectId: string }) {
       </div>
 
       {/* Timeline section */}
-      <div className="flex-shrink-0 bg-zinc-950 border-t border-zinc-800 px-4 py-2 space-y-2">
+      <div className="flex-shrink-0 bg-card border-t border-border px-4 py-2 space-y-2">
 
         {/* Controls row */}
         {currentSelect ? (
           <div className="flex items-center gap-2 text-xs">
             <Bookmark className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-            <span className="text-zinc-300 truncate">{currentSelect.source_filename}</span>
-            <span className="text-zinc-600">·</span>
-            <span className="font-mono text-zinc-400 flex-shrink-0">IN {formatTimecode(currentSelect.in_time)}</span>
-            <span className="text-zinc-600">→</span>
-            <span className="font-mono text-zinc-400 flex-shrink-0">OUT {formatTimecode(currentSelect.out_time)}</span>
-            <span className="text-zinc-500 flex-shrink-0">({formatDuration(currentSelect.duration)})</span>
+            <span className="text-foreground truncate">{currentSelect.source_filename}</span>
+            <span className="text-muted-foreground">·</span>
+            <span className="font-mono text-muted-foreground flex-shrink-0">IN {formatTimecode(currentSelect.in_time)}</span>
+            <span className="text-muted-foreground">→</span>
+            <span className="font-mono text-muted-foreground flex-shrink-0">OUT {formatTimecode(currentSelect.out_time)}</span>
+            <span className="text-muted-foreground flex-shrink-0">({formatDuration(currentSelect.duration)})</span>
           </div>
         ) : (
           <div className="flex items-center gap-2 flex-wrap">
@@ -550,7 +554,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
               size="sm"
               onClick={() => activateMode("section")}
               className={modeButtonClass("section")}
-              title="Set a section"
+              title="Click to set a section (always resets previous)"
             >
               <Scissors className="w-3.5 h-3.5" />
               Section
@@ -561,30 +565,25 @@ function RushesViewer({ projectId }: { projectId: string }) {
               size="sm"
               onClick={() => activateMode("place")}
               className={modeButtonClass("place")}
-              title="Drop a placement marker"
+              title="Click to drop a placement marker (always resets previous)"
             >
               <MapPin className="w-3.5 h-3.5" />
               Place
             </Button>
 
             {hintText && (
-              <span className="text-xs text-zinc-500 italic ml-1">{hintText}</span>
+              <span className="text-xs text-muted-foreground italic ml-1">{hintText}</span>
             )}
 
             {hasSection && (
               <div className="flex items-center gap-2 ml-auto flex-wrap">
-                <span className="font-mono text-xs text-zinc-300">IN {formatTimecode(inPoint!)}</span>
-                <span className="text-zinc-600 text-xs">→</span>
-                <span className="font-mono text-xs text-zinc-300">OUT {formatTimecode(outPoint!)}</span>
-                <span className="text-zinc-500 text-xs">({formatTimecode(regionDuration)})</span>
+                <span className="font-mono text-xs text-foreground">IN {formatTimecode(inPoint!)}</span>
+                <span className="text-muted-foreground text-xs">→</span>
+                <span className="font-mono text-xs text-foreground">OUT {formatTimecode(outPoint!)}</span>
+                <span className="text-muted-foreground text-xs">({formatTimecode(regionDuration)})</span>
                 <button
-                  onClick={() => {
-                    setInPoint(null);
-                    setOutPoint(null);
-                    setSectionStep(0);
-                    setSaveError(null);
-                  }}
-                  className="text-zinc-500 hover:text-zinc-300"
+                  onClick={() => { setInPoint(null); setOutPoint(null); setSectionStep(0); setSaveError(null); }}
+                  className="text-muted-foreground hover:text-foreground"
                   title="Clear section"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -607,10 +606,10 @@ function RushesViewer({ projectId }: { projectId: string }) {
             {placePoint !== null && !hasSection && (
               <div className="flex items-center gap-2 ml-auto">
                 <MapPin className="w-3.5 h-3.5 text-yellow-400" />
-                <span className="font-mono text-xs text-yellow-300">PLACE {formatTimecode(placePoint)}</span>
+                <span className="font-mono text-xs text-yellow-400">PLACE {formatTimecode(placePoint)}</span>
                 <button
                   onClick={() => setPlacePoint(null)}
-                  className="text-zinc-500 hover:text-zinc-300"
+                  className="text-muted-foreground hover:text-foreground"
                   title="Clear marker"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -625,7 +624,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
           ref={timelineRef}
           onClick={handleBarClick}
           className={`relative w-full h-8 rounded select-none transition-opacity ${barCursor} ${
-            videoDuration > 0 ? "bg-zinc-800" : "bg-zinc-900 opacity-40 pointer-events-none"
+            videoDuration > 0 ? "bg-muted" : "bg-muted opacity-40 pointer-events-none"
           }`}
         >
           {hasSection && !currentSelect && (
@@ -696,24 +695,24 @@ function RushesViewer({ projectId }: { projectId: string }) {
 
           {videoDuration > 0 && (
             <div
-              className="absolute top-0 h-full w-0.5 bg-white/70 pointer-events-none"
+              className="absolute top-0 h-full w-0.5 bg-foreground/70 pointer-events-none"
               style={{ left: `${playheadPct}%` }}
             />
           )}
 
           {videoDuration > 0 && (
             <>
-              <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500 font-mono pointer-events-none">
+              <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground font-mono pointer-events-none">
                 {formatTimecode(0)}
               </span>
-              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500 font-mono pointer-events-none">
+              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground font-mono pointer-events-none">
                 {formatTimecode(videoDuration)}
               </span>
             </>
           )}
 
           {!videoDuration && (
-            <span className="absolute inset-0 flex items-center justify-center text-[10px] text-zinc-600">
+            <span className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground">
               Play a clip to use the timeline
             </span>
           )}
@@ -721,15 +720,15 @@ function RushesViewer({ projectId }: { projectId: string }) {
       </div>
 
       {/* Clip / Select strip */}
-      <div className="flex-shrink-0 bg-zinc-950 border-t border-zinc-800">
+      <div className="flex-shrink-0 bg-card border-t border-border">
         {/* Tabs */}
-        <div className="flex gap-0 border-b border-zinc-800 px-3 pt-2">
+        <div className="flex gap-0 border-b border-border px-3 pt-2">
           <button
             onClick={() => setActiveTab("clips")}
             className={`px-3 py-1 text-xs font-medium transition-colors ${
               activeTab === "clips"
-                ? "text-white border-b-2 border-primary -mb-px"
-                : "text-zinc-500 hover:text-zinc-300"
+                ? "text-foreground border-b-2 border-primary -mb-px"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             Clips ({clips.length})
@@ -738,8 +737,8 @@ function RushesViewer({ projectId }: { projectId: string }) {
             onClick={() => setActiveTab("selects")}
             className={`px-3 py-1 text-xs font-medium transition-colors ${
               activeTab === "selects"
-                ? "text-white border-b-2 border-primary -mb-px"
-                : "text-zinc-500 hover:text-zinc-300"
+                ? "text-foreground border-b-2 border-primary -mb-px"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             Selects ({selects.length})
@@ -747,7 +746,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
         </div>
 
         {/* Strip content */}
-        <div className="flex gap-2 p-3 overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
+        <div className="flex gap-2 p-3 overflow-x-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
           {activeTab === "clips" && (
             <>
               {clips.map((clip) => (
@@ -759,7 +758,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
                 />
               ))}
               {clips.length === 0 && !clipsLoading && (
-                <p className="text-xs text-zinc-600 self-center px-2">
+                <p className="text-xs text-muted-foreground self-center px-2">
                   No clips yet — upload footage above
                 </p>
               )}
@@ -778,9 +777,9 @@ function RushesViewer({ projectId }: { projectId: string }) {
                 />
               ))}
               {selects.length === 0 && (
-                <div className="text-xs text-zinc-600 self-center px-2 space-y-1">
+                <div className="text-xs text-muted-foreground self-center px-2 space-y-1">
                   <p>No selects yet</p>
-                  <p className="text-zinc-700">Play a clip, set a Section, then click "Save Select"</p>
+                  <p className="opacity-60">Play a clip, set a Section, then click "Save Select"</p>
                 </div>
               )}
             </>

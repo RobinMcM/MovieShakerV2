@@ -5,7 +5,8 @@ import { SessionAuth } from "supertokens-auth-react/recipe/session";
 import { AppHeader } from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { Film, FolderOpen, Loader2, MapPin, Play, Scissors, X } from "lucide-react";
-import { API_URL } from "@/lib/api";
+import { FFmpeg } from "@ffmpeg/ffmpeg";
+import { fetchFile, toBlobURL } from "@ffmpeg/util";
 import {
   supportsLocalDirectory,
   saveDirectoryHandle,
@@ -156,6 +157,7 @@ function ClipCard({ clip, active, thumbnail, duration, onClick }: ClipCardProps)
 function RushesViewer() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
+  const ffmpegRef = useRef<FFmpeg | null>(null);
 
   // --- directory / clip state ---
   const [localDir, setLocalDir] = useState<FileSystemDirectoryHandle | null>(null);
@@ -178,6 +180,7 @@ function RushesViewer() {
 
   // --- extraction state ---
   const [isExtracting, setIsExtracting] = useState(false);
+  const [ffmpegLoading, setFfmpegLoading] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
   const [extractCount, setExtractCount] = useState<Record<string, number>>({});
 
@@ -322,6 +325,20 @@ function RushesViewer() {
     // null mode: bar is passive, no action
   }
 
+  // ---- ffmpeg lazy loader ----
+
+  async function loadFfmpeg(): Promise<FFmpeg> {
+    if (ffmpegRef.current) return ffmpegRef.current;
+    const ff = new FFmpeg();
+    const baseURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd";
+    await ff.load({
+      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
+      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
+    });
+    ffmpegRef.current = ff;
+    return ff;
+  }
+
   // ---- extract action ----
 
   async function handleExtract() {
@@ -329,33 +346,34 @@ function RushesViewer() {
     setIsExtracting(true);
     setExtractError(null);
     try {
+      setFfmpegLoading(true);
+      const ff = await loadFfmpeg();
+      setFfmpegLoading(false);
+
       const file = await currentClip.handle.getFile();
       const dotIdx = currentClip.name.lastIndexOf(".");
       const base = dotIdx > 0 ? currentClip.name.slice(0, dotIdx) : currentClip.name;
       const ext = dotIdx > 0 ? currentClip.name.slice(dotIdx + 1) : "mp4";
       const count = (extractCount[base] ?? 0) + 1;
       const outputName = `${base}-${String(count).padStart(3, "0")}.${ext}`;
+      const inputName = `input.${ext}`;
+      const outName = `output.${ext}`;
 
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("in_time", String(inPoint));
-      formData.append("out_time", String(outPoint));
+      await ff.writeFile(inputName, await fetchFile(file));
+      await ff.exec(["-i", inputName, "-ss", String(inPoint), "-to", String(outPoint), "-c", "copy", outName]);
 
-      const res = await fetch(`${API_URL}/api/documentary/trim`, {
-        method: "POST",
-        body: formData,
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: res.statusText }));
-        throw new Error((err as { detail?: string }).detail || "Extraction failed");
-      }
-      const blob = await res.blob();
+      const data = await ff.readFile(outName);
+      const blob = new Blob([data as Uint8Array], { type: file.type || `video/${ext}` });
       await writeBinaryFileToDirectory(localDir, outputName, blob);
+
+      await ff.deleteFile(inputName).catch(() => {});
+      await ff.deleteFile(outName).catch(() => {});
+
       setExtractCount((prev) => ({ ...prev, [base]: count }));
       const files = await listMediaFiles(localDir);
       setLocalFiles(files);
     } catch (e) {
+      setFfmpegLoading(false);
       setExtractError(e instanceof Error ? e.message : "Extraction failed");
     } finally {
       setIsExtracting(false);
@@ -571,7 +589,9 @@ function RushesViewer() {
                 className="gap-1.5 h-7 text-xs"
               >
                 {isExtracting
-                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Extracting…</>
+                  ? ffmpegLoading
+                    ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Loading FFmpeg…</>
+                    : <><Loader2 className="w-3.5 h-3.5 animate-spin" />Extracting…</>
                   : <><Scissors className="w-3.5 h-3.5" />Extract Clip</>
                 }
               </Button>

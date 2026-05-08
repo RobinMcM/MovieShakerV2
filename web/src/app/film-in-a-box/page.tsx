@@ -360,7 +360,17 @@ function RushesViewer() {
       const outName = `output.${ext}`;
 
       await ff.writeFile(inputName, await fetchFile(file));
-      await ff.exec(["-i", inputName, "-ss", String(inPoint), "-to", String(outPoint), "-c", "copy", outName]);
+      const exitCode = await ff.exec([
+        "-ss", String(inPoint),
+        "-i", inputName,
+        "-t", String(outPoint - inPoint),
+        "-c", "copy",
+        "-avoid_negative_ts", "make_zero",
+        "-y",
+        outName,
+      ]);
+      if (exitCode !== 0) throw new Error(`FFmpeg extraction failed (exit code ${exitCode})`);
+
 
       const data = await ff.readFile(outName) as Uint8Array;
       const blob = new Blob([new Uint8Array(data)], { type: file.type || `video/${ext}` });

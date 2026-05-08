@@ -6,6 +6,8 @@ Prefix: /api/documentary
 """
 import asyncio
 import json
+import mimetypes
+import os
 import re
 import uuid
 from datetime import datetime
@@ -381,6 +383,31 @@ def _fmt_tc(seconds: float) -> str:
     return f"{m:02d}:{sec:02d}"
 
 
+_MIME_OVERRIDES: dict[str, str] = {
+    ".webm": "video/webm",
+    ".mkv":  "video/x-matroska",
+    ".avi":  "video/x-msvideo",
+    ".mov":  "video/quicktime",
+    ".mp4":  "video/mp4",
+    ".m4v":  "video/mp4",
+    ".ogv":  "video/ogg",
+    ".mp3":  "audio/mpeg",
+    ".m4a":  "audio/mp4",
+    ".wav":  "audio/wav",
+    ".aac":  "audio/aac",
+    ".ogg":  "audio/ogg",
+    ".flac": "audio/flac",
+}
+
+
+def _resolve_content_type(filename: str, browser_ct: str) -> str:
+    """Return a reliable MIME type even when macOS sends application/octet-stream."""
+    if browser_ct and browser_ct not in ("application/octet-stream", ""):
+        return browser_ct
+    ext = os.path.splitext(filename)[1].lower()
+    return _MIME_OVERRIDES.get(ext) or mimetypes.guess_type(filename)[0] or "video/mp4"
+
+
 @router.post("/projects/{project_id}/rushes/upload")
 async def rushes_upload(
     project_id: str,
@@ -393,7 +420,7 @@ async def rushes_upload(
     _ensure_project_member(db, project_id, user_id)
 
     filename = (file.filename or "clip.mp4").replace(" ", "_")
-    content_type = file.content_type or "video/mp4"
+    content_type = _resolve_content_type(filename, file.content_type or "")
     key = storage_module.rushes_original_key(user_id, project_id, filename)
 
     # Ensure we're at the start of the file (FastAPI may have already read it)

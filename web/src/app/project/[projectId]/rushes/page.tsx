@@ -201,6 +201,9 @@ function RushesViewer({ projectId }: { projectId: string }) {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  // video error state (format not supported, CORS failure, etc.)
+  const [videoError, setVideoError] = useState<string | null>(null);
+
   // Stable ID for the active item — changes whenever the playing item changes.
   // Drives the load+play effect (same pattern as film-in-a-box's currentUrl effect).
   const videoId = currentClip?.key ?? (currentSelect ? `select:${currentSelect.id}` : "");
@@ -228,8 +231,8 @@ function RushesViewer({ projectId }: { projectId: string }) {
 
   useEffect(() => { fetchClips(); }, [fetchClips]);
 
-  // Load + play whenever the active item changes — mirrors film-in-a-box's useEffect([currentUrl]).
-  // Timeline mode is preserved; only markers are reset (same behaviour as documentary studio).
+  // Load whenever the active item changes — resets markers but preserves timeline mode.
+  // No auto-play: leave the video paused so native controls remain visible at all times.
   useEffect(() => {
     const vid = videoRef.current;
     setInPoint(null);
@@ -239,9 +242,9 @@ function RushesViewer({ projectId }: { projectId: string }) {
     setPlayheadTime(0);
     setVideoDuration(0);
     setSaveError(null);
+    setVideoError(null);
     if (!vid || !videoId) return;
     vid.load();
-    vid.play().catch(() => {});
   }, [videoId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- play actions ----
@@ -474,33 +477,54 @@ function RushesViewer({ projectId }: { projectId: string }) {
       {/* Main player */}
       <div className="relative flex-1 bg-background flex items-center justify-center overflow-hidden min-h-0">
         {hasCurrentItem ? (
-          <video
-            ref={videoRef}
-            src={videoSrc}
-            controls
-            onEnded={handleVideoEnded}
-            onLoadedMetadata={() => {
-              const vid = videoRef.current;
-              if (!vid) return;
-              if (currentSelect) {
-                setVideoDuration(currentSelect.out_time - currentSelect.in_time);
-                vid.currentTime = currentSelect.in_time;
-              } else {
-                setVideoDuration(vid.duration ?? 0);
-              }
-            }}
-            onTimeUpdate={() => {
-              const vid = videoRef.current;
-              if (!vid) return;
-              if (currentSelect) {
-                setPlayheadTime(Math.max(0, vid.currentTime - currentSelect.in_time));
-                if (vid.currentTime >= currentSelect.out_time) vid.pause();
-              } else {
-                setPlayheadTime(vid.currentTime ?? 0);
-              }
-            }}
-            className="w-full h-full object-contain"
-          />
+          <>
+            <video
+              ref={videoRef}
+              src={videoSrc}
+              controls
+              playsInline
+              onEnded={handleVideoEnded}
+              onLoadedMetadata={() => {
+                const vid = videoRef.current;
+                if (!vid) return;
+                if (currentSelect) {
+                  setVideoDuration(currentSelect.out_time - currentSelect.in_time);
+                  vid.currentTime = currentSelect.in_time;
+                } else {
+                  setVideoDuration(vid.duration ?? 0);
+                }
+              }}
+              onTimeUpdate={() => {
+                const vid = videoRef.current;
+                if (!vid) return;
+                if (currentSelect) {
+                  setPlayheadTime(Math.max(0, vid.currentTime - currentSelect.in_time));
+                  if (vid.currentTime >= currentSelect.out_time) vid.pause();
+                } else {
+                  setPlayheadTime(vid.currentTime ?? 0);
+                }
+              }}
+              onError={() => {
+                const name = currentClip?.filename ?? currentSelect?.source_filename ?? "";
+                const ext = name.split(".").pop()?.toLowerCase() ?? "";
+                if (ext === "webm" || ext === "mkv") {
+                  setVideoError("This browser doesn't support .webm / .mkv. Open in Chrome, or re-upload as .mp4 / .mov.");
+                } else {
+                  setVideoError("Video failed to load — the file may be corrupted or an unsupported format.");
+                }
+              }}
+              className="w-full h-full object-contain"
+            />
+            {videoError && (
+              <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm px-6">
+                <div className="text-center space-y-2 max-w-sm">
+                  <Film className="w-10 h-10 mx-auto text-muted-foreground opacity-50" />
+                  <p className="text-sm text-foreground font-medium">Playback error</p>
+                  <p className="text-xs text-muted-foreground">{videoError}</p>
+                </div>
+              </div>
+            )}
+          </>
         ) : clipsLoading ? (
           <div className="text-center space-y-3 text-muted-foreground">
             <Loader2 className="w-10 h-10 mx-auto animate-spin opacity-40" />

@@ -389,6 +389,20 @@ function RushesViewer({ projectId }: { projectId: string }) {
 
   // ---- upload ----
 
+  // Prevent the screen from sleeping while a large file is in flight.
+  // Returns a release function; safe to call even if Wake Lock is unsupported.
+  async function acquireWakeLock(): Promise<() => void> {
+    try {
+      if ("wakeLock" in navigator) {
+        const sentinel = await navigator.wakeLock.request("screen");
+        return () => sentinel.release().catch(() => {});
+      }
+    } catch {
+      // Wake Lock denied or unavailable — continue without it
+    }
+    return () => {};
+  }
+
   const handleUpload = useCallback((files: FileList | null) => {
     if (!files || files.length === 0) return;
     const file = files[0];
@@ -413,27 +427,30 @@ function RushesViewer({ projectId }: { projectId: string }) {
     const formData = new FormData();
     formData.append("file", file);
 
-    const xhr = new XMLHttpRequest();
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
-    };
-    xhr.onload = () => {
-      setUploading(false);
-      if (xhr.status >= 200 && xhr.status < 300) {
-        fetchClips();
-      } else {
-        try {
-          const err = JSON.parse(xhr.responseText);
-          setUploadError(err.detail || "Upload failed");
-        } catch {
-          setUploadError("Upload failed");
+    acquireWakeLock().then((releaseWakeLock) => {
+      const xhr = new XMLHttpRequest();
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => {
+        releaseWakeLock();
+        setUploading(false);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          fetchClips();
+        } else {
+          try {
+            const err = JSON.parse(xhr.responseText);
+            setUploadError(err.detail || "Upload failed");
+          } catch {
+            setUploadError("Upload failed");
+          }
         }
-      }
-    };
-    xhr.onerror = () => { setUploading(false); setUploadError("Upload failed"); };
-    xhr.open("POST", `${API_URL}/api/documentary/projects/${projectId}/rushes/upload`);
-    xhr.withCredentials = true;
-    xhr.send(formData);
+      };
+      xhr.onerror = () => { releaseWakeLock(); setUploading(false); setUploadError("Upload failed"); };
+      xhr.open("POST", `${API_URL}/api/documentary/projects/${projectId}/rushes/upload`);
+      xhr.withCredentials = true;
+      xhr.send(formData);
+    });
   }, [projectId, fetchClips]);
 
   // ---- mode buttons — always resets markers, preserves mode between clips ----
@@ -583,28 +600,31 @@ function RushesViewer({ projectId }: { projectId: string }) {
     const formData = new FormData();
     formData.append("file", file);
 
-    const xhr = new XMLHttpRequest();
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) setInsertUploadProgress(Math.round((e.loaded / e.total) * 100));
-    };
-    xhr.onload = () => {
-      setInsertUploading(false);
-      if (xhr.status >= 200 && xhr.status < 300) {
-        fetchClips();
-        setActiveTab("inserts");
-      } else {
-        try {
-          const err = JSON.parse(xhr.responseText);
-          setInsertUploadError(err.detail || "Upload failed");
-        } catch {
-          setInsertUploadError("Upload failed");
+    acquireWakeLock().then((releaseWakeLock) => {
+      const xhr = new XMLHttpRequest();
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) setInsertUploadProgress(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => {
+        releaseWakeLock();
+        setInsertUploading(false);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          fetchClips();
+          setActiveTab("inserts");
+        } else {
+          try {
+            const err = JSON.parse(xhr.responseText);
+            setInsertUploadError(err.detail || "Upload failed");
+          } catch {
+            setInsertUploadError("Upload failed");
+          }
         }
-      }
-    };
-    xhr.onerror = () => { setInsertUploading(false); setInsertUploadError("Upload failed"); };
-    xhr.open("POST", `${API_URL}/api/documentary/projects/${projectId}/rushes/inserts/upload`);
-    xhr.withCredentials = true;
-    xhr.send(formData);
+      };
+      xhr.onerror = () => { releaseWakeLock(); setInsertUploading(false); setInsertUploadError("Upload failed"); };
+      xhr.open("POST", `${API_URL}/api/documentary/projects/${projectId}/rushes/inserts/upload`);
+      xhr.withCredentials = true;
+      xhr.send(formData);
+    });
   }, [projectId, fetchClips]);
 
   // ---- derived values ----

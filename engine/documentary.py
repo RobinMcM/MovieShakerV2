@@ -397,6 +397,13 @@ _MIME_OVERRIDES: dict[str, str] = {
     ".aac":  "audio/aac",
     ".ogg":  "audio/ogg",
     ".flac": "audio/flac",
+    # image types
+    ".jpg":  "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png":  "image/png",
+    ".webp": "image/webp",
+    ".heic": "image/heic",
+    ".heif": "image/heif",
 }
 
 
@@ -421,6 +428,11 @@ async def rushes_upload(
 
     filename = (file.filename or "clip.mp4").replace(" ", "_")
     content_type = _resolve_content_type(filename, file.content_type or "")
+
+    _ALLOWED_RUSHES_TYPES = {"video/mp4", "video/quicktime"}
+    if content_type not in _ALLOWED_RUSHES_TYPES:
+        raise HTTPException(status_code=415, detail="Only .mp4 and .mov files are supported.")
+
     key = storage_module.rushes_original_key(user_id, project_id, filename)
 
     # Ensure we're at the start of the file (FastAPI may have already read it)
@@ -457,7 +469,11 @@ def rushes_list(
     for sel in selects:
         sel["source_url"] = storage_module.generate_rushes_url(sel.get("source_key", ""), expires_seconds=7200) or ""
 
-    return {"clips": clips, "selects": selects}
+    inserts = storage_module.list_rushes_inserts(user_id, project_id)
+    for ins in inserts:
+        ins["url"] = storage_module.generate_rushes_url(ins["key"], expires_seconds=7200) or ""
+
+    return {"clips": clips, "selects": selects, "inserts": inserts}
 
 
 @router.post("/projects/{project_id}/rushes/selects")
@@ -511,6 +527,56 @@ def rushes_delete_select(
     selects = [s for s in selects if s.get("id") != select_id]
     storage_module.write_selects(user_id, project_id, selects)
     return {"success": len(selects) < original_count}
+
+
+@router.post("/projects/{project_id}/rushes/inserts/upload")
+async def rushes_insert_upload(
+    project_id: str,
+    file: UploadFile = File(...),
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    """Upload a still image insert to Spaces."""
+    user_id = session.get_user_id()
+    _ensure_project_member(db, project_id, user_id)
+
+    filename = (file.filename or "insert.jpg").replace(" ", "_")
+    content_type = _resolve_content_type(filename, file.content_type or "")
+
+    _ALLOWED_INSERT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
+    if content_type not in _ALLOWED_INSERT_TYPES:
+        raise HTTPException(status_code=415, detail="Only .jpg, .png, and .webp images are supported.")
+
+    key = storage_module.rushes_insert_key(user_id, project_id, filename)
+    await file.seek(0)
+    file_obj = file.file
+
+    try:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            None,
+            lambda: storage_module.upload_rushes_file(key, file_obj, content_type),
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Upload failed: {exc}")
+
+    return {"key": key, "filename": filename}
+
+
+@router.delete("/projects/{project_id}/rushes/inserts/{insert_name:path}")
+def rushes_insert_delete(
+    project_id: str,
+    insert_name: str,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    """Delete an insert image from Spaces."""
+    user_id = session.get_user_id()
+    _ensure_project_member(db, project_id, user_id)
+
+    key = storage_module.rushes_insert_key(user_id, project_id, insert_name)
+    deleted = storage_module.delete_rushes_file(key)
+    return {"success": deleted}
 
 
 @router.delete("/projects/{project_id}/rushes/{clip_name:path}")

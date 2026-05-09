@@ -383,6 +383,10 @@ def rushes_extract_key(user_id: str, project_id: str, filename: str) -> str:
     return f"{user_id}/{project_id}/rushes/extracts/{filename}"
 
 
+def rushes_insert_key(user_id: str, project_id: str, filename: str) -> str:
+    return f"{user_id}/{project_id}/rushes/inserts/{filename}"
+
+
 def upload_rushes_file(key: str, file_obj, content_type: str) -> None:
     """Stream-upload a rushes clip to Spaces (boto3 multipart, no size limit)."""
     if uses_spaces():
@@ -411,7 +415,7 @@ def list_rushes_clips(user_id: str, project_id: str) -> list[dict]:
             for obj in page.get("Contents") or []:
                 k = obj["Key"]
                 filename = k.split("/")[-1]
-                if not filename or filename.endswith(".json"):
+                if not filename or filename.endswith(".json") or "/rushes/inserts/" in k:
                     continue
                 modified = obj.get("LastModified")
                 clips.append({
@@ -429,7 +433,7 @@ def list_rushes_clips(user_id: str, project_id: str) -> list[dict]:
         return []
     clips = []
     for path in sorted(prefix_path.rglob("*")):
-        if path.is_file() and not path.name.endswith(".json"):
+        if path.is_file() and not path.name.endswith(".json") and "rushes/inserts" not in str(path):
             k = str(path.relative_to(STORAGE_ROOT)).replace("\\", "/")
             clips.append({
                 "key": k,
@@ -439,6 +443,45 @@ def list_rushes_clips(user_id: str, project_id: str) -> list[dict]:
                 "is_extract": "rushes/extracts" in k,
             })
     return clips
+
+
+def list_rushes_inserts(user_id: str, project_id: str) -> list[dict]:
+    """Return metadata for all images under {user_id}/{project_id}/rushes/inserts/."""
+    prefix = f"{user_id}/{project_id}/rushes/inserts/"
+    if uses_spaces():
+        client = _spaces_client()
+        paginator = client.get_paginator("list_objects_v2")
+        inserts: list[dict] = []
+        for page in paginator.paginate(Bucket=DO_SPACES_BUCKET, Prefix=prefix):
+            for obj in page.get("Contents") or []:
+                k = obj["Key"]
+                filename = k.split("/")[-1]
+                if not filename:
+                    continue
+                modified = obj.get("LastModified")
+                inserts.append({
+                    "key": k,
+                    "filename": filename,
+                    "size": obj.get("Size", 0),
+                    "last_modified": modified.isoformat() if modified else "",
+                })
+        inserts.sort(key=lambda i: i["last_modified"], reverse=True)
+        return inserts
+    # local dev fallback
+    prefix_path = STORAGE_ROOT / user_id / str(project_id) / "rushes" / "inserts"
+    if not prefix_path.exists():
+        return []
+    inserts = []
+    for path in sorted(prefix_path.rglob("*")):
+        if path.is_file():
+            k = str(path.relative_to(STORAGE_ROOT)).replace("\\", "/")
+            inserts.append({
+                "key": k,
+                "filename": path.name,
+                "size": path.stat().st_size,
+                "last_modified": "",
+            })
+    return inserts
 
 
 def generate_rushes_url(key: str, expires_seconds: int = 3600) -> Optional[str]:

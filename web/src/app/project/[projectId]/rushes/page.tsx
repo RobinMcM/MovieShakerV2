@@ -8,8 +8,10 @@ import { Button } from "@/components/ui/button";
 import {
   Bookmark,
   Film,
+  Image as ImageIcon,
   Loader2,
   MapPin,
+  Pause,
   Play,
   Scissors,
   Trash2,
@@ -43,9 +45,17 @@ interface SelectMeta {
   source_url?: string;
 }
 
+interface InsertMeta {
+  filename: string;
+  key: string;
+  size: number;
+  url: string;
+  last_modified: string;
+}
+
 type TimelineMode = "section" | "place" | null;
 type SectionStep = 0 | 1 | 2;
-type ActiveTab = "clips" | "selects";
+type ActiveTab = "clips" | "selects" | "inserts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -77,40 +87,66 @@ function formatSize(bytes: number): string {
 // ClipCard
 // ---------------------------------------------------------------------------
 
+// Video thumbnail — preload="metadata" so only moov atom is fetched (~few KB).
+// Seeks to 1s (or 10%) on metadata load to show a representative frame.
+function ClipThumbnail({ url }: { url: string }) {
+  return (
+    <video
+      src={url}
+      muted
+      playsInline
+      preload="metadata"
+      onLoadedMetadata={(e) => {
+        const v = e.currentTarget;
+        v.currentTime = Math.min(1, v.duration * 0.1);
+      }}
+      className="w-full h-full object-cover"
+    />
+  );
+}
+
 interface ClipCardProps {
   clip: ClipMeta;
   active: boolean;
   onClick: () => void;
+  onDelete: () => void;
 }
 
-function ClipCard({ clip, active, onClick }: ClipCardProps) {
+function ClipCard({ clip, active, onClick, onDelete }: ClipCardProps) {
   return (
-    <button
-      onClick={onClick}
-      className={`
-        flex-shrink-0 w-44 rounded-lg overflow-hidden text-left transition-all
-        border-2 focus:outline-none
-        ${active
-          ? "border-primary ring-2 ring-primary ring-offset-2 ring-offset-background"
-          : "border-border hover:border-muted-foreground"
-        }
-      `}
-    >
-      <div className="relative w-full h-24 bg-muted flex items-center justify-center">
-        <Film className="w-8 h-8 text-muted-foreground" />
-        {active && (
-          <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-            <Play className="w-8 h-8 text-foreground fill-foreground" />
-          </div>
-        )}
-        <span className="absolute bottom-1 right-1 bg-background/70 text-foreground text-[10px] px-1 rounded">
-          {formatSize(clip.size)}
-        </span>
+    <div className={`
+      flex-shrink-0 w-44 rounded-lg overflow-hidden text-left transition-all border-2
+      ${active
+        ? "border-primary ring-2 ring-primary ring-offset-2 ring-offset-background"
+        : "border-border hover:border-muted-foreground"
+      }
+    `}>
+      <button onClick={onClick} className="block w-full focus:outline-none">
+        <div className="relative w-full h-24 bg-muted overflow-hidden">
+          <ClipThumbnail url={clip.url} />
+          {active && (
+            <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+              <Play className="w-8 h-8 text-foreground fill-foreground drop-shadow" />
+            </div>
+          )}
+          <span className="absolute bottom-1 right-1 bg-background/70 text-foreground text-[10px] px-1 rounded">
+            {formatSize(clip.size)}
+          </span>
+        </div>
+        <div className="px-2 pt-1 pb-0.5 bg-card">
+          <p className="text-xs text-foreground truncate leading-tight">{clip.filename}</p>
+        </div>
+      </button>
+      <div className="bg-card border-t border-border flex justify-end px-1.5 pb-1.5 pt-0.5">
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          className="text-muted-foreground hover:text-red-400 transition-colors"
+          title="Delete clip"
+        >
+          <Trash2 className="w-3 h-3" />
+        </button>
       </div>
-      <div className="px-2 py-1 bg-card">
-        <p className="text-xs text-foreground truncate leading-tight">{clip.filename}</p>
-      </div>
-    </button>
+    </div>
   );
 }
 
@@ -167,6 +203,54 @@ function SelectCard({ select, active, onClick, onDelete }: SelectCardProps) {
 }
 
 // ---------------------------------------------------------------------------
+// InsertCard
+// ---------------------------------------------------------------------------
+
+interface InsertCardProps {
+  insert: InsertMeta;
+  active: boolean;
+  onClick: () => void;
+  onDelete: () => void;
+}
+
+function InsertCard({ insert, active, onClick, onDelete }: InsertCardProps) {
+  return (
+    <div className={`
+      flex-shrink-0 w-44 rounded-lg overflow-hidden text-left transition-all border-2
+      ${active
+        ? "border-primary ring-2 ring-primary ring-offset-2 ring-offset-background"
+        : "border-border hover:border-muted-foreground"
+      }
+    `}>
+      <button onClick={onClick} className="block w-full focus:outline-none">
+        <div className="relative w-full h-24 bg-muted overflow-hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={insert.url} alt={insert.filename} className="w-full h-full object-cover" />
+          {active && (
+            <div className="absolute inset-0 bg-primary/20" />
+          )}
+          <span className="absolute bottom-1 right-1 bg-background/70 text-foreground text-[10px] px-1 rounded">
+            {formatSize(insert.size)}
+          </span>
+        </div>
+        <div className="px-2 pt-1 pb-0.5 bg-card">
+          <p className="text-xs text-foreground truncate leading-tight">{insert.filename}</p>
+        </div>
+      </button>
+      <div className="bg-card border-t border-border flex justify-end px-1.5 pb-1.5 pt-0.5">
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          className="text-muted-foreground hover:text-red-400 transition-colors"
+          title="Delete insert"
+        >
+          <Trash2 className="w-3 h-3" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // RushesViewer
 // ---------------------------------------------------------------------------
 
@@ -174,19 +258,27 @@ function RushesViewer({ projectId }: { projectId: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const insertInputRef = useRef<HTMLInputElement>(null);
 
-  // clip / select state
+  // clip / select / insert state
   const [clips, setClips] = useState<ClipMeta[]>([]);
   const [selects, setSelects] = useState<SelectMeta[]>([]);
+  const [inserts, setInserts] = useState<InsertMeta[]>([]);
   const [clipsLoading, setClipsLoading] = useState(true);
   const [currentClip, setCurrentClip] = useState<ClipMeta | null>(null);
   const [currentSelect, setCurrentSelect] = useState<SelectMeta | null>(null);
+  const [currentInsert, setCurrentInsert] = useState<InsertMeta | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>("clips");
 
-  // upload state
+  // clip upload state
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // insert upload state
+  const [insertUploading, setInsertUploading] = useState(false);
+  const [insertUploadProgress, setInsertUploadProgress] = useState(0);
+  const [insertUploadError, setInsertUploadError] = useState<string | null>(null);
 
   // timeline state — mode is intentionally NOT reset on clip change (matches documentary studio)
   const [playheadTime, setPlayheadTime] = useState(0);
@@ -204,6 +296,9 @@ function RushesViewer({ projectId }: { projectId: string }) {
   // video error state (format not supported, CORS failure, etc.)
   const [videoError, setVideoError] = useState<string | null>(null);
 
+  // playback state — kept in sync via onPlay / onPause events
+  const [isPlaying, setIsPlaying] = useState(false);
+
   // Stable ID for the active item — changes whenever the playing item changes.
   // Drives the load+play effect (same pattern as film-in-a-box's currentUrl effect).
   const videoId = currentClip?.key ?? (currentSelect ? `select:${currentSelect.id}` : "");
@@ -218,12 +313,14 @@ function RushesViewer({ projectId }: { projectId: string }) {
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to load clips");
-      const data = await res.json() as { clips: ClipMeta[]; selects: SelectMeta[] };
+      const data = await res.json() as { clips: ClipMeta[]; selects: SelectMeta[]; inserts: InsertMeta[] };
       setClips(data.clips);
       setSelects(data.selects || []);
+      setInserts(data.inserts || []);
     } catch {
       setClips([]);
       setSelects([]);
+      setInserts([]);
     } finally {
       setClipsLoading(false);
     }
@@ -243,6 +340,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
     setVideoDuration(0);
     setSaveError(null);
     setVideoError(null);
+    setIsPlaying(false);
     if (!vid || !videoId) return;
     vid.load();
   }, [videoId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -252,11 +350,19 @@ function RushesViewer({ projectId }: { projectId: string }) {
   const playClip = useCallback((clip: ClipMeta) => {
     setCurrentClip(clip);
     setCurrentSelect(null);
+    setCurrentInsert(null);
   }, []);
 
   const playSelect = useCallback((select: SelectMeta) => {
     setCurrentSelect(select);
     setCurrentClip(null);
+    setCurrentInsert(null);
+  }, []);
+
+  const playInsert = useCallback((ins: InsertMeta) => {
+    setCurrentInsert(ins);
+    setCurrentClip(null);
+    setCurrentSelect(null);
   }, []);
 
   // Auto-advance to next clip on video end (mirrors film-in-a-box handleVideoEnded)
@@ -266,11 +372,32 @@ function RushesViewer({ projectId }: { projectId: string }) {
     if (idx >= 0 && idx < clips.length - 1) playClip(clips[idx + 1]);
   }, [currentClip, clips, playClip]);
 
+  const handlePlayPause = useCallback(() => {
+    const vid = videoRef.current;
+    if (!vid) return;
+    if (vid.paused) vid.play().catch(() => {});
+    else vid.pause();
+  }, []);
+
   // ---- upload ----
 
   const handleUpload = useCallback((files: FileList | null) => {
     if (!files || files.length === 0) return;
     const file = files[0];
+
+    // Resolve effective MIME type (macOS sends application/octet-stream for some formats)
+    const ALLOWED_TYPES = ["video/mp4", "video/quicktime"];
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    const effectiveType = ALLOWED_TYPES.includes(file.type) ? file.type
+      : ext === "mp4" || ext === "m4v" ? "video/mp4"
+      : ext === "mov" ? "video/quicktime"
+      : file.type;
+
+    if (!ALLOWED_TYPES.includes(effectiveType)) {
+      setUploadError("Only .mp4 and .mov files are supported.");
+      return;
+    }
+
     setUploading(true);
     setUploadProgress(0);
     setUploadError(null);
@@ -392,6 +519,86 @@ function RushesViewer({ projectId }: { projectId: string }) {
     }
   }
 
+  // ---- delete clip (removes from Spaces permanently) ----
+
+  async function handleDeleteClip(clip: ClipMeta) {
+    try {
+      await fetch(`${API_URL}/api/documentary/projects/${projectId}/rushes/${clip.filename}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      setClips((prev) => prev.filter((c) => c.key !== clip.key));
+      if (currentClip?.key === clip.key) setCurrentClip(null);
+    } catch {
+      // silent
+    }
+  }
+
+  // ---- delete insert ----
+
+  async function handleDeleteInsert(ins: InsertMeta) {
+    try {
+      await fetch(`${API_URL}/api/documentary/projects/${projectId}/rushes/inserts/${ins.filename}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      setInserts((prev) => prev.filter((i) => i.key !== ins.key));
+      if (currentInsert?.key === ins.key) setCurrentInsert(null);
+    } catch {
+      // silent
+    }
+  }
+
+  // ---- upload insert ----
+
+  const handleUploadInsert = useCallback((files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+
+    const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    const effectiveType = ALLOWED_IMAGE_TYPES.includes(file.type) ? file.type
+      : ext === "jpg" || ext === "jpeg" ? "image/jpeg"
+      : ext === "png" ? "image/png"
+      : ext === "webp" ? "image/webp"
+      : file.type;
+
+    if (!ALLOWED_IMAGE_TYPES.includes(effectiveType)) {
+      setInsertUploadError("Only .jpg, .png, and .webp images are supported.");
+      return;
+    }
+
+    setInsertUploading(true);
+    setInsertUploadProgress(0);
+    setInsertUploadError(null);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const xhr = new XMLHttpRequest();
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) setInsertUploadProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      setInsertUploading(false);
+      if (xhr.status >= 200 && xhr.status < 300) {
+        fetchClips();
+        setActiveTab("inserts");
+      } else {
+        try {
+          const err = JSON.parse(xhr.responseText);
+          setInsertUploadError(err.detail || "Upload failed");
+        } catch {
+          setInsertUploadError("Upload failed");
+        }
+      }
+    };
+    xhr.onerror = () => { setInsertUploading(false); setInsertUploadError("Upload failed"); };
+    xhr.open("POST", `${API_URL}/api/documentary/projects/${projectId}/rushes/inserts/upload`);
+    xhr.withCredentials = true;
+    xhr.send(formData);
+  }, [projectId, fetchClips]);
+
   // ---- derived values ----
 
   const hasSection = inPoint !== null && outPoint !== null;
@@ -421,7 +628,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
     }
   }
 
-  const hasCurrentItem = currentClip !== null || currentSelect !== null;
+  const hasCurrentItem = currentClip !== null || currentSelect !== null || currentInsert !== null;
 
   // -------------------------------------------------------------------------
   // Render
@@ -436,53 +643,86 @@ function RushesViewer({ projectId }: { projectId: string }) {
         <Film className="w-4 h-4 text-muted-foreground flex-shrink-0" />
         <span className="text-sm text-foreground font-medium">Rushes</span>
         <span className="text-xs text-muted-foreground flex-shrink-0">
-          {clips.length} clips · {selects.length} selects
+          {clips.length} clips · {selects.length} selects · {inserts.length} inserts
         </span>
 
         {uploadError && <span className="text-red-400 text-xs ml-2">{uploadError}</span>}
+        {insertUploadError && <span className="text-red-400 text-xs ml-2">{insertUploadError}</span>}
 
-        {uploading && (
+        {(uploading || insertUploading) && (
           <div className="flex items-center gap-2 ml-2">
             <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
             <div className="w-32 h-1.5 bg-muted rounded-full overflow-hidden">
               <div
                 className="h-full bg-primary rounded-full transition-all"
-                style={{ width: `${uploadProgress}%` }}
+                style={{ width: `${uploading ? uploadProgress : insertUploadProgress}%` }}
               />
             </div>
-            <span className="text-xs text-muted-foreground">{uploadProgress}%</span>
+            <span className="text-xs text-muted-foreground">
+              {uploading ? uploadProgress : insertUploadProgress}%
+            </span>
           </div>
         )}
 
         <input
           ref={fileInputRef}
           type="file"
-          accept="video/*,audio/*"
-          multiple
+          accept=".mp4,.mov,video/mp4,video/quicktime"
           className="hidden"
-          onChange={(e) => handleUpload(e.target.files)}
+          onChange={(e) => { handleUpload(e.target.files); e.target.value = ""; }}
         />
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-          className="ml-auto flex-shrink-0 gap-1.5"
-        >
-          <Upload className="w-3.5 h-3.5" />
-          {uploading ? "Uploading…" : "Upload Clip"}
-        </Button>
+        <input
+          ref={insertInputRef}
+          type="file"
+          accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={(e) => { handleUploadInsert(e.target.files); e.target.value = ""; }}
+        />
+
+        {activeTab === "inserts" ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => insertInputRef.current?.click()}
+            disabled={insertUploading}
+            className="ml-auto flex-shrink-0 gap-1.5"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            {insertUploading ? "Uploading…" : "Upload Insert"}
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="ml-auto flex-shrink-0 gap-1.5"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            {uploading ? "Uploading…" : "Upload Clip"}
+          </Button>
+        )}
       </div>
 
       {/* Main player */}
       <div className="relative flex-1 bg-background flex items-center justify-center overflow-hidden min-h-0">
         {hasCurrentItem ? (
+          currentInsert ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={currentInsert.url}
+              alt={currentInsert.filename}
+              className="max-w-full max-h-full object-contain"
+            />
+          ) : (
           <>
             <video
               ref={videoRef}
               src={videoSrc}
               controls
               playsInline
+              onPlay={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
               onEnded={handleVideoEnded}
               onLoadedMetadata={() => {
                 const vid = videoRef.current;
@@ -525,6 +765,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
               </div>
             )}
           </>
+          )
         ) : clipsLoading ? (
           <div className="text-center space-y-3 text-muted-foreground">
             <Loader2 className="w-10 h-10 mx-auto animate-spin opacity-40" />
@@ -560,51 +801,90 @@ function RushesViewer({ projectId }: { projectId: string }) {
       {/* Timeline section */}
       <div className="flex-shrink-0 bg-card border-t border-border px-4 py-2 space-y-2">
 
-        {/* Controls row */}
-        {currentSelect ? (
-          <div className="flex items-center gap-2 text-xs">
-            <Bookmark className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-            <span className="text-foreground truncate">{currentSelect.source_filename}</span>
-            <span className="text-muted-foreground">·</span>
-            <span className="font-mono text-muted-foreground flex-shrink-0">IN {formatTimecode(currentSelect.in_time)}</span>
-            <span className="text-muted-foreground">→</span>
-            <span className="font-mono text-muted-foreground flex-shrink-0">OUT {formatTimecode(currentSelect.out_time)}</span>
-            <span className="text-muted-foreground flex-shrink-0">({formatDuration(currentSelect.duration)})</span>
+        {/* Controls row — 3-column grid: left info | centre buttons | right actions */}
+        <div className="grid grid-cols-3 items-center gap-2">
+
+          {/* LEFT — contextual info */}
+          <div className="flex items-center gap-2 text-xs min-w-0">
+            {currentInsert ? (
+              <>
+                <ImageIcon className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                <span className="text-foreground truncate">{currentInsert.filename}</span>
+              </>
+            ) : currentSelect ? (
+              <>
+                <Bookmark className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                <span className="text-foreground truncate">{currentSelect.source_filename}</span>
+              </>
+            ) : hasSection ? (
+              <>
+                <span className="font-mono text-foreground">IN {formatTimecode(inPoint!)}</span>
+                <span className="text-muted-foreground">→</span>
+                <span className="font-mono text-foreground">OUT {formatTimecode(outPoint!)}</span>
+                <span className="text-muted-foreground hidden sm:inline">({formatTimecode(regionDuration)})</span>
+              </>
+            ) : hintText ? (
+              <span className="text-muted-foreground italic">{hintText}</span>
+            ) : null}
           </div>
-        ) : (
-          <div className="flex items-center gap-2 flex-wrap">
+
+          {/* CENTRE — playback + mode buttons (always centred) */}
+          <div className="flex items-center justify-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              onClick={() => activateMode("section")}
-              className={modeButtonClass("section")}
-              title="Click to set a section (always resets previous)"
+              onClick={handlePlayPause}
+              disabled={!hasCurrentItem}
+              className="gap-1.5 h-7 text-xs border-border text-foreground hover:bg-accent"
+              title={isPlaying ? "Pause" : "Play"}
             >
-              <Scissors className="w-3.5 h-3.5" />
-              Section
+              {isPlaying
+                ? <><Pause className="w-3.5 h-3.5" />Pause</>
+                : <><Play className="w-3.5 h-3.5" />Play</>
+              }
             </Button>
 
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => activateMode("place")}
-              className={modeButtonClass("place")}
-              title="Click to drop a placement marker (always resets previous)"
-            >
-              <MapPin className="w-3.5 h-3.5" />
-              Place
-            </Button>
+            {!currentSelect && !currentInsert && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => activateMode("section")}
+                  className={modeButtonClass("section")}
+                  title="Click to set a section (always resets previous)"
+                >
+                  <Scissors className="w-3.5 h-3.5" />
+                  Section
+                </Button>
 
-            {hintText && (
-              <span className="text-xs text-muted-foreground italic ml-1">{hintText}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => activateMode("place")}
+                  className={modeButtonClass("place")}
+                  title="Click to drop a placement marker (always resets previous)"
+                >
+                  <MapPin className="w-3.5 h-3.5" />
+                  Place
+                </Button>
+              </>
             )}
+          </div>
 
-            {hasSection && (
-              <div className="flex items-center gap-2 ml-auto flex-wrap">
-                <span className="font-mono text-xs text-foreground">IN {formatTimecode(inPoint!)}</span>
-                <span className="text-muted-foreground text-xs">→</span>
-                <span className="font-mono text-xs text-foreground">OUT {formatTimecode(outPoint!)}</span>
-                <span className="text-muted-foreground text-xs">({formatTimecode(regionDuration)})</span>
+          {/* RIGHT — save / clear actions */}
+          <div className="flex items-center justify-end gap-2 text-xs">
+            {currentInsert ? (
+              <span className="text-muted-foreground">{formatSize(currentInsert.size)}</span>
+            ) : currentSelect ? (
+              <>
+                <span className="font-mono text-muted-foreground">IN {formatTimecode(currentSelect.in_time)}</span>
+                <span className="text-muted-foreground">→</span>
+                <span className="font-mono text-muted-foreground">OUT {formatTimecode(currentSelect.out_time)}</span>
+                <span className="text-muted-foreground hidden sm:inline">({formatDuration(currentSelect.duration)})</span>
+              </>
+            ) : hasSection ? (
+              <>
+                {saveError && <span className="text-red-400">{saveError}</span>}
                 <button
                   onClick={() => { setInPoint(null); setOutPoint(null); setSectionStep(0); setSaveError(null); }}
                   className="text-muted-foreground hover:text-foreground"
@@ -612,7 +892,6 @@ function RushesViewer({ projectId }: { projectId: string }) {
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
-                {saveError && <span className="text-red-400 text-xs">{saveError}</span>}
                 <Button
                   size="sm"
                   onClick={handleSaveSelect}
@@ -624,13 +903,11 @@ function RushesViewer({ projectId }: { projectId: string }) {
                     : <><Bookmark className="w-3.5 h-3.5" />Save Select</>
                   }
                 </Button>
-              </div>
-            )}
-
-            {placePoint !== null && !hasSection && (
-              <div className="flex items-center gap-2 ml-auto">
+              </>
+            ) : placePoint !== null ? (
+              <>
                 <MapPin className="w-3.5 h-3.5 text-yellow-400" />
-                <span className="font-mono text-xs text-yellow-400">PLACE {formatTimecode(placePoint)}</span>
+                <span className="font-mono text-yellow-400">PLACE {formatTimecode(placePoint)}</span>
                 <button
                   onClick={() => setPlacePoint(null)}
                   className="text-muted-foreground hover:text-foreground"
@@ -638,13 +915,13 @@ function RushesViewer({ projectId }: { projectId: string }) {
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
-              </div>
-            )}
+              </>
+            ) : null}
           </div>
-        )}
+        </div>
 
         {/* Scrubber bar */}
-        <div
+        {!currentInsert && <div
           ref={timelineRef}
           onClick={handleBarClick}
           className={`relative w-full h-8 rounded select-none transition-opacity ${barCursor} ${
@@ -740,7 +1017,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
               Play a clip to use the timeline
             </span>
           )}
-        </div>
+        </div>}
       </div>
 
       {/* Clip / Select strip */}
@@ -767,6 +1044,16 @@ function RushesViewer({ projectId }: { projectId: string }) {
           >
             Selects ({selects.length})
           </button>
+          <button
+            onClick={() => setActiveTab("inserts")}
+            className={`px-3 py-1 text-xs font-medium transition-colors ${
+              activeTab === "inserts"
+                ? "text-foreground border-b-2 border-primary -mb-px"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Inserts ({inserts.length})
+          </button>
         </div>
 
         {/* Strip content */}
@@ -779,6 +1066,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
                   clip={clip}
                   active={currentClip?.key === clip.key}
                   onClick={() => playClip(clip)}
+                  onDelete={() => handleDeleteClip(clip)}
                 />
               ))}
               {clips.length === 0 && !clipsLoading && (
@@ -804,6 +1092,26 @@ function RushesViewer({ projectId }: { projectId: string }) {
                 <div className="text-xs text-muted-foreground self-center px-2 space-y-1">
                   <p>No selects yet</p>
                   <p className="opacity-60">Play a clip, set a Section, then click "Save Select"</p>
+                </div>
+              )}
+            </>
+          )}
+
+          {activeTab === "inserts" && (
+            <>
+              {inserts.map((ins) => (
+                <InsertCard
+                  key={ins.key}
+                  insert={ins}
+                  active={currentInsert?.key === ins.key}
+                  onClick={() => playInsert(ins)}
+                  onDelete={() => handleDeleteInsert(ins)}
+                />
+              ))}
+              {inserts.length === 0 && (
+                <div className="text-xs text-muted-foreground self-center px-2 space-y-1">
+                  <p>No inserts yet</p>
+                  <p className="opacity-60">Click "Upload Insert" to add reference images</p>
                 </div>
               )}
             </>

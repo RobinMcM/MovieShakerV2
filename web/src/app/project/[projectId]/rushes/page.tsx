@@ -171,7 +171,7 @@ function SelectCard({ select, active, onClick, onDelete }: SelectCardProps) {
       }
     `}>
       <button onClick={onClick} className="block w-full focus:outline-none">
-        <div className="relative w-full h-20 bg-muted flex items-center justify-center">
+        <div className="relative w-full h-24 bg-muted flex items-center justify-center">
           <Bookmark className="w-7 h-7 text-muted-foreground" />
           {active && (
             <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
@@ -641,7 +641,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
       {/* Toolbar */}
       <div className="flex items-center gap-3 px-4 py-2 border-b border-border flex-shrink-0">
         <Film className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-        <span className="text-sm text-foreground font-medium">Rushes</span>
+        <span className="text-sm text-foreground font-medium">Studio</span>
         <span className="text-xs text-muted-foreground flex-shrink-0">
           {clips.length} clips · {selects.length} selects · {inserts.length} inserts
         </span>
@@ -1057,7 +1057,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
         </div>
 
         {/* Strip content */}
-        <div className="flex gap-2 p-3 overflow-x-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+        <div className="flex gap-2 p-3 overflow-x-auto overflow-y-hidden h-40 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
           {activeTab === "clips" && (
             <>
               {clips.map((clip) => (

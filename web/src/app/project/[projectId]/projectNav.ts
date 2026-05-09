@@ -76,7 +76,7 @@ export const PROJECT_TOOL_NAV: ProjectNavItem[] = [
   },
   {
     id: "rushes",
-    label: "Rushes",
+    label: "Studio",
     href: (projectId) => `/project/${projectId}/rushes`,
     icon: Film,
   },

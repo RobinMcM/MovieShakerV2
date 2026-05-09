@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { SessionAuth } from "supertokens-auth-react/recipe/session";
 import { AppHeader } from "@/components/Header";
@@ -88,8 +88,8 @@ function formatSize(bytes: number): string {
 // ---------------------------------------------------------------------------
 
 // Video thumbnail — preload="metadata" so only moov atom is fetched (~few KB).
-// Seeks to 1s (or 10%) on metadata load to show a representative frame.
-function ClipThumbnail({ url }: { url: string }) {
+// seekTo: exact time to show (e.g. select in_time); falls back to 10% of duration.
+function ClipThumbnail({ url, seekTo }: { url: string; seekTo?: number }) {
   return (
     <video
       src={url}
@@ -98,7 +98,9 @@ function ClipThumbnail({ url }: { url: string }) {
       preload="metadata"
       onLoadedMetadata={(e) => {
         const v = e.currentTarget;
-        v.currentTime = Math.min(1, v.duration * 0.1);
+        v.currentTime = seekTo !== undefined
+          ? Math.min(seekTo, v.duration)
+          : Math.min(1, v.duration * 0.1);
       }}
       className="w-full h-full object-cover"
     />
@@ -159,9 +161,10 @@ interface SelectCardProps {
   active: boolean;
   onClick: () => void;
   onDelete: () => void;
+  sourceUrl?: string;
 }
 
-function SelectCard({ select, active, onClick, onDelete }: SelectCardProps) {
+function SelectCard({ select, active, onClick, onDelete, sourceUrl }: SelectCardProps) {
   return (
     <div className={`
       flex-shrink-0 w-44 rounded-lg overflow-hidden text-left transition-all border-2
@@ -171,8 +174,12 @@ function SelectCard({ select, active, onClick, onDelete }: SelectCardProps) {
       }
     `}>
       <button onClick={onClick} className="block w-full focus:outline-none">
-        <div className="relative w-full h-24 bg-muted flex items-center justify-center">
-          <Bookmark className="w-7 h-7 text-muted-foreground" />
+        <div className="relative w-full h-24 bg-muted flex items-center justify-center overflow-hidden">
+          {sourceUrl ? (
+            <ClipThumbnail url={sourceUrl} seekTo={select.in_time} />
+          ) : (
+            <Bookmark className="w-7 h-7 text-muted-foreground" />
+          )}
           {active && (
             <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
               <Play className="w-7 h-7 text-foreground fill-foreground" />
@@ -265,6 +272,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
   const [selects, setSelects] = useState<SelectMeta[]>([]);
   const [inserts, setInserts] = useState<InsertMeta[]>([]);
   const [clipsLoading, setClipsLoading] = useState(true);
+  const clipUrlMap = useMemo(() => new Map(clips.map((c) => [c.key, c.url])), [clips]);
   const [currentClip, setCurrentClip] = useState<ClipMeta | null>(null);
   const [currentSelect, setCurrentSelect] = useState<SelectMeta | null>(null);
   const [currentInsert, setCurrentInsert] = useState<InsertMeta | null>(null);
@@ -1086,6 +1094,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
                   active={currentSelect?.id === sel.id}
                   onClick={() => playSelect(sel)}
                   onDelete={() => handleDeleteSelect(sel.id)}
+                  sourceUrl={clipUrlMap.get(sel.source_key)}
                 />
               ))}
               {selects.length === 0 && (

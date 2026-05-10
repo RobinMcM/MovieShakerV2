@@ -117,7 +117,7 @@ interface ClipCardProps {
 function ClipCard({ clip, active, onClick, onDelete }: ClipCardProps) {
   return (
     <div className={`
-      flex-shrink-0 w-44 rounded-lg overflow-hidden text-left transition-all border-2
+      relative flex-shrink-0 w-44 rounded-lg overflow-hidden text-left transition-all border-2
       ${active
         ? "border-primary ring-2 ring-primary ring-offset-2 ring-offset-background"
         : "border-border hover:border-muted-foreground"
@@ -131,23 +131,21 @@ function ClipCard({ clip, active, onClick, onDelete }: ClipCardProps) {
               <Play className="w-8 h-8 text-foreground fill-foreground drop-shadow" />
             </div>
           )}
-          <span className="absolute bottom-1 right-1 bg-background/70 text-foreground text-[10px] px-1 rounded">
+          <span className="absolute bottom-1 left-1 bg-background/70 text-foreground text-[10px] px-1 rounded">
             {formatSize(clip.size)}
           </span>
         </div>
-        <div className="px-2 pt-1 pb-0.5 bg-card">
+        <div className="px-2 pt-1 pb-1.5 bg-card">
           <p className="text-xs text-foreground truncate leading-tight">{clip.filename}</p>
         </div>
       </button>
-      <div className="bg-card border-t border-border flex justify-end px-1.5 pb-1.5 pt-0.5">
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className="text-muted-foreground hover:text-red-400 transition-colors"
-          title="Delete clip"
-        >
-          <Trash2 className="w-3 h-3" />
-        </button>
-      </div>
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        className="absolute top-1 right-1 z-10 rounded bg-background/70 p-0.5 text-muted-foreground hover:bg-red-500 hover:text-white transition-colors"
+        title="Delete clip"
+      >
+        <Trash2 className="w-3 h-3" />
+      </button>
     </div>
   );
 }
@@ -167,7 +165,7 @@ interface SelectCardProps {
 function SelectCard({ select, active, onClick, onDelete, sourceUrl }: SelectCardProps) {
   return (
     <div className={`
-      flex-shrink-0 w-44 rounded-lg overflow-hidden text-left transition-all border-2
+      relative flex-shrink-0 w-44 rounded-lg overflow-hidden text-left transition-all border-2
       ${active
         ? "border-primary ring-2 ring-primary ring-offset-2 ring-offset-background"
         : "border-border hover:border-muted-foreground"
@@ -185,26 +183,24 @@ function SelectCard({ select, active, onClick, onDelete, sourceUrl }: SelectCard
               <Play className="w-7 h-7 text-foreground fill-foreground" />
             </div>
           )}
-          <span className="absolute bottom-1 right-1 bg-background/70 text-foreground text-[10px] px-1 rounded">
+          <span className="absolute bottom-1 left-1 bg-background/70 text-foreground text-[10px] px-1 rounded">
             {formatDuration(select.duration)}
           </span>
         </div>
-        <div className="px-2 pt-1 pb-0.5 bg-card text-left">
+        <div className="px-2 pt-1 pb-1.5 bg-card text-left">
           <p className="text-xs text-foreground truncate leading-tight">{select.source_filename}</p>
           <p className="text-[10px] text-muted-foreground font-mono">
             {formatTimecode(select.in_time)} → {formatTimecode(select.out_time)}
           </p>
         </div>
       </button>
-      <div className="bg-card border-t border-border flex justify-end px-1.5 pb-1.5 pt-0.5">
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className="text-muted-foreground hover:text-red-400 transition-colors"
-          title="Delete select"
-        >
-          <Trash2 className="w-3 h-3" />
-        </button>
-      </div>
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        className="absolute top-1 right-1 z-10 rounded bg-background/70 p-0.5 text-muted-foreground hover:bg-red-500 hover:text-white transition-colors"
+        title="Delete select"
+      >
+        <Trash2 className="w-3 h-3" />
+      </button>
     </div>
   );
 }
@@ -223,7 +219,7 @@ interface InsertCardProps {
 function InsertCard({ insert, active, onClick, onDelete }: InsertCardProps) {
   return (
     <div className={`
-      flex-shrink-0 w-44 rounded-lg overflow-hidden text-left transition-all border-2
+      relative flex-shrink-0 w-44 rounded-lg overflow-hidden text-left transition-all border-2
       ${active
         ? "border-primary ring-2 ring-primary ring-offset-2 ring-offset-background"
         : "border-border hover:border-muted-foreground"
@@ -236,23 +232,21 @@ function InsertCard({ insert, active, onClick, onDelete }: InsertCardProps) {
           {active && (
             <div className="absolute inset-0 bg-primary/20" />
           )}
-          <span className="absolute bottom-1 right-1 bg-background/70 text-foreground text-[10px] px-1 rounded">
+          <span className="absolute bottom-1 left-1 bg-background/70 text-foreground text-[10px] px-1 rounded">
             {formatSize(insert.size)}
           </span>
         </div>
-        <div className="px-2 pt-1 pb-0.5 bg-card">
+        <div className="px-2 pt-1 pb-1.5 bg-card">
           <p className="text-xs text-foreground truncate leading-tight">{insert.filename}</p>
         </div>
       </button>
-      <div className="bg-card border-t border-border flex justify-end px-1.5 pb-1.5 pt-0.5">
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className="text-muted-foreground hover:text-red-400 transition-colors"
-          title="Delete insert"
-        >
-          <Trash2 className="w-3 h-3" />
-        </button>
-      </div>
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        className="absolute top-1 right-1 z-10 rounded bg-background/70 p-0.5 text-muted-foreground hover:bg-red-500 hover:text-white transition-colors"
+        title="Delete insert"
+      >
+        <Trash2 className="w-3 h-3" />
+      </button>
     </div>
   );
 }
@@ -1276,7 +1270,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
         </div>
 
         {/* Strip content */}
-        <div className="flex gap-2 p-3 overflow-x-auto overflow-y-hidden h-48 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+        <div className="flex gap-2 p-3 overflow-x-auto overflow-y-hidden h-40 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
           {activeTab === "clips" && (
             <>
               {clips.map((clip) => (

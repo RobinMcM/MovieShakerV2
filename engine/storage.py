@@ -557,6 +557,43 @@ def write_selects(user_id: str, project_id: str, selects: list[dict]) -> None:
     path.write_bytes(body)
 
 
+def audio_peaks_key(user_id: str, project_id: str) -> str:
+    return f"{user_id}/{project_id}/rushes/audio_peaks.json"
+
+
+def read_audio_peaks(user_id: str, project_id: str) -> dict:
+    key = audio_peaks_key(user_id, project_id)
+    if uses_spaces():
+        try:
+            client = _spaces_client()
+            resp = client.get_object(Bucket=DO_SPACES_BUCKET, Key=key)
+            return json.loads(resp["Body"].read())
+        except Exception:
+            return {}
+    path = STORAGE_ROOT / key
+    if not path.is_file():
+        return {}
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return {}
+
+
+def write_audio_peaks(user_id: str, project_id: str, peaks_map: dict) -> None:
+    key = audio_peaks_key(user_id, project_id)
+    body = json.dumps(peaks_map).encode()
+    if uses_spaces():
+        client = _spaces_client()
+        client.put_object(
+            Bucket=DO_SPACES_BUCKET, Key=key,
+            Body=body, ContentType="application/json",
+        )
+        return
+    path = STORAGE_ROOT / key
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(body)
+
+
 def save_character_image(
     user_id: str,
     project_id: str,

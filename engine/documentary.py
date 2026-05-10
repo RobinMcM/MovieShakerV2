@@ -374,6 +374,10 @@ class RushesSelectBody(BaseModel):
     label: Optional[str] = None
 
 
+class AudioPeaksBody(BaseModel):
+    peaks: list[float]  # 400 values, 0.0–1.0
+
+
 def _fmt_tc(seconds: float) -> str:
     s = int(seconds)
     m, sec = divmod(s, 60)
@@ -473,7 +477,9 @@ def rushes_list(
     for ins in inserts:
         ins["url"] = storage_module.generate_rushes_url(ins["key"], expires_seconds=7200) or ""
 
-    return {"clips": clips, "selects": selects, "inserts": inserts}
+    audio_peaks = storage_module.read_audio_peaks(user_id, project_id)
+
+    return {"clips": clips, "selects": selects, "inserts": inserts, "audio_peaks": audio_peaks}
 
 
 @router.post("/projects/{project_id}/rushes/selects")
@@ -527,6 +533,24 @@ def rushes_delete_select(
     selects = [s for s in selects if s.get("id") != select_id]
     storage_module.write_selects(user_id, project_id, selects)
     return {"success": len(selects) < original_count}
+
+
+@router.post("/projects/{project_id}/rushes/{clip_name}/audio-peaks")
+def rushes_save_audio_peaks(
+    project_id: str,
+    clip_name: str,
+    body: AudioPeaksBody,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    """Persist computed waveform peaks for a clip so they load instantly next visit."""
+    user_id = session.get_user_id()
+    _ensure_project_member(db, project_id, user_id)
+
+    peaks_map = storage_module.read_audio_peaks(user_id, project_id)
+    peaks_map[clip_name] = body.peaks
+    storage_module.write_audio_peaks(user_id, project_id, peaks_map)
+    return {"success": True}
 
 
 @router.post("/projects/{project_id}/rushes/inserts/upload")

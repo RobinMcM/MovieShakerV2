@@ -11,6 +11,7 @@ import {
   Image as ImageIcon,
   Loader2,
   MapPin,
+  Music,
   Pause,
   Play,
   Scissors,
@@ -301,7 +302,9 @@ function RushesViewer({ projectId }: { projectId: string }) {
 
   // audio waveform state
   const [waveformSamples, setWaveformSamples] = useState<Float32Array | null>(null);
-  const [waveformLoading, setWaveformLoading] = useState(false);
+  const [isExtractingAudio, setIsExtractingAudio] = useState(false);
+  // stored peaks keyed by clip filename — populated from API on load
+  const [audioPeaks, setAudioPeaks] = useState<Record<string, number[]>>({});
 
   // save select state
   const [isSaving, setIsSaving] = useState(false);
@@ -327,10 +330,11 @@ function RushesViewer({ projectId }: { projectId: string }) {
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to load clips");
-      const data = await res.json() as { clips: ClipMeta[]; selects: SelectMeta[]; inserts: InsertMeta[] };
+      const data = await res.json() as { clips: ClipMeta[]; selects: SelectMeta[]; inserts: InsertMeta[]; audio_peaks?: Record<string, number[]> };
       setClips(data.clips);
       setSelects(data.selects || []);
       setInserts(data.inserts || []);
+      setAudioPeaks(data.audio_peaks || {});
     } catch {
       setClips([]);
       setSelects([]);
@@ -359,43 +363,14 @@ function RushesViewer({ projectId }: { projectId: string }) {
     vid.load();
   }, [videoId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch and decode audio whenever the video source changes to build a static waveform.
+  // When the active clip changes, hydrate waveformSamples from persisted peaks if available.
   useEffect(() => {
-    setWaveformSamples(null);
-    if (!videoSrc) { setWaveformLoading(false); return; }
-    setWaveformLoading(true);
-    const controller = new AbortController();
-    (async () => {
-      try {
-        const res = await fetch(videoSrc, { signal: controller.signal });
-        const buf = await res.arrayBuffer();
-        if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
-          audioCtxRef.current = new AudioContext();
-        }
-        const audio = await audioCtxRef.current.decodeAudioData(buf);
-        const channel = audio.getChannelData(0);
-        const NUM_BARS = 400;
-        const blockSize = Math.floor(channel.length / NUM_BARS);
-        const peaks = new Float32Array(NUM_BARS);
-        for (let i = 0; i < NUM_BARS; i++) {
-          let max = 0;
-          for (let j = 0; j < blockSize; j++) {
-            const v = Math.abs(channel[i * blockSize + j]);
-            if (v > max) max = v;
-          }
-          peaks[i] = max;
-        }
-        setWaveformSamples(peaks);
-      } catch (e) {
-        if (!(e instanceof DOMException && e.name === "AbortError")) {
-          setWaveformSamples(null);
-        }
-      } finally {
-        setWaveformLoading(false);
-      }
-    })();
-    return () => controller.abort();
-  }, [videoSrc]);
+    if (currentClip && audioPeaks[currentClip.filename]) {
+      setWaveformSamples(new Float32Array(audioPeaks[currentClip.filename]));
+    } else {
+      setWaveformSamples(null);
+    }
+  }, [currentClip?.filename, audioPeaks]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- play actions ----
 
@@ -430,6 +405,46 @@ function RushesViewer({ projectId }: { projectId: string }) {
     if (vid.paused) vid.play().catch(() => {});
     else vid.pause();
   }, []);
+
+  const handleExtractAudio = useCallback(async () => {
+    if (!currentClip) return;
+    setIsExtractingAudio(true);
+    try {
+      const res = await fetch(currentClip.url);
+      const buf = await res.arrayBuffer();
+      if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
+        audioCtxRef.current = new AudioContext();
+      }
+      const audio = await audioCtxRef.current.decodeAudioData(buf);
+      const channel = audio.getChannelData(0);
+      const NUM_BARS = 400;
+      const blockSize = Math.floor(channel.length / NUM_BARS);
+      const peaks = new Float32Array(NUM_BARS);
+      for (let i = 0; i < NUM_BARS; i++) {
+        let max = 0;
+        for (let j = 0; j < blockSize; j++) {
+          const v = Math.abs(channel[i * blockSize + j]);
+          if (v > max) max = v;
+        }
+        peaks[i] = max;
+      }
+      await fetch(
+        `${API_URL}/api/documentary/projects/${projectId}/rushes/${currentClip.filename}/audio-peaks`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ peaks: Array.from(peaks) }),
+        }
+      );
+      setAudioPeaks((prev) => ({ ...prev, [currentClip.filename]: Array.from(peaks) }));
+      setWaveformSamples(peaks);
+    } catch {
+      // Fail silently — button stays visible so the user can retry
+    } finally {
+      setIsExtractingAudio(false);
+    }
+  }, [currentClip, projectId]);
 
   // ---- upload ----
 
@@ -1166,11 +1181,28 @@ function RushesViewer({ projectId }: { projectId: string }) {
         {/* Audio waveform */}
         {!currentInsert && (
           <div className="relative w-full h-14 rounded overflow-hidden bg-muted/40">
-            <canvas ref={waveformCanvasRef} className="w-full h-full block" />
-            {videoSrc && waveformLoading && (
+            {/* Canvas always mounted so the drawing effect finds it immediately after peaks load */}
+            <canvas
+              ref={waveformCanvasRef}
+              className={`w-full h-full block ${waveformSamples ? "" : "hidden"}`}
+            />
+            {isExtractingAudio && (
               <div className="absolute inset-0 flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground">
                 <Loader2 className="w-3 h-3 animate-spin" />
                 Analysing audio…
+              </div>
+            )}
+            {!waveformSamples && !isExtractingAudio && videoSrc && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleExtractAudio}
+                  className="gap-1.5 h-7 text-xs border-border text-foreground hover:bg-accent"
+                >
+                  <Music className="w-3.5 h-3.5" />
+                  Analyse Audio
+                </Button>
               </div>
             )}
             {!videoSrc && (

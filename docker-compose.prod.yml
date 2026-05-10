@@ -34,8 +34,6 @@ services:
         condition: service_healthy
       valkey:
         condition: service_started
-      web:
-        condition: service_started
     environment:
       - APP_ENV=production
       - SUPERTOKENS_CONNECTION_URI=http://supertokens:3567
@@ -69,33 +67,12 @@ services:
     depends_on:
       engine:
         condition: service_started
-      web:
-        condition: service_started
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
-    networks:
-      - indie_network
-    restart: unless-stopped
-
-  web:
-    build:
-      context: ./web
-      dockerfile: Dockerfile
-    environment:
-      - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-      - NEXT_PUBLIC_AUTH_API_URL=${NEXT_PUBLIC_AUTH_API_URL:-}
-      - NEXT_PUBLIC_WEBSITE_DOMAIN=${NEXT_PUBLIC_WEBSITE_DOMAIN}
-      - NEXT_PUBLIC_AUTH_BASE_URL=${NEXT_PUBLIC_AUTH_BASE_URL:-https://auth.rapidmvp.io}
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
-      - RESEND_API_KEY=${RESEND_API_KEY}
-      - RESEND_FROM=${RESEND_FROM}
-    expose:
-      - "3000"
     networks:
       - indie_network
     restart: unless-stopped

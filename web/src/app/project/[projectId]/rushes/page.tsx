@@ -838,6 +838,12 @@ function RushesViewer({ projectId }: { projectId: string }) {
         )}
       </div>
 
+      {/* Content row: video+timeline (left) | media sidebar (right) */}
+      <div className="flex-1 flex min-h-0 overflow-hidden">
+
+      {/* Left column: video player + timeline */}
+      <div className="flex-1 flex flex-col min-h-0 min-w-0">
+
       {/* Main player */}
       <div className="relative flex-1 bg-background flex items-center justify-center overflow-hidden min-h-0">
         {hasCurrentItem ? (
@@ -1233,8 +1239,10 @@ function RushesViewer({ projectId }: { projectId: string }) {
         )}
       </div>
 
-      {/* Clip / Select strip */}
-      <div className="flex-shrink-0 bg-card border-t border-border">
+      </div> {/* end left column */}
+
+      {/* Media sidebar */}
+      <div className="w-52 flex-shrink-0 flex flex-col border-l border-border bg-card">
         {/* Tabs */}
         <div className="flex gap-0 border-b border-border px-3 pt-2">
           <button
@@ -1270,7 +1278,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
         </div>
 
         {/* Strip content */}
-        <div className="flex gap-2 p-3 overflow-x-auto overflow-y-hidden h-40 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+        <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-2 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
           {activeTab === "clips" && (
             <>
               {clips.map((clip) => (
@@ -1332,6 +1340,8 @@ function RushesViewer({ projectId }: { projectId: string }) {
           )}
         </div>
       </div>
+
+      </div> {/* end content row */}
     </div>
   );
 }

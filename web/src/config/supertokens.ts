@@ -19,15 +19,6 @@ export const SuperTokensConfig = {
             if (context.redirectToPath) {
                 return context.redirectToPath;
             }
-            try {
-                const profileRes = await fetch(`${crudApiDomain}/profile/`, { credentials: "include" });
-                const data = await profileRes.json();
-                if (data.role === "admin") {
-                    return "/admin/users";
-                }
-            } catch {
-                // fall through
-            }
             return "/projects";
         }
         return null;

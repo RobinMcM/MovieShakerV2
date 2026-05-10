@@ -266,6 +266,8 @@ function RushesViewer({ projectId }: { projectId: string }) {
   const timelineRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const insertInputRef = useRef<HTMLInputElement>(null);
+  const waveformCanvasRef = useRef<HTMLCanvasElement>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   // clip / select / insert state
   const [clips, setClips] = useState<ClipMeta[]>([]);
@@ -296,6 +298,10 @@ function RushesViewer({ projectId }: { projectId: string }) {
   const [inPoint, setInPoint] = useState<number | null>(null);
   const [outPoint, setOutPoint] = useState<number | null>(null);
   const [placePoint, setPlacePoint] = useState<number | null>(null);
+
+  // audio waveform state
+  const [waveformSamples, setWaveformSamples] = useState<Float32Array | null>(null);
+  const [waveformLoading, setWaveformLoading] = useState(false);
 
   // save select state
   const [isSaving, setIsSaving] = useState(false);
@@ -352,6 +358,44 @@ function RushesViewer({ projectId }: { projectId: string }) {
     if (!vid || !videoId) return;
     vid.load();
   }, [videoId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch and decode audio whenever the video source changes to build a static waveform.
+  useEffect(() => {
+    setWaveformSamples(null);
+    if (!videoSrc) { setWaveformLoading(false); return; }
+    setWaveformLoading(true);
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const res = await fetch(videoSrc, { signal: controller.signal });
+        const buf = await res.arrayBuffer();
+        if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
+          audioCtxRef.current = new AudioContext();
+        }
+        const audio = await audioCtxRef.current.decodeAudioData(buf);
+        const channel = audio.getChannelData(0);
+        const NUM_BARS = 400;
+        const blockSize = Math.floor(channel.length / NUM_BARS);
+        const peaks = new Float32Array(NUM_BARS);
+        for (let i = 0; i < NUM_BARS; i++) {
+          let max = 0;
+          for (let j = 0; j < blockSize; j++) {
+            const v = Math.abs(channel[i * blockSize + j]);
+            if (v > max) max = v;
+          }
+          peaks[i] = max;
+        }
+        setWaveformSamples(peaks);
+      } catch (e) {
+        if (!(e instanceof DOMException && e.name === "AbortError")) {
+          setWaveformSamples(null);
+        }
+      } finally {
+        setWaveformLoading(false);
+      }
+    })();
+    return () => controller.abort();
+  }, [videoSrc]);
 
   // ---- play actions ----
 
@@ -658,6 +702,69 @@ function RushesViewer({ projectId }: { projectId: string }) {
 
   const hasCurrentItem = currentClip !== null || currentSelect !== null || currentInsert !== null;
 
+  // Redraw waveform canvas whenever peaks or overlay positions change.
+  useEffect(() => {
+    const canvas = waveformCanvasRef.current;
+    if (!canvas || !waveformSamples || !videoDuration) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.offsetWidth;
+    const h = canvas.offsetHeight;
+    if (w === 0 || h === 0) return;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, h);
+
+    const mid = h / 2;
+    const n = waveformSamples.length;
+    const barW = w / n;
+
+    // Section highlight
+    if (inPoint !== null && outPoint !== null) {
+      ctx.fillStyle = "rgba(74,222,128,0.12)";
+      ctx.fillRect(
+        (inPoint / videoDuration) * w,
+        0,
+        ((outPoint - inPoint) / videoDuration) * w,
+        h,
+      );
+    }
+
+    // Waveform bars — brighter inside the section
+    for (let i = 0; i < n; i++) {
+      const t = (i / n) * videoDuration;
+      const inSection = inPoint !== null && outPoint !== null && t >= inPoint && t <= outPoint;
+      const bh = Math.max(1, waveformSamples[i] * h * 0.85);
+      ctx.fillStyle = inSection ? "#4ade80" : "rgba(74,222,128,0.38)";
+      ctx.fillRect(i * barW, mid - bh / 2, Math.max(0.5, barW - 0.5), bh);
+    }
+
+    // In-point marker (green)
+    if (inPoint !== null) {
+      ctx.strokeStyle = "#4ade80";
+      ctx.lineWidth = 2;
+      const x = (inPoint / videoDuration) * w;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    }
+
+    // Out-point marker (red)
+    if (outPoint !== null) {
+      ctx.strokeStyle = "#f87171";
+      ctx.lineWidth = 2;
+      const x = (outPoint / videoDuration) * w;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    }
+
+    // Playhead
+    const px = (playheadTime / videoDuration) * w;
+    ctx.strokeStyle = "rgba(255,255,255,0.75)";
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, h); ctx.stroke();
+  }, [waveformSamples, playheadTime, videoDuration, inPoint, outPoint]);
+
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
@@ -958,7 +1065,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
         >
           {hasSection && !currentSelect && (
             <div
-              className="absolute top-0 h-full bg-primary/40 rounded pointer-events-none"
+              className="absolute top-0 h-full bg-green-400/20 rounded pointer-events-none"
               style={{ left: `${inPct}%`, width: `${outPct - inPct}%` }}
             />
           )}
@@ -966,9 +1073,11 @@ function RushesViewer({ projectId }: { projectId: string }) {
           {inPoint !== null && !currentSelect && (
             <>
               <div
-                className="absolute top-0 h-full w-0.5 bg-primary pointer-events-none"
+                className="absolute top-0 h-full w-0.5 bg-green-400 pointer-events-none"
                 style={{ left: `${inPct}%` }}
-              />
+              >
+                <MapPin className="absolute -top-0.5 -left-[5px] w-3 h-3 text-green-400 fill-green-400" />
+              </div>
               <div
                 className="absolute top-0 h-full w-4 -translate-x-1/2 cursor-ew-resize z-10"
                 style={{ left: `${inPct}%` }}
@@ -985,9 +1094,11 @@ function RushesViewer({ projectId }: { projectId: string }) {
           {outPoint !== null && !currentSelect && (
             <>
               <div
-                className="absolute top-0 h-full w-0.5 bg-primary pointer-events-none"
+                className="absolute top-0 h-full w-0.5 bg-red-400 pointer-events-none"
                 style={{ left: `${outPct}%` }}
-              />
+              >
+                <MapPin className="absolute -top-0.5 -left-[5px] w-3 h-3 text-red-400 fill-red-400" />
+              </div>
               <div
                 className="absolute top-0 h-full w-4 -translate-x-1/2 cursor-ew-resize z-10"
                 style={{ left: `${outPct}%` }}
@@ -1024,9 +1135,14 @@ function RushesViewer({ projectId }: { projectId: string }) {
 
           {videoDuration > 0 && (
             <div
-              className="absolute top-0 h-full w-0.5 bg-foreground/70 pointer-events-none"
+              className="absolute top-0 h-full pointer-events-none"
               style={{ left: `${playheadPct}%` }}
-            />
+            >
+              <div className="absolute top-0 h-full w-0.5 bg-foreground/70" />
+              <span className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 text-[9px] font-mono text-foreground bg-background/80 px-1 rounded whitespace-nowrap shadow-sm">
+                {formatTimecode(playheadTime)}
+              </span>
+            </div>
           )}
 
           {videoDuration > 0 && (
@@ -1046,6 +1162,24 @@ function RushesViewer({ projectId }: { projectId: string }) {
             </span>
           )}
         </div>}
+
+        {/* Audio waveform */}
+        {!currentInsert && (
+          <div className="relative w-full h-14 rounded overflow-hidden bg-muted/40">
+            <canvas ref={waveformCanvasRef} className="w-full h-full block" />
+            {videoSrc && waveformLoading && (
+              <div className="absolute inset-0 flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Analysing audio…
+              </div>
+            )}
+            {!videoSrc && (
+              <div className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground select-none">
+                Audio
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Clip / Select strip */}

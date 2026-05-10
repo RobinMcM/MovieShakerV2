@@ -1070,146 +1070,165 @@ function RushesViewer({ projectId }: { projectId: string }) {
           </div>
         </div>
 
-        {/* Scrubber bar */}
-        {!currentInsert && <div
-          ref={timelineRef}
-          onClick={handleBarClick}
-          className={`relative w-full h-8 rounded select-none transition-opacity ${barCursor} ${
-            videoDuration > 0 ? "bg-muted" : "bg-muted opacity-40 pointer-events-none"
-          }`}
-        >
-          {hasSection && !currentSelect && (
-            <div
-              className="absolute top-0 h-full bg-green-400/20 rounded pointer-events-none"
-              style={{ left: `${inPct}%`, width: `${outPct - inPct}%` }}
-            />
-          )}
-
-          {inPoint !== null && !currentSelect && (
-            <>
-              <div
-                className="absolute top-0 h-full w-0.5 bg-green-400 pointer-events-none"
-                style={{ left: `${inPct}%` }}
-              >
-                <MapPin className="absolute -top-0.5 -left-[5px] w-3 h-3 text-green-400 fill-green-400" />
-              </div>
-              <div
-                className="absolute top-0 h-full w-4 -translate-x-1/2 cursor-ew-resize z-10"
-                style={{ left: `${inPct}%` }}
-                onClick={(e) => e.stopPropagation()}
-                onPointerDown={(e) => { e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); }}
-                onPointerMove={(e) => {
-                  if (e.buttons === 0) return;
-                  setInPoint(Math.max(0, Math.min(timeFromBarX(e.clientX), outPoint ?? videoDuration)));
-                }}
-              />
-            </>
-          )}
-
-          {outPoint !== null && !currentSelect && (
-            <>
-              <div
-                className="absolute top-0 h-full w-0.5 bg-red-400 pointer-events-none"
-                style={{ left: `${outPct}%` }}
-              >
-                <MapPin className="absolute -top-0.5 -left-[5px] w-3 h-3 text-red-400 fill-red-400" />
-              </div>
-              <div
-                className="absolute top-0 h-full w-4 -translate-x-1/2 cursor-ew-resize z-10"
-                style={{ left: `${outPct}%` }}
-                onClick={(e) => e.stopPropagation()}
-                onPointerDown={(e) => { e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); }}
-                onPointerMove={(e) => {
-                  if (e.buttons === 0) return;
-                  setOutPoint(Math.max(inPoint ?? 0, Math.min(timeFromBarX(e.clientX), videoDuration)));
-                }}
-              />
-            </>
-          )}
-
-          {placePoint !== null && !currentSelect && (
-            <>
-              <div
-                className="absolute top-0 h-full w-0.5 bg-yellow-400 pointer-events-none"
-                style={{ left: `${placePct}%` }}
-              >
-                <MapPin className="absolute -top-0.5 -left-[5px] w-3 h-3 text-yellow-400 fill-yellow-400" />
-              </div>
-              <div
-                className="absolute top-0 h-full w-4 -translate-x-1/2 cursor-ew-resize z-10"
-                style={{ left: `${placePct}%` }}
-                onClick={(e) => e.stopPropagation()}
-                onPointerDown={(e) => { e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); }}
-                onPointerMove={(e) => {
-                  if (e.buttons === 0) return;
-                  setPlacePoint(Math.max(0, Math.min(timeFromBarX(e.clientX), videoDuration)));
-                }}
-              />
-            </>
-          )}
-
-          {videoDuration > 0 && (
-            <div
-              className="absolute top-0 h-full pointer-events-none"
-              style={{ left: `${playheadPct}%` }}
-            >
-              <div className="absolute top-0 h-full w-0.5 bg-foreground/70" />
-              <span className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 text-[9px] font-mono text-foreground bg-background/80 px-1 rounded whitespace-nowrap shadow-sm">
-                {formatTimecode(playheadTime)}
-              </span>
-            </div>
-          )}
-
-          {videoDuration > 0 && (
-            <>
-              <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground font-mono pointer-events-none">
-                {formatTimecode(0)}
-              </span>
-              <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground font-mono pointer-events-none">
-                {formatTimecode(videoDuration)}
-              </span>
-            </>
-          )}
-
-          {!videoDuration && (
-            <span className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground">
-              Play a clip to use the timeline
-            </span>
-          )}
-        </div>}
-
-        {/* Audio waveform */}
+        {/* Scrubber bar + bridge + audio waveform — grouped so the playhead spans all three */}
         {!currentInsert && (
-          <div className="relative w-full h-14 rounded overflow-hidden bg-muted/40">
-            {/* Canvas always mounted so the drawing effect finds it immediately after peaks load */}
-            <canvas
-              ref={waveformCanvasRef}
-              className={`w-full h-full block ${waveformSamples ? "" : "hidden"}`}
-            />
-            {isExtractingAudio && (
-              <div className="absolute inset-0 flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                Analysing audio…
-              </div>
-            )}
-            {!waveformSamples && !isExtractingAudio && videoSrc && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleExtractAudio}
-                  className="gap-1.5 h-7 text-xs border-border text-foreground hover:bg-accent"
-                >
-                  <Music className="w-3.5 h-3.5" />
-                  Analyse Audio
-                </Button>
-              </div>
-            )}
-            {!videoSrc && (
-              <div className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground select-none">
-                Audio
-              </div>
-            )}
+          <div className="flex flex-col">
+
+            {/* Film scrubber bar */}
+            <div
+              ref={timelineRef}
+              onClick={handleBarClick}
+              className={`relative w-full h-8 rounded select-none transition-opacity ${barCursor} ${
+                videoDuration > 0 ? "bg-muted" : "bg-muted opacity-40 pointer-events-none"
+              }`}
+            >
+              {hasSection && !currentSelect && (
+                <div
+                  className="absolute top-0 h-full bg-green-400/20 rounded pointer-events-none"
+                  style={{ left: `${inPct}%`, width: `${outPct - inPct}%` }}
+                />
+              )}
+
+              {inPoint !== null && !currentSelect && (
+                <>
+                  <div
+                    className="absolute top-0 h-full w-0.5 bg-green-400 pointer-events-none"
+                    style={{ left: `${inPct}%` }}
+                  >
+                    <MapPin className="absolute -top-0.5 -left-[5px] w-3 h-3 text-green-400 fill-green-400" />
+                  </div>
+                  <div
+                    className="absolute top-0 h-full w-4 -translate-x-1/2 cursor-ew-resize z-10"
+                    style={{ left: `${inPct}%` }}
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => { e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); }}
+                    onPointerMove={(e) => {
+                      if (e.buttons === 0) return;
+                      setInPoint(Math.max(0, Math.min(timeFromBarX(e.clientX), outPoint ?? videoDuration)));
+                    }}
+                  />
+                </>
+              )}
+
+              {outPoint !== null && !currentSelect && (
+                <>
+                  <div
+                    className="absolute top-0 h-full w-0.5 bg-red-400 pointer-events-none"
+                    style={{ left: `${outPct}%` }}
+                  >
+                    <MapPin className="absolute -top-0.5 -left-[5px] w-3 h-3 text-red-400 fill-red-400" />
+                  </div>
+                  <div
+                    className="absolute top-0 h-full w-4 -translate-x-1/2 cursor-ew-resize z-10"
+                    style={{ left: `${outPct}%` }}
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => { e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); }}
+                    onPointerMove={(e) => {
+                      if (e.buttons === 0) return;
+                      setOutPoint(Math.max(inPoint ?? 0, Math.min(timeFromBarX(e.clientX), videoDuration)));
+                    }}
+                  />
+                </>
+              )}
+
+              {placePoint !== null && !currentSelect && (
+                <>
+                  <div
+                    className="absolute top-0 h-full w-0.5 bg-yellow-400 pointer-events-none"
+                    style={{ left: `${placePct}%` }}
+                  >
+                    <MapPin className="absolute -top-0.5 -left-[5px] w-3 h-3 text-yellow-400 fill-yellow-400" />
+                  </div>
+                  <div
+                    className="absolute top-0 h-full w-4 -translate-x-1/2 cursor-ew-resize z-10"
+                    style={{ left: `${placePct}%` }}
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => { e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); }}
+                    onPointerMove={(e) => {
+                      if (e.buttons === 0) return;
+                      setPlacePoint(Math.max(0, Math.min(timeFromBarX(e.clientX), videoDuration)));
+                    }}
+                  />
+                </>
+              )}
+
+              {/* Playhead line only — label moved to bridge below */}
+              {videoDuration > 0 && (
+                <div
+                  className="absolute top-0 h-full w-0.5 bg-foreground/70 pointer-events-none"
+                  style={{ left: `${playheadPct}%` }}
+                />
+              )}
+
+              {videoDuration > 0 && (
+                <>
+                  <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground font-mono pointer-events-none">
+                    {formatTimecode(0)}
+                  </span>
+                  <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground font-mono pointer-events-none">
+                    {formatTimecode(videoDuration)}
+                  </span>
+                </>
+              )}
+
+              {!videoDuration && (
+                <span className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground">
+                  Play a clip to use the timeline
+                </span>
+              )}
+            </div>
+
+            {/* Bridge: connector line + position label — visually joins the two bars */}
+            <div className="relative h-5 flex-shrink-0 pointer-events-none">
+              {videoDuration > 0 && (
+                <>
+                  <div
+                    className="absolute top-0 bottom-0 w-0.5 -translate-x-1/2 bg-foreground/50"
+                    style={{ left: `${playheadPct}%` }}
+                  />
+                  <span
+                    className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 text-[9px] font-mono text-foreground bg-card px-1 rounded whitespace-nowrap shadow-sm z-10"
+                    style={{ left: `${playheadPct}%` }}
+                  >
+                    {formatTimecode(playheadTime)}
+                  </span>
+                </>
+              )}
+            </div>
+
+            {/* Audio waveform */}
+            <div className="relative w-full h-14 rounded overflow-hidden bg-muted/40">
+              {/* Canvas always mounted so the drawing effect finds it immediately after peaks load */}
+              <canvas
+                ref={waveformCanvasRef}
+                className={`w-full h-full block ${waveformSamples ? "" : "hidden"}`}
+              />
+              {isExtractingAudio && (
+                <div className="absolute inset-0 flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Analysing audio…
+                </div>
+              )}
+              {!waveformSamples && !isExtractingAudio && videoSrc && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleExtractAudio}
+                    className="gap-1.5 h-7 text-xs border-border text-foreground hover:bg-accent"
+                  >
+                    <Music className="w-3.5 h-3.5" />
+                    Analyse Audio
+                  </Button>
+                </div>
+              )}
+              {!videoSrc && (
+                <div className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground select-none">
+                  Audio
+                </div>
+              )}
+            </div>
+
           </div>
         )}
       </div>

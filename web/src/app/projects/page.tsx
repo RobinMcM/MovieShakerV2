@@ -211,18 +211,11 @@ function ProjectsPage() {
                         setIsDialogOpen(open);
                         if (!open) resetForm();
                     }}>
-                        <div className="flex flex-col sm:flex-row w-full sm:w-auto items-stretch sm:items-center gap-2">
-                            <Button size="lg" variant="outline" className="w-full sm:w-auto" asChild>
-                                <Link href="/film-in-a-box">
-                                    <Clapperboard className="mr-2 h-4 w-4" /> CoWriter
-                                </Link>
+                        <DialogTrigger asChild>
+                            <Button size="lg" className="w-full sm:w-auto">
+                                <Plus className="mr-2 h-4 w-4" /> New Project
                             </Button>
-                            <DialogTrigger asChild>
-                                <Button size="lg" className="w-full sm:w-auto">
-                                    <Plus className="mr-2 h-4 w-4" /> New Project
-                                </Button>
-                            </DialogTrigger>
-                        </div>
+                        </DialogTrigger>
                         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                             <DialogHeader className="pb-0 text-center sm:text-center">
                                 <DialogTitle className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
@@ -369,12 +362,7 @@ function ProjectsPage() {
                         <Film className="h-10 w-10 text-muted-foreground mx-auto mb-4" />
                         <h3 className="text-lg font-medium">No projects yet</h3>
                         <p className="text-muted-foreground mb-6">Start your first production today.</p>
-                        <div className="flex flex-col sm:flex-row justify-center gap-2">
-                            <Button onClick={() => setIsDialogOpen(true)} variant="outline" className="w-full sm:w-auto">Create Project</Button>
-                            <Button variant="outline" className="w-full sm:w-auto" asChild>
-                                <Link href="/film-in-a-box">CoWriter</Link>
-                            </Button>
-                        </div>
+                        <Button onClick={() => setIsDialogOpen(true)} variant="outline" className="w-full sm:w-auto">Create Project</Button>
                     </div>
                 )}
 

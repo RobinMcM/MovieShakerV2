@@ -1276,7 +1276,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
         </div>
 
         {/* Strip content */}
-        <div className="flex gap-2 p-3 overflow-x-auto overflow-y-hidden h-40 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+        <div className="flex gap-2 p-3 overflow-x-auto overflow-y-hidden h-48 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
           {activeTab === "clips" && (
             <>
               {clips.map((clip) => (

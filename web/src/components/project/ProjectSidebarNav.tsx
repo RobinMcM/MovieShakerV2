@@ -243,64 +243,64 @@ export function ProjectSidebarNav({
                         )}
                     </div>
 
-                    {/* Project tool nav — only when a project is selected */}
-                    {projectId && (
-                        <div className="mt-5 pt-4 border-t">
-                            <nav className="space-y-1">
-                                {PROJECT_TOOL_NAV.map((item) => {
-                                    const href = item.href(projectId);
-                                    const isActive = pathname === href;
-                                    const Icon = item.icon;
-                                    return (
-                                        <Link
-                                            key={item.id}
-                                            href={href}
-                                            className={cn(
-                                                "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors",
-                                                isActive
-                                                    ? "bg-primary/15 text-primary font-medium"
-                                                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                                            )}
-                                        >
-                                            <Icon className="h-4 w-4" />
-                                            <span>{item.label}</span>
-                                        </Link>
-                                    );
-                                })}
-                            </nav>
-                        </div>
-                    )}
+                    {/* Project tool nav — always visible; greyed out until a project is selected */}
+                    <div className="mt-5 pt-4 border-t">
+                        <nav className="space-y-1">
+                            {PROJECT_TOOL_NAV.map((item) => {
+                                const href = projectId ? item.href(projectId) : "/projects";
+                                const isActive = projectId ? pathname === item.href(projectId) : false;
+                                const Icon = item.icon;
+                                return (
+                                    <Link
+                                        key={item.id}
+                                        href={href}
+                                        className={cn(
+                                            "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors",
+                                            isActive
+                                                ? "bg-primary/15 text-primary font-medium"
+                                                : projectId
+                                                ? "text-muted-foreground hover:bg-accent hover:text-foreground"
+                                                : "text-muted-foreground/40 hover:bg-accent/50 hover:text-muted-foreground"
+                                        )}
+                                    >
+                                        <Icon className="h-4 w-4" />
+                                        <span>{item.label}</span>
+                                    </Link>
+                                );
+                            })}
+                        </nav>
+                    </div>
 
-                    {/* Additional Tools — only when a project is selected */}
-                    {projectId && (
-                        <div className="mt-5 pt-4 border-t">
-                            <p className="text-[11px] uppercase tracking-wide text-muted-foreground px-2.5 mb-2">
-                                Additional Tools
-                            </p>
-                            <div className="space-y-1">
-                                {PROJECT_EXTERNAL_NAV.map((item) => {
-                                    const href = item.href(projectId);
-                                    const isActive = pathname === href;
-                                    const Icon = item.icon;
-                                    return (
-                                        <Link
-                                            key={item.id}
-                                            href={href}
-                                            className={cn(
-                                                "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors",
-                                                isActive
-                                                    ? "bg-primary/15 text-primary font-medium"
-                                                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                                            )}
-                                        >
-                                            <Icon className="h-4 w-4" />
-                                            <span>{item.label}</span>
-                                        </Link>
-                                    );
-                                })}
-                            </div>
+                    {/* Additional Tools — always visible */}
+                    <div className="mt-5 pt-4 border-t">
+                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground px-2.5 mb-2">
+                            Additional Tools
+                        </p>
+                        <div className="space-y-1">
+                            {PROJECT_EXTERNAL_NAV.map((item) => {
+                                const href = projectId ? item.href(projectId) : "/projects";
+                                const isActive = projectId ? pathname === item.href(projectId) : false;
+                                const Icon = item.icon;
+                                return (
+                                    <Link
+                                        key={item.id}
+                                        href={href}
+                                        className={cn(
+                                            "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors",
+                                            isActive
+                                                ? "bg-primary/15 text-primary font-medium"
+                                                : projectId
+                                                ? "text-muted-foreground hover:bg-accent hover:text-foreground"
+                                                : "text-muted-foreground/40 hover:bg-accent/50 hover:text-muted-foreground"
+                                        )}
+                                    >
+                                        <Icon className="h-4 w-4" />
+                                        <span>{item.label}</span>
+                                    </Link>
+                                );
+                            })}
                         </div>
-                    )}
+                    </div>
                 </div>
 
                 {/* CoProducer button — pinned at bottom */}

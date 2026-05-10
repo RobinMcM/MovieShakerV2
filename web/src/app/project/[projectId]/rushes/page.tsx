@@ -691,6 +691,11 @@ function RushesViewer({ projectId }: { projectId: string }) {
   const hasSection = inPoint !== null && outPoint !== null;
   const regionDuration = hasSection ? outPoint! - inPoint! : 0;
   const playheadPct = videoDuration > 0 ? (playheadTime / videoDuration) * 100 : 0;
+
+  // Browser ArrayBuffer + decoded PCM together can exceed ~5 GB for a 4 GB file, causing a
+  // silent OOM abort. Cap at 1.5 GB — comfortably below the crash threshold seen in testing.
+  const AUDIO_DECODE_LIMIT = 1.5 * 1024 * 1024 * 1024;
+  const waveformTooLarge = !!(currentClip && currentClip.size > AUDIO_DECODE_LIMIT);
   const inPct = videoDuration > 0 && inPoint !== null ? (inPoint / videoDuration) * 100 : 0;
   const outPct = videoDuration > 0 && outPoint !== null ? (outPoint / videoDuration) * 100 : 0;
   const placePct = videoDuration > 0 && placePoint !== null ? (placePoint / videoDuration) * 100 : 0;
@@ -1072,7 +1077,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
 
         {/* Scrubber bar + bridge + audio waveform — grouped so the playhead spans all three */}
         {!currentInsert && (
-          <div className="flex flex-col">
+          <div className="relative flex flex-col">
 
             {/* Film scrubber bar */}
             <div
@@ -1178,16 +1183,12 @@ function RushesViewer({ projectId }: { projectId: string }) {
               )}
             </div>
 
-            {/* Bridge: connector line + position label — visually joins the two bars */}
+            {/* Bridge: position label only — the connector line is the wrapper-level overlay below */}
             <div className="relative h-5 flex-shrink-0 pointer-events-none">
               {videoDuration > 0 && (
                 <>
-                  <div
-                    className="absolute top-0 bottom-0 w-0.5 -translate-x-1/2 bg-foreground/50"
-                    style={{ left: `${playheadPct}%` }}
-                  />
                   <span
-                    className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 text-[9px] font-mono text-foreground bg-card px-1 rounded whitespace-nowrap shadow-sm z-10"
+                    className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 text-[9px] font-mono text-foreground bg-card px-1 rounded whitespace-nowrap shadow-sm z-20"
                     style={{ left: `${playheadPct}%` }}
                   >
                     {formatTimecode(playheadTime)}
@@ -1209,7 +1210,17 @@ function RushesViewer({ projectId }: { projectId: string }) {
                   Analysing audio…
                 </div>
               )}
-              {!waveformSamples && !isExtractingAudio && videoSrc && (
+              {!waveformSamples && !isExtractingAudio && videoSrc && waveformTooLarge && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-4 text-center pointer-events-none">
+                  <span className="text-[10px] text-muted-foreground">
+                    Clip too large for browser audio analysis ({formatSize(currentClip!.size)})
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    Save a shorter Select, then analyse that instead
+                  </span>
+                </div>
+              )}
+              {!waveformSamples && !isExtractingAudio && videoSrc && !waveformTooLarge && (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <Button
                     size="sm"
@@ -1228,6 +1239,15 @@ function RushesViewer({ projectId }: { projectId: string }) {
                 </div>
               )}
             </div>
+
+            {/* Wrapper-level overlay: single playhead line spanning bridge + audio bar,
+                in front of the audio bar canvas (z-10). top-8 = film bar height (h-8 = 32px). */}
+            {videoDuration > 0 && (
+              <div
+                className="absolute top-8 bottom-0 w-0.5 -translate-x-1/2 bg-foreground/70 pointer-events-none z-10"
+                style={{ left: `${playheadPct}%` }}
+              />
+            )}
 
           </div>
         )}

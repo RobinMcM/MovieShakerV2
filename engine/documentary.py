@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import Any, List, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
@@ -419,9 +419,33 @@ def _resolve_content_type(filename: str, browser_ct: str) -> str:
     return _MIME_OVERRIDES.get(ext) or mimetypes.guess_type(filename)[0] or "video/mp4"
 
 
+def _background_extract_audio_peaks(
+    user_id: str, project_id: str, filename: str, spaces_key: str
+) -> None:
+    """Fire-and-forget: ask the media-handler to extract audio peaks, then persist to Spaces."""
+    import logging
+    logger = logging.getLogger("documentary")
+    try:
+        client = _media_handler_client()
+        peaks = client.extract_audio_peaks(spaces_key)
+        peaks_map = storage_module.read_audio_peaks(user_id, project_id)
+        peaks_map[filename] = peaks
+        storage_module.write_audio_peaks(user_id, project_id, peaks_map)
+        logger.info(f"Audio peaks saved for {filename}")
+    except Exception as e:
+        logger.warning(f"Audio peaks extraction failed for {filename}: {e}")
+        try:
+            peaks_map = storage_module.read_audio_peaks(user_id, project_id)
+            peaks_map.pop(filename, None)
+            storage_module.write_audio_peaks(user_id, project_id, peaks_map)
+        except Exception:
+            pass
+
+
 @router.post("/projects/{project_id}/rushes/upload")
 async def rushes_upload(
     project_id: str,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     session: SessionContainer = Depends(verify_session()),
     db: Session = Depends(get_session),
@@ -451,6 +475,18 @@ async def rushes_upload(
         )
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Upload failed: {exc}")
+
+    # Mark peaks as processing and kick off background extraction
+    try:
+        peaks_map = storage_module.read_audio_peaks(user_id, project_id)
+        peaks_map[filename] = "processing"
+        storage_module.write_audio_peaks(user_id, project_id, peaks_map)
+    except Exception:
+        pass
+
+    background_tasks.add_task(
+        _background_extract_audio_peaks, user_id, project_id, filename, key
+    )
 
     return {"key": key, "filename": filename}
 

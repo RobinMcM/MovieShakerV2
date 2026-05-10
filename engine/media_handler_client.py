@@ -205,6 +205,23 @@ class MediaHandlerClient:
             pass
         return {"success": True, "output_key": output_key}
 
+    def extract_audio_peaks(self, input_key: str, num_peaks: int = 400) -> list[float]:
+        """
+        Ask the media-handler to extract audio peaks from a DO Spaces video key.
+        Returns a list of num_peaks float values (0.0–1.0).
+        Raises MediaHandlerClientError on failure.
+        """
+        resp = self._post_json(
+            "/api/ffmpeg/audio-peaks",
+            {"input_key": input_key, "num_peaks": num_peaks},
+        )
+        data = resp.json()
+        if data.get("status") != "ok" or not data.get("peaks"):
+            raise MediaHandlerClientError(
+                f"Audio peaks extraction failed: {data.get('message', 'unknown error')}"
+            )
+        return data["peaks"]
+
     def stitch_videos(self, video_urls: list[str], aspect_ratio: str = "16:9") -> dict[str, Any]:
         if len(video_urls) < 2:
             raise MediaHandlerClientError("At least two videos are required for stitching")

@@ -11,7 +11,6 @@ import {
   Image as ImageIcon,
   Loader2,
   MapPin,
-  Music,
   Pause,
   Play,
   Scissors,
@@ -268,7 +267,6 @@ function RushesViewer({ projectId }: { projectId: string }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const insertInputRef = useRef<HTMLInputElement>(null);
   const waveformCanvasRef = useRef<HTMLCanvasElement>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
   const isPlayingSelectionRef = useRef(false);
 
   // clip / select / insert state
@@ -303,9 +301,8 @@ function RushesViewer({ projectId }: { projectId: string }) {
 
   // audio waveform state
   const [waveformSamples, setWaveformSamples] = useState<Float32Array | null>(null);
-  const [isExtractingAudio, setIsExtractingAudio] = useState(false);
-  // stored peaks keyed by clip filename — populated from API on load
-  const [audioPeaks, setAudioPeaks] = useState<Record<string, number[]>>({});
+  // stored peaks keyed by clip filename — "processing" while background task runs
+  const [audioPeaks, setAudioPeaks] = useState<Record<string, number[] | "processing">>({});
 
   // save select state
   const [isSaving, setIsSaving] = useState(false);
@@ -331,7 +328,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to load clips");
-      const data = await res.json() as { clips: ClipMeta[]; selects: SelectMeta[]; inserts: InsertMeta[]; audio_peaks?: Record<string, number[]> };
+      const data = await res.json() as { clips: ClipMeta[]; selects: SelectMeta[]; inserts: InsertMeta[]; audio_peaks?: Record<string, number[] | "processing"> };
       setClips(data.clips);
       setSelects(data.selects || []);
       setInserts(data.inserts || []);
@@ -366,12 +363,30 @@ function RushesViewer({ projectId }: { projectId: string }) {
 
   // When the active clip changes, hydrate waveformSamples from persisted peaks if available.
   useEffect(() => {
-    if (currentClip && audioPeaks[currentClip.filename]) {
-      setWaveformSamples(new Float32Array(audioPeaks[currentClip.filename]));
+    const entry = currentClip ? audioPeaks[currentClip.filename] : undefined;
+    if (Array.isArray(entry)) {
+      setWaveformSamples(new Float32Array(entry));
     } else {
       setWaveformSamples(null);
     }
   }, [currentClip?.filename, audioPeaks]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Poll every 5 seconds while the current clip's peaks are still processing.
+  useEffect(() => {
+    const entry = currentClip ? audioPeaks[currentClip.filename] : undefined;
+    if (entry !== "processing") return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/documentary/projects/${projectId}/rushes`, {
+          credentials: "include",
+        });
+        if (!res.ok) return;
+        const data = await res.json() as { audio_peaks?: Record<string, number[] | "processing"> };
+        setAudioPeaks(data.audio_peaks ?? {});
+      } catch { /* ignore */ }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [currentClip?.filename, audioPeaks, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- play actions ----
 
@@ -415,46 +430,6 @@ function RushesViewer({ projectId }: { projectId: string }) {
     vid.currentTime = inPoint;
     vid.play().catch(() => { isPlayingSelectionRef.current = false; });
   }, [inPoint]);
-
-  const handleExtractAudio = useCallback(async () => {
-    if (!currentClip) return;
-    setIsExtractingAudio(true);
-    try {
-      const res = await fetch(currentClip.url);
-      const buf = await res.arrayBuffer();
-      if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
-        audioCtxRef.current = new AudioContext();
-      }
-      const audio = await audioCtxRef.current.decodeAudioData(buf);
-      const channel = audio.getChannelData(0);
-      const NUM_BARS = 400;
-      const blockSize = Math.floor(channel.length / NUM_BARS);
-      const peaks = new Float32Array(NUM_BARS);
-      for (let i = 0; i < NUM_BARS; i++) {
-        let max = 0;
-        for (let j = 0; j < blockSize; j++) {
-          const v = Math.abs(channel[i * blockSize + j]);
-          if (v > max) max = v;
-        }
-        peaks[i] = max;
-      }
-      await fetch(
-        `${API_URL}/api/documentary/projects/${projectId}/rushes/${currentClip.filename}/audio-peaks`,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ peaks: Array.from(peaks) }),
-        }
-      );
-      setAudioPeaks((prev) => ({ ...prev, [currentClip.filename]: Array.from(peaks) }));
-      setWaveformSamples(peaks);
-    } catch {
-      // Fail silently — button stays visible so the user can retry
-    } finally {
-      setIsExtractingAudio(false);
-    }
-  }, [currentClip, projectId]);
 
   // ---- upload ----
 
@@ -702,10 +677,10 @@ function RushesViewer({ projectId }: { projectId: string }) {
   const regionDuration = hasSection ? outPoint! - inPoint! : 0;
   const playheadPct = videoDuration > 0 ? (playheadTime / videoDuration) * 100 : 0;
 
-  // Browser ArrayBuffer + decoded PCM together can exceed ~5 GB for a 4 GB file, causing a
-  // silent OOM abort. Cap at 1.5 GB — comfortably below the crash threshold seen in testing.
-  const AUDIO_DECODE_LIMIT = 1.5 * 1024 * 1024 * 1024;
-  const waveformTooLarge = !!(currentClip && currentClip.size > AUDIO_DECODE_LIMIT);
+  // Derived audio state from peaks map
+  const currentPeaksEntry = currentClip ? audioPeaks[currentClip.filename] : undefined;
+  const isAudioProcessing = currentPeaksEntry === "processing";
+
   const inPct = videoDuration > 0 && inPoint !== null ? (inPoint / videoDuration) * 100 : 0;
   const outPct = videoDuration > 0 && outPoint !== null ? (outPoint / videoDuration) * 100 : 0;
   const placePct = videoDuration > 0 && placePoint !== null ? (placePoint / videoDuration) * 100 : 0;
@@ -1233,33 +1208,15 @@ function RushesViewer({ projectId }: { projectId: string }) {
                 ref={waveformCanvasRef}
                 className={`w-full h-full block ${waveformSamples ? "" : "hidden"}`}
               />
-              {isExtractingAudio && (
+              {!waveformSamples && videoSrc && isAudioProcessing && (
                 <div className="absolute inset-0 flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground">
                   <Loader2 className="w-3 h-3 animate-spin" />
                   Analysing audio…
                 </div>
               )}
-              {!waveformSamples && !isExtractingAudio && videoSrc && waveformTooLarge && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-4 text-center pointer-events-none">
-                  <span className="text-[10px] text-muted-foreground">
-                    Clip too large for browser audio analysis ({formatSize(currentClip!.size)})
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">
-                    Save a shorter Select, then analyse that instead
-                  </span>
-                </div>
-              )}
-              {!waveformSamples && !isExtractingAudio && videoSrc && !waveformTooLarge && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleExtractAudio}
-                    className="gap-1.5 h-7 text-xs border-border text-foreground hover:bg-accent"
-                  >
-                    <Music className="w-3.5 h-3.5" />
-                    Analyse Audio
-                  </Button>
+              {!waveformSamples && videoSrc && !isAudioProcessing && (
+                <div className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground select-none">
+                  No audio data
                 </div>
               )}
               {!videoSrc && (

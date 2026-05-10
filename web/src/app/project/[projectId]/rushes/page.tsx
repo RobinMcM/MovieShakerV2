@@ -269,6 +269,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
   const insertInputRef = useRef<HTMLInputElement>(null);
   const waveformCanvasRef = useRef<HTMLCanvasElement>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const isPlayingSelectionRef = useRef(false);
 
   // clip / select / insert state
   const [clips, setClips] = useState<ClipMeta[]>([]);
@@ -400,11 +401,20 @@ function RushesViewer({ projectId }: { projectId: string }) {
   }, [currentClip, clips, playClip]);
 
   const handlePlayPause = useCallback(() => {
+    isPlayingSelectionRef.current = false;
     const vid = videoRef.current;
     if (!vid) return;
     if (vid.paused) vid.play().catch(() => {});
     else vid.pause();
   }, []);
+
+  const handlePlaySelection = useCallback(() => {
+    const vid = videoRef.current;
+    if (!vid || inPoint === null) return;
+    isPlayingSelectionRef.current = true;
+    vid.currentTime = inPoint;
+    vid.play().catch(() => { isPlayingSelectionRef.current = false; });
+  }, [inPoint]);
 
   const handleExtractAudio = useCallback(async () => {
     if (!currentClip) return;
@@ -897,6 +907,10 @@ function RushesViewer({ projectId }: { projectId: string }) {
                   if (vid.currentTime >= currentSelect.out_time) vid.pause();
                 } else {
                   setPlayheadTime(vid.currentTime ?? 0);
+                  if (isPlayingSelectionRef.current && outPoint !== null && vid.currentTime >= outPoint) {
+                    isPlayingSelectionRef.current = false;
+                    vid.pause();
+                  }
                 }
               }}
               onError={() => {
@@ -1182,6 +1196,21 @@ function RushesViewer({ projectId }: { projectId: string }) {
                 </span>
               )}
             </div>
+
+            {/* Play Selection — appears when in/out section is set on a clip */}
+            {hasSection && !currentSelect && videoDuration > 0 && (
+              <div className="flex items-center justify-center py-0.5">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handlePlaySelection}
+                  className="gap-1.5 h-6 text-[10px] border-border text-foreground hover:bg-accent"
+                >
+                  <Play className="w-3 h-3" />
+                  Play Selection
+                </Button>
+              </div>
+            )}
 
             {/* Bridge: position label only — the connector line is the wrapper-level overlay below */}
             <div className="relative h-5 flex-shrink-0 pointer-events-none">

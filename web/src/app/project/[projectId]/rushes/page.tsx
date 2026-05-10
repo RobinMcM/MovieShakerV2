@@ -813,29 +813,27 @@ function RushesViewer({ projectId }: { projectId: string }) {
           onChange={(e) => { handleUploadInsert(e.target.files); e.target.value = ""; }}
         />
 
-        {activeTab === "inserts" ? (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => insertInputRef.current?.click()}
-            disabled={insertUploading}
-            className="ml-auto flex-shrink-0 gap-1.5"
-          >
-            <Upload className="w-3.5 h-3.5" />
-            {insertUploading ? "Uploading…" : "Upload Insert"}
-          </Button>
-        ) : activeTab === "clips" ? (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="ml-auto flex-shrink-0 gap-1.5"
-          >
-            <Upload className="w-3.5 h-3.5" />
-            {uploading ? "Uploading…" : "Upload Clip"}
-          </Button>
-        ) : null}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={
+            activeTab === "inserts" ? () => insertInputRef.current?.click()
+            : activeTab === "clips" ? () => fileInputRef.current?.click()
+            : undefined
+          }
+          disabled={
+            (activeTab !== "clips" && activeTab !== "inserts") ||
+            (activeTab === "inserts" ? insertUploading : uploading)
+          }
+          className="ml-auto flex-shrink-0 gap-1.5"
+        >
+          <Upload className="w-3.5 h-3.5" />
+          {activeTab === "inserts"
+            ? insertUploading ? "Uploading…" : "Upload Insert"
+            : activeTab === "clips"
+            ? uploading ? "Uploading…" : "Upload Clip"
+            : "Upload"}
+        </Button>
       </div>
 
       {/* Content row: video+timeline (left) | media sidebar (right) */}

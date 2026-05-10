@@ -55,7 +55,7 @@ interface InsertMeta {
 
 type TimelineMode = "section" | "place" | null;
 type SectionStep = 0 | 1 | 2;
-type ActiveTab = "clips" | "selects" | "inserts";
+type ActiveTab = "clips" | "selects" | "inserts" | "sound" | "effects" | "backgrounds";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -824,7 +824,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
             <Upload className="w-3.5 h-3.5" />
             {insertUploading ? "Uploading…" : "Upload Insert"}
           </Button>
-        ) : (
+        ) : activeTab === "clips" ? (
           <Button
             variant="outline"
             size="sm"
@@ -835,7 +835,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
             <Upload className="w-3.5 h-3.5" />
             {uploading ? "Uploading…" : "Upload Clip"}
           </Button>
-        )}
+        ) : null}
       </div>
 
       {/* Content row: video+timeline (left) | media sidebar (right) */}
@@ -1243,38 +1243,20 @@ function RushesViewer({ projectId }: { projectId: string }) {
 
       {/* Media sidebar */}
       <div className="w-52 flex-shrink-0 flex flex-col border-l border-border bg-card">
-        {/* Tabs */}
-        <div className="flex gap-0 border-b border-border px-3 pt-2">
-          <button
-            onClick={() => setActiveTab("clips")}
-            className={`px-3 py-1 text-xs font-medium transition-colors ${
-              activeTab === "clips"
-                ? "text-foreground border-b-2 border-primary -mb-px"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
+        {/* Category dropdown */}
+        <div className="px-3 py-2 border-b border-border flex-shrink-0">
+          <select
+            value={activeTab}
+            onChange={(e) => setActiveTab(e.target.value as ActiveTab)}
+            className="w-full text-xs bg-background border border-border rounded px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
           >
-            Clips ({clips.length})
-          </button>
-          <button
-            onClick={() => setActiveTab("selects")}
-            className={`px-3 py-1 text-xs font-medium transition-colors ${
-              activeTab === "selects"
-                ? "text-foreground border-b-2 border-primary -mb-px"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Selects ({selects.length})
-          </button>
-          <button
-            onClick={() => setActiveTab("inserts")}
-            className={`px-3 py-1 text-xs font-medium transition-colors ${
-              activeTab === "inserts"
-                ? "text-foreground border-b-2 border-primary -mb-px"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Inserts ({inserts.length})
-          </button>
+            <option value="clips">Clips ({clips.length})</option>
+            <option value="selects">Selects ({selects.length})</option>
+            <option value="inserts">Inserts ({inserts.length})</option>
+            <option value="sound">Sound</option>
+            <option value="effects">Effects</option>
+            <option value="backgrounds">Backgrounds</option>
+          </select>
         </div>
 
         {/* Strip content */}
@@ -1337,6 +1319,27 @@ function RushesViewer({ projectId }: { projectId: string }) {
                 </div>
               )}
             </>
+          )}
+
+          {activeTab === "sound" && (
+            <div className="text-xs text-muted-foreground self-center px-2 text-center space-y-1 mt-4">
+              <p className="font-medium text-foreground">Sound</p>
+              <p className="opacity-60">Coming soon — upload audio tracks and sound effects</p>
+            </div>
+          )}
+
+          {activeTab === "effects" && (
+            <div className="text-xs text-muted-foreground self-center px-2 text-center space-y-1 mt-4">
+              <p className="font-medium text-foreground">Effects</p>
+              <p className="opacity-60">Coming soon — manage visual effects assets</p>
+            </div>
+          )}
+
+          {activeTab === "backgrounds" && (
+            <div className="text-xs text-muted-foreground self-center px-2 text-center space-y-1 mt-4">
+              <p className="font-medium text-foreground">Backgrounds</p>
+              <p className="opacity-60">Coming soon — manage background plates and images</p>
+            </div>
           )}
         </div>
       </div>

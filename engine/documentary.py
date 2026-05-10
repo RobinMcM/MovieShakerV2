@@ -427,7 +427,11 @@ def _background_extract_audio_peaks(
     logger = logging.getLogger("documentary")
     try:
         client = _media_handler_client()
-        peaks = client.extract_audio_peaks(spaces_key)
+        presigned_url = storage_module.generate_rushes_url(spaces_key, expires_seconds=7200)
+        if presigned_url:
+            peaks = client.extract_audio_peaks(input_url=presigned_url)
+        else:
+            peaks = client.extract_audio_peaks(input_key=spaces_key)
         peaks_map = storage_module.read_audio_peaks(user_id, project_id)
         peaks_map[filename] = peaks
         storage_module.write_audio_peaks(user_id, project_id, peaks_map)

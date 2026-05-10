@@ -205,16 +205,26 @@ class MediaHandlerClient:
             pass
         return {"success": True, "output_key": output_key}
 
-    def extract_audio_peaks(self, input_key: str, num_peaks: int = 400) -> list[float]:
+    def extract_audio_peaks(
+        self,
+        input_key: str = None,
+        input_url: str = None,
+        num_peaks: int = 400,
+    ) -> list[float]:
         """
-        Ask the media-handler to extract audio peaks from a DO Spaces video key.
+        Ask the media-handler to extract audio peaks.
+        Pass either input_key (Spaces key) or input_url (presigned GET URL).
         Returns a list of num_peaks float values (0.0–1.0).
         Raises MediaHandlerClientError on failure.
         """
-        resp = self._post_json(
-            "/api/ffmpeg/audio-peaks",
-            {"input_key": input_key, "num_peaks": num_peaks},
-        )
+        if not input_key and not input_url:
+            raise MediaHandlerClientError("Either input_key or input_url is required")
+        body: dict = {"num_peaks": num_peaks}
+        if input_url:
+            body["input_url"] = input_url
+        else:
+            body["input_key"] = input_key
+        resp = self._post_json("/api/ffmpeg/audio-peaks", body)
         data = resp.json()
         if data.get("status") != "ok" or not data.get("peaks"):
             raise MediaHandlerClientError(

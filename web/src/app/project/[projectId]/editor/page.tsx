@@ -11,8 +11,10 @@ import {
   GripHorizontal,
   Image as ImageIcon,
   Music,
+  Pause,
   Play,
   Scissors,
+  SkipBack,
   Trash2,
   Zap,
 } from "lucide-react";
@@ -34,7 +36,7 @@ interface TimelineItem {
   duration: number;       // seconds; 0 = unknown
   in_time?: number;
   out_time?: number;
-  url?: string;           // presigned URL — populated from rushes data, not persisted
+  url?: string;           // presigned URL — populated from rushes, not persisted
 }
 
 interface Timeline {
@@ -89,10 +91,38 @@ const ASSET_TRACK: Record<AssetType, TrackType> = {
   sound: "audio", effects: "audio",
 };
 
-// Block pixel width. Min 80px, scale 3px/s beyond that.
 function blockWidth(duration: number): number {
   if (!duration || duration <= 0) return 100;
   return Math.max(80, Math.round(duration * 3));
+}
+
+function isImageItem(item: TimelineItem): boolean {
+  if (item.type === "insert") return true;
+  if (item.type === "backgrounds") {
+    const ext = item.filename.split(".").pop()?.toLowerCase() ?? "";
+    return ["jpg", "jpeg", "png", "webp"].includes(ext);
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// GapMarker — clickable insert-point slot between timeline blocks
+// ---------------------------------------------------------------------------
+
+function GapMarker({ active, onClick }: { active: boolean; onClick: () => void }) {
+  return (
+    <div
+      onClick={onClick}
+      title="Set insert point here"
+      className="flex-shrink-0 w-3 h-full cursor-pointer flex items-center justify-center hover:bg-amber-400/10 group transition-colors"
+    >
+      <div
+        className={`w-0.5 h-full transition-colors ${
+          active ? "bg-amber-400" : "bg-transparent group-hover:bg-amber-400/50"
+        }`}
+      />
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -155,7 +185,7 @@ function TimelineBlock({
       onClick={onSelect}
       style={{ width: `${w}px`, minWidth: `${w}px` }}
       className={`
-        relative flex-shrink-0 h-full rounded border cursor-grab active:cursor-grabbing
+        group relative flex-shrink-0 h-full rounded border cursor-grab active:cursor-grabbing
         flex flex-col justify-between px-1.5 py-1 select-none transition-all
         ${TRACK_COLORS[item.type]}
         ${selected ? "ring-2 ring-white ring-offset-1 ring-offset-background" : ""}
@@ -163,14 +193,12 @@ function TimelineBlock({
     >
       <div className="flex items-start justify-between gap-1">
         <p className="text-[9px] text-white font-medium leading-tight truncate flex-1">{item.label}</p>
-        {selected && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onRemove(); }}
-            className="flex-shrink-0 rounded p-0.5 bg-black/30 hover:bg-red-600 text-white transition-colors"
-          >
-            <Trash2 className="w-2.5 h-2.5" />
-          </button>
-        )}
+        <button
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          className="flex-shrink-0 rounded p-0.5 bg-black/30 hover:bg-red-600 text-white transition-colors opacity-0 group-hover:opacity-100"
+        >
+          <Trash2 className="w-2.5 h-2.5" />
+        </button>
       </div>
       <div className="flex items-center gap-1">
         <GripHorizontal className="w-3 h-3 text-white/50" />
@@ -188,11 +216,19 @@ function EditorView({ projectId }: { projectId: string }) {
   const [tab, setTab] = useState<"design" | "build">("design");
   const [rushes, setRushes] = useState<RushesData | null>(null);
   const [timeline, setTimeline] = useState<Timeline>({ video_track: [], audio_track: [] });
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playingVideoIdx, setPlayingVideoIdx] = useState(0);
+  const [videoInsertPoint, setVideoInsertPoint] = useState(0);
+  const [audioInsertPoint, setAudioInsertPoint] = useState(0);
+
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragSrcRef = useRef<{ track: TrackType; index: number } | null>(null);
   const playerVideoRef = useRef<HTMLVideoElement>(null);
+  const playTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Ref so event-handler closures see the latest isPlaying without staling
+  const isPlayingRef = useRef(false);
+  useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
 
   // ---- fetch ----
 
@@ -204,8 +240,12 @@ function EditorView({ projectId }: { projectId: string }) {
           fetch(`${API_URL}/api/documentary/projects/${projectId}/rushes`, { credentials: "include" }),
           fetch(`${API_URL}/api/editorial/projects/${projectId}/timeline`, { credentials: "include" }),
         ]);
-        const rushesData: RushesData = rushesRes.ok ? await rushesRes.json() : { clips: [], selects: [], inserts: [], sounds: [], effects: [], backgrounds: [] };
-        const timelineData: Timeline = timelineRes.ok ? await timelineRes.json() : { video_track: [], audio_track: [] };
+        const rushesData: RushesData = rushesRes.ok
+          ? await rushesRes.json()
+          : { clips: [], selects: [], inserts: [], sounds: [], effects: [], backgrounds: [] };
+        const timelineData: Timeline = timelineRes.ok
+          ? await timelineRes.json()
+          : { video_track: [], audio_track: [] };
 
         // Enrich timeline items with current presigned URLs from rushes data
         const urlMap = new Map<string, string>();
@@ -216,22 +256,51 @@ function EditorView({ projectId }: { projectId: string }) {
         for (const e of rushesData.effects) urlMap.set(e.key, e.url);
         for (const b of rushesData.backgrounds) urlMap.set(b.key, b.url);
 
-        const enrich = (items: TimelineItem[]) => items.map((item) => ({
-          ...item,
-          url: urlMap.get(item.key) ?? item.url,
-        }));
+        const enrich = (items: TimelineItem[]) =>
+          items.map((item) => ({ ...item, url: urlMap.get(item.key) ?? item.url }));
+
+        const vt = enrich(timelineData.video_track ?? []);
+        const at = enrich(timelineData.audio_track ?? []);
 
         setRushes(rushesData);
-        setTimeline({
-          video_track: enrich(timelineData.video_track ?? []),
-          audio_track: enrich(timelineData.audio_track ?? []),
-        });
+        setTimeline({ video_track: vt, audio_track: at });
+        // Default insert points to end (append mode)
+        setVideoInsertPoint(vt.length);
+        setAudioInsertPoint(at.length);
       } finally {
         setLoading(false);
       }
     }
     load();
   }, [projectId]);
+
+  // ---- sequential playback effect ----
+  // Fires when isPlaying or playingVideoIdx changes. Handles image timers and video play.
+
+  useEffect(() => {
+    if (!isPlaying) return;
+    const item = timeline.video_track[playingVideoIdx];
+    if (!item) {
+      setIsPlaying(false);
+      return;
+    }
+    if (isImageItem(item)) {
+      // Show the image for item.duration seconds, then advance
+      playTimerRef.current = setTimeout(() => {
+        const next = playingVideoIdx + 1;
+        if (next < timeline.video_track.length) setPlayingVideoIdx(next);
+        else { setIsPlaying(false); setPlayingVideoIdx(0); }
+      }, (item.duration || 5) * 1000);
+      return () => { if (playTimerRef.current) clearTimeout(playTimerRef.current); };
+    } else {
+      // Video — seek and play. onLoadedMetadata also plays if still isPlaying.
+      const vid = playerVideoRef.current;
+      if (!vid) return;
+      vid.currentTime = item.in_time ?? 0;
+      vid.play().catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, playingVideoIdx]);
 
   // ---- auto-save (debounced 1.5s) ----
 
@@ -254,22 +323,61 @@ function EditorView({ projectId }: { projectId: string }) {
     persistTimeline(tl);
   }
 
-  // ---- add asset to timeline ----
+  // ---- playback controls ----
+
+  function handlePlay() {
+    if (timeline.video_track.length === 0) return;
+    setIsPlaying(true);
+  }
+
+  function handlePause() {
+    setIsPlaying(false);
+    if (playTimerRef.current) clearTimeout(playTimerRef.current);
+    playerVideoRef.current?.pause();
+  }
+
+  function handleVideoEnded() {
+    const next = playingVideoIdx + 1;
+    if (next < timeline.video_track.length) setPlayingVideoIdx(next);
+    else { setIsPlaying(false); setPlayingVideoIdx(0); }
+  }
+
+  // ---- add asset to timeline (at insert point) ----
 
   function addToTimeline(item: TimelineItem) {
     const track = ASSET_TRACK[item.type];
     const next = { ...timeline };
-    if (track === "video") next.video_track = [...timeline.video_track, item];
-    else next.audio_track = [...timeline.audio_track, item];
+    if (track === "video") {
+      const arr = [...timeline.video_track];
+      arr.splice(videoInsertPoint, 0, item);
+      next.video_track = arr;
+      setVideoInsertPoint(videoInsertPoint + 1);
+    } else {
+      const arr = [...timeline.audio_track];
+      arr.splice(audioInsertPoint, 0, item);
+      next.audio_track = arr;
+      setAudioInsertPoint(audioInsertPoint + 1);
+    }
     updateTimeline(next);
     setTab("build");
   }
 
+  // ---- remove from timeline ----
+
   function removeFromTimeline(track: TrackType, id: string) {
     const next = { ...timeline };
-    if (track === "video") next.video_track = timeline.video_track.filter((i) => i.id !== id);
-    else next.audio_track = timeline.audio_track.filter((i) => i.id !== id);
-    setSelectedId(null);
+    if (track === "video") {
+      const removedIdx = timeline.video_track.findIndex((i) => i.id === id);
+      next.video_track = timeline.video_track.filter((i) => i.id !== id);
+      const newLen = next.video_track.length;
+      if (newLen === 0) { handlePause(); setPlayingVideoIdx(0); }
+      else if (playingVideoIdx >= newLen) setPlayingVideoIdx(newLen - 1);
+      if (removedIdx < videoInsertPoint && videoInsertPoint > 0) setVideoInsertPoint(videoInsertPoint - 1);
+    } else {
+      const removedIdx = timeline.audio_track.findIndex((i) => i.id === id);
+      next.audio_track = timeline.audio_track.filter((i) => i.id !== id);
+      if (removedIdx < audioInsertPoint && audioInsertPoint > 0) setAudioInsertPoint(audioInsertPoint - 1);
+    }
     updateTimeline(next);
   }
 
@@ -292,7 +400,7 @@ function EditorView({ projectId }: { projectId: string }) {
     updateTimeline(next);
   }
 
-  // ---- asset → TimelineItem helpers ----
+  // ---- asset → TimelineItem factories ----
 
   function makeId() { return Math.random().toString(36).slice(2, 10); }
 
@@ -310,29 +418,59 @@ function EditorView({ projectId }: { projectId: string }) {
   }
   function fromBackground(b: InsertMeta): TimelineItem {
     const ext = b.filename.split(".").pop()?.toLowerCase() ?? "";
-    const isImg = ["jpg","jpeg","png","webp"].includes(ext);
+    const isImg = ["jpg", "jpeg", "png", "webp"].includes(ext);
     return { id: makeId(), type: "backgrounds", key: b.key, filename: b.filename, label: b.filename, duration: isImg ? 5 : 0, url: b.url };
   }
 
-  // ---- render helpers ----
+  // ---- track renderer — interleaved blocks + gap markers ----
+
+  function renderTrack(
+    trackItems: TimelineItem[],
+    trackType: TrackType,
+    insertPoint: number,
+    setInsertPoint: (n: number) => void,
+  ) {
+    const nodes = [];
+    for (let i = 0; i <= trackItems.length; i++) {
+      nodes.push(
+        <GapMarker
+          key={`gap-${i}`}
+          active={insertPoint === i}
+          onClick={() => setInsertPoint(i)}
+        />
+      );
+      if (i < trackItems.length) {
+        const item = trackItems[i];
+        const isSelected = trackType === "video" && playingVideoIdx === i;
+        nodes.push(
+          <TimelineBlock
+            key={item.id}
+            item={item}
+            selected={isSelected}
+            onSelect={() => {
+              if (trackType === "video") {
+                if (isPlaying) handlePause();
+                setPlayingVideoIdx(i);
+              }
+            }}
+            onRemove={() => removeFromTimeline(trackType, item.id)}
+            onDragStart={() => handleDragStart(trackType, i)}
+            onDragOver={() => {}}
+            onDrop={() => handleDrop(trackType, i)}
+          />
+        );
+      }
+    }
+    return nodes;
+  }
+
+  // ---- computed ----
 
   const totalVideoTime = timeline.video_track.reduce((s, i) => s + (i.duration || 0), 0);
   const totalAudioTime = timeline.audio_track.reduce((s, i) => s + (i.duration || 0), 0);
+  const previewItem = timeline.video_track[playingVideoIdx] ?? null;
 
-  const allItems = [...timeline.video_track, ...timeline.audio_track];
-  const selectedItem = selectedId ? allItems.find((i) => i.id === selectedId) ?? null : null;
-
-  function isAudioItem(item: TimelineItem) {
-    return item.type === "sound" || item.type === "effects";
-  }
-  function isImageItem(item: TimelineItem) {
-    if (item.type === "insert") return true;
-    if (item.type === "backgrounds") {
-      const ext = item.filename.split(".").pop()?.toLowerCase() ?? "";
-      return ["jpg", "jpeg", "png", "webp"].includes(ext);
-    }
-    return false;
-  }
+  // ---- render ----
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
@@ -368,7 +506,6 @@ function EditorView({ projectId }: { projectId: string }) {
           {tab === "design" && rushes && (
             <div className="flex-1 overflow-y-auto p-4 space-y-6 max-w-2xl mx-auto w-full">
 
-              {/* Selects */}
               {rushes.selects.length > 0 && (
                 <section>
                   <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
@@ -376,19 +513,12 @@ function EditorView({ projectId }: { projectId: string }) {
                   </h3>
                   <div className="space-y-1.5">
                     {rushes.selects.map((s) => (
-                      <AssetRow
-                        key={s.id}
-                        label={s.label}
-                        sublabel={formatDuration(s.duration)}
-                        badge="video"
-                        onAdd={() => addToTimeline(fromSelect(s))}
-                      />
+                      <AssetRow key={s.id} label={s.label} sublabel={formatDuration(s.duration)} badge="video" onAdd={() => addToTimeline(fromSelect(s))} />
                     ))}
                   </div>
                 </section>
               )}
 
-              {/* Clips */}
               {rushes.clips.length > 0 && (
                 <section>
                   <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
@@ -396,19 +526,12 @@ function EditorView({ projectId }: { projectId: string }) {
                   </h3>
                   <div className="space-y-1.5">
                     {rushes.clips.map((c) => (
-                      <AssetRow
-                        key={c.key}
-                        label={c.filename}
-                        sublabel={formatSize(c.size)}
-                        badge="video"
-                        onAdd={() => addToTimeline(fromClip(c))}
-                      />
+                      <AssetRow key={c.key} label={c.filename} sublabel={formatSize(c.size)} badge="video" onAdd={() => addToTimeline(fromClip(c))} />
                     ))}
                   </div>
                 </section>
               )}
 
-              {/* Inserts */}
               {rushes.inserts.length > 0 && (
                 <section>
                   <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
@@ -416,19 +539,12 @@ function EditorView({ projectId }: { projectId: string }) {
                   </h3>
                   <div className="space-y-1.5">
                     {rushes.inserts.map((i) => (
-                      <AssetRow
-                        key={i.key}
-                        label={i.filename}
-                        sublabel="5s default"
-                        badge="video"
-                        onAdd={() => addToTimeline(fromInsert(i))}
-                      />
+                      <AssetRow key={i.key} label={i.filename} sublabel="5s default" badge="video" onAdd={() => addToTimeline(fromInsert(i))} />
                     ))}
                   </div>
                 </section>
               )}
 
-              {/* Backgrounds */}
               {rushes.backgrounds.length > 0 && (
                 <section>
                   <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
@@ -436,19 +552,12 @@ function EditorView({ projectId }: { projectId: string }) {
                   </h3>
                   <div className="space-y-1.5">
                     {rushes.backgrounds.map((b) => (
-                      <AssetRow
-                        key={b.key}
-                        label={b.filename}
-                        sublabel={formatSize(b.size)}
-                        badge="video"
-                        onAdd={() => addToTimeline(fromBackground(b))}
-                      />
+                      <AssetRow key={b.key} label={b.filename} sublabel={formatSize(b.size)} badge="video" onAdd={() => addToTimeline(fromBackground(b))} />
                     ))}
                   </div>
                 </section>
               )}
 
-              {/* Sound */}
               {rushes.sounds.length > 0 && (
                 <section>
                   <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
@@ -456,19 +565,12 @@ function EditorView({ projectId }: { projectId: string }) {
                   </h3>
                   <div className="space-y-1.5">
                     {rushes.sounds.map((s) => (
-                      <AssetRow
-                        key={s.key}
-                        label={s.filename}
-                        sublabel={formatSize(s.size)}
-                        badge="audio"
-                        onAdd={() => addToTimeline(fromAudio(s, "sound"))}
-                      />
+                      <AssetRow key={s.key} label={s.filename} sublabel={formatSize(s.size)} badge="audio" onAdd={() => addToTimeline(fromAudio(s, "sound"))} />
                     ))}
                   </div>
                 </section>
               )}
 
-              {/* Effects */}
               {rushes.effects.length > 0 && (
                 <section>
                   <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
@@ -476,19 +578,14 @@ function EditorView({ projectId }: { projectId: string }) {
                   </h3>
                   <div className="space-y-1.5">
                     {rushes.effects.map((e) => (
-                      <AssetRow
-                        key={e.key}
-                        label={e.filename}
-                        sublabel={formatSize(e.size)}
-                        badge="audio"
-                        onAdd={() => addToTimeline(fromAudio(e, "effects"))}
-                      />
+                      <AssetRow key={e.key} label={e.filename} sublabel={formatSize(e.size)} badge="audio" onAdd={() => addToTimeline(fromAudio(e, "effects"))} />
                     ))}
                   </div>
                 </section>
               )}
 
-              {rushes.selects.length === 0 && rushes.clips.length === 0 && rushes.sounds.length === 0 && rushes.inserts.length === 0 && rushes.effects.length === 0 && rushes.backgrounds.length === 0 && (
+              {rushes.selects.length === 0 && rushes.clips.length === 0 && rushes.sounds.length === 0 &&
+               rushes.inserts.length === 0 && rushes.effects.length === 0 && rushes.backgrounds.length === 0 && (
                 <div className="text-center py-16 space-y-2">
                   <p className="text-sm text-muted-foreground">No assets yet</p>
                   <p className="text-xs text-muted-foreground opacity-60">Upload footage and audio on the Studio page first</p>
@@ -499,192 +596,138 @@ function EditorView({ projectId }: { projectId: string }) {
 
           {/* ── BUILD TAB ── */}
           {tab === "build" && (
-            <div className="flex-1 flex min-h-0">
+            <div className="flex-1 flex flex-col min-h-0">
 
-              {/* Left: Preview player */}
-              <div className="w-72 flex-shrink-0 flex flex-col border-r border-border bg-card">
-                <div className="px-3 py-2 border-b border-border flex-shrink-0">
-                  <p className="text-xs font-medium text-foreground">Preview</p>
-                  {selectedItem && (
-                    <p className="text-[10px] text-muted-foreground truncate">{selectedItem.label}</p>
-                  )}
-                </div>
-
-                <div className="flex-1 flex flex-col items-center justify-center bg-black min-h-0 overflow-hidden">
-                  {!selectedItem ? (
-                    <div className="text-center space-y-2 px-4">
-                      <Play className="w-8 h-8 text-white/20 mx-auto" />
-                      <p className="text-xs text-white/40">Click a block in the timeline to preview</p>
-                    </div>
-                  ) : isImageItem(selectedItem) ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={selectedItem.url ?? ""}
-                      alt={selectedItem.filename}
-                      className="max-w-full max-h-full object-contain"
-                    />
-                  ) : isAudioItem(selectedItem) ? (
-                    <div className="flex flex-col items-center gap-4 px-4 w-full">
-                      <Music className="w-10 h-10 text-white/30" />
-                      <p className="text-xs text-white/60 text-center truncate w-full">{selectedItem.filename}</p>
-                      {selectedItem.url ? (
-                        <audio
-                          key={selectedItem.id}
-                          controls
-                          className="w-full"
-                          src={selectedItem.url}
-                        />
-                      ) : (
-                        <p className="text-[10px] text-white/30">No preview available</p>
-                      )}
-                    </div>
-                  ) : (
-                    // Video (select, clip, video background)
-                    selectedItem.url ? (
-                      <video
-                        key={selectedItem.id}
-                        ref={playerVideoRef}
-                        src={selectedItem.url}
-                        controls
-                        playsInline
-                        className="w-full h-full object-contain"
-                        onLoadedMetadata={() => {
-                          const vid = playerVideoRef.current;
-                          if (!vid) return;
-                          if (selectedItem.in_time != null) {
-                            vid.currentTime = selectedItem.in_time;
-                          }
-                        }}
-                        onTimeUpdate={() => {
-                          const vid = playerVideoRef.current;
-                          if (!vid || selectedItem.out_time == null) return;
-                          if (vid.currentTime >= selectedItem.out_time) vid.pause();
-                        }}
-                      />
-                    ) : (
-                      <div className="text-center px-4">
-                        <Film className="w-8 h-8 text-white/20 mx-auto mb-2" />
-                        <p className="text-[10px] text-white/30">Reload the page to get a fresh preview link</p>
-                      </div>
-                    )
-                  )}
-                </div>
-
-                {selectedItem && (
-                  <div className="px-3 py-2 border-t border-border flex-shrink-0 space-y-0.5">
-                    <p className="text-[10px] text-muted-foreground">
-                      Type: <span className="text-foreground">{selectedItem.type}</span>
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">
-                      Duration: <span className="text-foreground">{formatDuration(selectedItem.duration)}</span>
-                    </p>
-                    {selectedItem.in_time != null && (
-                      <p className="text-[10px] text-muted-foreground">
-                        In → Out: <span className="text-foreground">{formatDuration(selectedItem.in_time)} → {formatDuration(selectedItem.out_time ?? 0)}</span>
-                      </p>
-                    )}
+              {/* Preview pane — takes all available vertical space */}
+              <div className="flex-1 min-h-0 bg-black flex items-center justify-center overflow-hidden">
+                {!previewItem ? (
+                  <div className="text-center space-y-2 px-4">
+                    <Play className="w-10 h-10 text-white/20 mx-auto" />
+                    <p className="text-sm text-white/40">Add clips to the timeline to preview</p>
+                  </div>
+                ) : isImageItem(previewItem) ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={previewItem.url ?? ""}
+                    alt={previewItem.filename}
+                    className="max-w-full max-h-full object-contain"
+                  />
+                ) : previewItem.url ? (
+                  <video
+                    key={playingVideoIdx}
+                    ref={playerVideoRef}
+                    src={previewItem.url}
+                    playsInline
+                    className="w-full h-full object-contain"
+                    onLoadedMetadata={() => {
+                      const vid = playerVideoRef.current;
+                      if (!vid) return;
+                      if (previewItem.in_time != null) vid.currentTime = previewItem.in_time;
+                      if (isPlayingRef.current) vid.play().catch(() => {});
+                    }}
+                    onTimeUpdate={() => {
+                      const vid = playerVideoRef.current;
+                      if (!vid || previewItem.out_time == null) return;
+                      if (vid.currentTime >= previewItem.out_time) vid.pause();
+                    }}
+                    onEnded={handleVideoEnded}
+                  />
+                ) : (
+                  <div className="text-center px-4">
+                    <Film className="w-8 h-8 text-white/20 mx-auto mb-2" />
+                    <p className="text-xs text-white/30">Reload to get a fresh preview link</p>
                   </div>
                 )}
               </div>
 
-              {/* Right: Timeline */}
-              <div className="flex-1 flex flex-col min-h-0 p-4 gap-4">
+              {/* Transport bar */}
+              <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2 border-t border-b border-border bg-card">
+                <button
+                  onClick={() => { handlePause(); setPlayingVideoIdx(0); }}
+                  disabled={timeline.video_track.length === 0}
+                  className="p-1 rounded hover:bg-muted text-foreground disabled:text-muted-foreground/40 transition-colors"
+                  title="Skip to start"
+                >
+                  <SkipBack className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={isPlaying ? handlePause : handlePlay}
+                  disabled={timeline.video_track.length === 0}
+                  className="p-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
+                >
+                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                </button>
+                <span className="text-xs text-muted-foreground">
+                  {timeline.video_track.length > 0
+                    ? `clip ${playingVideoIdx + 1} / ${timeline.video_track.length}`
+                    : "no clips"}
+                </span>
+                {previewItem && (
+                  <span className="text-xs text-foreground/70 truncate max-w-xs">{previewItem.label}</span>
+                )}
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {formatDuration(Math.max(totalVideoTime, totalAudioTime))} total
+                </span>
+                <Button variant="outline" size="sm" className="text-xs" onClick={() => setTab("design")}>
+                  ← Design
+                </Button>
+              </div>
 
-                {/* Legend */}
-                <div className="flex items-center gap-4 flex-wrap text-[10px] text-muted-foreground flex-shrink-0">
-                  {(Object.entries(TRACK_COLORS) as [AssetType, string][]).map(([type, cls]) => (
-                    <span key={type} className="flex items-center gap-1">
-                      <span className={`w-3 h-3 rounded border ${cls} inline-block`} />
-                      {type}
-                    </span>
-                  ))}
-                  <span className="ml-auto">Drag to reorder · Click to preview · × to remove</span>
-                </div>
-
-                {/* Timeline tracks */}
-                <div className="flex-1 flex flex-col gap-3 min-h-0">
-
-                  {/* Video track */}
-                  <div className="flex flex-col gap-1 flex-1">
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <Film className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span className="text-xs text-muted-foreground font-medium">Video</span>
-                      <span className="text-[10px] text-muted-foreground">
-                        {timeline.video_track.length} clips · {formatDuration(totalVideoTime)}
-                      </span>
-                    </div>
-                    <div className="flex-1 bg-muted/30 border border-border rounded-lg overflow-x-auto p-2 min-h-[80px]">
-                      <div className="flex gap-1.5 h-full min-h-[64px] items-stretch">
-                        {timeline.video_track.map((item, idx) => (
-                          <TimelineBlock
-                            key={item.id}
-                            item={item}
-                            selected={selectedId === item.id}
-                            onSelect={() => setSelectedId(selectedId === item.id ? null : item.id)}
-                            onRemove={() => removeFromTimeline("video", item.id)}
-                            onDragStart={() => handleDragStart("video", idx)}
-                            onDragOver={() => {}}
-                            onDrop={() => handleDrop("video", idx)}
-                          />
-                        ))}
-                        {timeline.video_track.length === 0 && (
-                          <p className="text-xs text-muted-foreground self-center mx-auto">
-                            Click "Add →" on a video asset in the Design tab
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Audio track */}
-                  <div className="flex flex-col gap-1 flex-1">
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <Music className="w-3.5 h-3.5 text-muted-foreground" />
-                      <span className="text-xs text-muted-foreground font-medium">Audio</span>
-                      <span className="text-[10px] text-muted-foreground">
-                        {timeline.audio_track.length} clips · {formatDuration(totalAudioTime)}
-                      </span>
-                    </div>
-                    <div className="flex-1 bg-muted/30 border border-border rounded-lg overflow-x-auto p-2 min-h-[80px]">
-                      <div className="flex gap-1.5 h-full min-h-[64px] items-stretch">
-                        {timeline.audio_track.map((item, idx) => (
-                          <TimelineBlock
-                            key={item.id}
-                            item={item}
-                            selected={selectedId === item.id}
-                            onSelect={() => setSelectedId(selectedId === item.id ? null : item.id)}
-                            onRemove={() => removeFromTimeline("audio", item.id)}
-                            onDragStart={() => handleDragStart("audio", idx)}
-                            onDragOver={() => {}}
-                            onDrop={() => handleDrop("audio", idx)}
-                          />
-                        ))}
-                        {timeline.audio_track.length === 0 && (
-                          <p className="text-xs text-muted-foreground self-center mx-auto">
-                            Click "Add →" on a sound or effects asset in the Design tab
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                </div>
-
-                {/* Bottom bar */}
-                <div className="flex items-center gap-3 flex-shrink-0 pt-2 border-t border-border">
-                  <span className="text-xs text-muted-foreground">
-                    Total: {formatDuration(Math.max(totalVideoTime, totalAudioTime))} estimated
+              {/* Audio track */}
+              <div className="flex-shrink-0 border-b border-border px-4 pt-3 pb-2">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Music className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground font-medium">Audio</span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {timeline.audio_track.length} clips · {formatDuration(totalAudioTime)}
                   </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="ml-auto text-xs"
-                    onClick={() => setTab("design")}
-                  >
-                    ← Back to Design
-                  </Button>
+                </div>
+                <div className="bg-muted/30 border border-border rounded-lg overflow-x-auto p-2 h-[72px]">
+                  <div className="flex h-full items-stretch min-w-max">
+                    {timeline.audio_track.length === 0 ? (
+                      <p className="text-xs text-muted-foreground self-center mx-auto">
+                        Add sound or effects from the Design tab
+                      </p>
+                    ) : (
+                      renderTrack(timeline.audio_track, "audio", audioInsertPoint, setAudioInsertPoint)
+                    )}
+                  </div>
                 </div>
               </div>
+
+              {/* Video track */}
+              <div className="flex-shrink-0 px-4 pt-3 pb-2">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Film className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground font-medium">Video</span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {timeline.video_track.length} clips · {formatDuration(totalVideoTime)}
+                  </span>
+                </div>
+                <div className="bg-muted/30 border border-border rounded-lg overflow-x-auto p-2 h-[72px]">
+                  <div className="flex h-full items-stretch min-w-max">
+                    {timeline.video_track.length === 0 ? (
+                      <p className="text-xs text-muted-foreground self-center mx-auto">
+                        Add selects or clips from the Design tab
+                      </p>
+                    ) : (
+                      renderTrack(timeline.video_track, "video", videoInsertPoint, setVideoInsertPoint)
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Legend */}
+              <div className="flex-shrink-0 flex items-center gap-3 flex-wrap px-4 py-1.5 border-t border-border text-[10px] text-muted-foreground">
+                {(Object.entries(TRACK_COLORS) as [AssetType, string][]).map(([type, cls]) => (
+                  <span key={type} className="flex items-center gap-1">
+                    <span className={`w-3 h-3 rounded border ${cls} inline-block`} />
+                    {type}
+                  </span>
+                ))}
+                <span className="ml-auto">Click gap ▌ to set insert point · Click clip to preview · Drag to reorder</span>
+              </div>
+
             </div>
           )}
         </>

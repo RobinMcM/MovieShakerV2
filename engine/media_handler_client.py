@@ -205,6 +205,34 @@ class MediaHandlerClient:
             pass
         return {"success": True, "output_key": output_key}
 
+    def extract_audio_from_spaces(
+        self,
+        input_key: str,
+        in_time: float,
+        out_time: float,
+        output_key: str,
+    ) -> dict[str, Any]:
+        """
+        Ask the media handler to extract audio from a video segment stored in Spaces
+        and save it as an mp3 back to Spaces.
+        POST /api/ffmpeg/extract_audio_spaces: {input_key, in_time, out_time, output_key}
+        """
+        response = self._post_json("/api/ffmpeg/extract_audio_spaces", {
+            "input_key": input_key,
+            "in_time": in_time,
+            "out_time": out_time,
+            "output_key": output_key,
+        })
+        if not response.content:
+            return {"success": True, "output_key": output_key}
+        try:
+            data = response.json()
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+        return {"success": True, "output_key": output_key}
+
     def extract_audio_peaks(
         self,
         input_key: str = None,

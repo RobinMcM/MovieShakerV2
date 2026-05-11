@@ -428,17 +428,25 @@ function RushesViewer({ projectId }: { projectId: string }) {
   // ---- upload ----
 
   // Prevent the screen from sleeping while a large file is in flight.
-  // Returns a release function; safe to call even if Wake Lock is unsupported.
+  // Re-acquires automatically when the tab becomes visible again (browser releases on hide).
+  // Returns a cleanup function; safe to call even if Wake Lock is unsupported.
   async function acquireWakeLock(): Promise<() => void> {
-    try {
-      if ("wakeLock" in navigator) {
-        const sentinel = await navigator.wakeLock.request("screen");
-        return () => sentinel.release().catch(() => {});
-      }
-    } catch {
-      // Wake Lock denied or unavailable — continue without it
-    }
-    return () => {};
+    const wl: { release: () => void } = { release: () => {} };
+    const acquire = async () => {
+      try {
+        if ("wakeLock" in navigator) {
+          const sentinel = await navigator.wakeLock.request("screen");
+          wl.release = () => sentinel.release().catch(() => {});
+        }
+      } catch { /* denied or unavailable — continue without it */ }
+    };
+    await acquire();
+    const onVisibilityChange = () => { if (document.visibilityState === "visible") acquire(); };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      wl.release();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }
 
   const handleUpload = useCallback((files: FileList | null) => {
@@ -462,32 +470,71 @@ function RushesViewer({ projectId }: { projectId: string }) {
     setUploadProgress(0);
     setUploadError(null);
 
-    const formData = new FormData();
-    formData.append("file", file);
-
-    acquireWakeLock().then((releaseWakeLock) => {
-      const xhr = new XMLHttpRequest();
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
-      };
-      xhr.onload = () => {
+    acquireWakeLock().then(async (releaseWakeLock) => {
+      const cleanup = (err?: string) => {
         releaseWakeLock();
         setUploading(false);
-        if (xhr.status >= 200 && xhr.status < 300) {
-          fetchClips();
-        } else {
-          try {
-            const err = JSON.parse(xhr.responseText);
-            setUploadError(err.detail || "Upload failed");
-          } catch {
-            setUploadError("Upload failed");
-          }
-        }
+        if (err) setUploadError(err);
       };
-      xhr.onerror = () => { releaseWakeLock(); setUploading(false); setUploadError("Upload failed"); };
-      xhr.open("POST", `${API_URL}/api/documentary/projects/${projectId}/rushes/upload`);
-      xhr.withCredentials = true;
-      xhr.send(formData);
+
+      try {
+        // Step 1: get a presigned PUT URL from the engine (fast — no file data)
+        const urlRes = await fetch(
+          `${API_URL}/api/documentary/projects/${projectId}/rushes/upload-url`,
+          {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ filename: file.name, content_type: effectiveType }),
+          }
+        );
+        if (!urlRes.ok) {
+          const err = await urlRes.json().catch(() => ({})) as { detail?: string };
+          cleanup(err.detail || "Upload failed");
+          return;
+        }
+        const { upload_url, key, filename } = await urlRes.json() as {
+          upload_url: string; key: string; filename: string;
+        };
+
+        // Step 2: PUT the file directly to Spaces — bypasses engine and Caddy entirely,
+        // eliminating proxy timeouts for large files.
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
+          };
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) resolve();
+            else reject(new Error(`Upload to storage failed (${xhr.status})`));
+          };
+          xhr.onerror = () => reject(new Error("Network error during upload"));
+          xhr.open("PUT", upload_url);
+          xhr.setRequestHeader("Content-Type", effectiveType);
+          xhr.send(file);
+        });
+
+        // Step 3: notify engine — triggers audio peak extraction in background
+        const regRes = await fetch(
+          `${API_URL}/api/documentary/projects/${projectId}/rushes/register`,
+          {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ key, filename }),
+          }
+        );
+        if (!regRes.ok) {
+          const err = await regRes.json().catch(() => ({})) as { detail?: string };
+          cleanup(err.detail || "Upload registration failed");
+          return;
+        }
+
+        cleanup();
+        fetchClips();
+      } catch (err) {
+        cleanup(err instanceof Error ? err.message : "Upload failed");
+      }
     });
   }, [projectId, fetchClips]);
 

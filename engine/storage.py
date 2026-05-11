@@ -404,6 +404,19 @@ def upload_rushes_file(key: str, file_obj, content_type: str) -> None:
         shutil.copyfileobj(file_obj, f)
 
 
+def generate_rushes_upload_url(key: str, content_type: str, expires: int = 3600) -> Optional[str]:
+    """Return a presigned PUT URL for direct browser → Spaces upload. None when Spaces is not configured."""
+    if not uses_spaces():
+        return None
+    client = _spaces_client()
+    return client.generate_presigned_url(
+        "put_object",
+        Params={"Bucket": DO_SPACES_BUCKET, "Key": key, "ContentType": content_type},
+        ExpiresIn=expires,
+        HttpMethod="PUT",
+    )
+
+
 def list_rushes_clips(user_id: str, project_id: str) -> list[dict]:
     """Return metadata for all clips under {user_id}/{project_id}/rushes/."""
     prefix = f"{user_id}/{project_id}/rushes/"

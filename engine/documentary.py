@@ -446,41 +446,60 @@ def _background_extract_audio_peaks(
             pass
 
 
-@router.post("/projects/{project_id}/rushes/upload")
-async def rushes_upload(
+class _RushesUploadUrlRequest(BaseModel):
+    filename: str
+    content_type: str
+
+
+class _RushesRegisterRequest(BaseModel):
+    key: str
+    filename: str
+
+
+_ALLOWED_RUSHES_TYPES = {"video/mp4", "video/quicktime"}
+
+
+@router.post("/projects/{project_id}/rushes/upload-url")
+async def rushes_upload_url(
     project_id: str,
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
+    body: _RushesUploadUrlRequest,
     session: SessionContainer = Depends(verify_session()),
     db: Session = Depends(get_session),
 ):
-    """Upload a raw footage clip to Spaces. Streams directly — no size limit."""
+    """Return a presigned PUT URL so the browser can upload directly to Spaces."""
     user_id = session.get_user_id()
     _ensure_project_member(db, project_id, user_id)
 
-    filename = (file.filename or "clip.mp4").replace(" ", "_")
-    content_type = _resolve_content_type(filename, file.content_type or "")
+    filename = body.filename.replace(" ", "_")
+    content_type = _resolve_content_type(filename, body.content_type)
 
-    _ALLOWED_RUSHES_TYPES = {"video/mp4", "video/quicktime"}
     if content_type not in _ALLOWED_RUSHES_TYPES:
         raise HTTPException(status_code=415, detail="Only .mp4 and .mov files are supported.")
 
     key = storage_module.rushes_original_key(user_id, project_id, filename)
+    upload_url = storage_module.generate_rushes_upload_url(key, content_type)
 
-    # Ensure we're at the start of the file (FastAPI may have already read it)
-    await file.seek(0)
-    file_obj = file.file
+    if upload_url is None:
+        raise HTTPException(status_code=503, detail="Presigned upload unavailable in this environment.")
 
-    try:
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(
-            None,
-            lambda: storage_module.upload_rushes_file(key, file_obj, content_type),
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Upload failed: {exc}")
+    return {"upload_url": upload_url, "key": key, "filename": filename}
 
-    # Mark peaks as processing and kick off background extraction
+
+@router.post("/projects/{project_id}/rushes/register")
+async def rushes_register(
+    project_id: str,
+    body: _RushesRegisterRequest,
+    background_tasks: BackgroundTasks,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    """Called by the browser after a direct Spaces upload completes. Triggers audio peak extraction."""
+    user_id = session.get_user_id()
+    _ensure_project_member(db, project_id, user_id)
+
+    key = body.key
+    filename = body.filename
+
     try:
         peaks_map = storage_module.read_audio_peaks(user_id, project_id)
         peaks_map[filename] = "processing"

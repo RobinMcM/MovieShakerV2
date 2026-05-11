@@ -446,37 +446,6 @@ def _background_extract_audio_peaks(
             pass
 
 
-def _background_extract_audio_from_select(
-    user_id: str,
-    project_id: str,
-    select_id: str,
-    select_label: str,
-    source_key: str,
-    in_time: float,
-    out_time: float,
-) -> None:
-    """Extract audio from a select's clip segment and save it to the sounds library."""
-    import logging
-    logger = logging.getLogger("documentary")
-    try:
-        safe_label = re.sub(r"[^\w\-]", "_", select_label)[:40]
-        filename = f"{safe_label}_{select_id[:8]}.mp3"
-        output_key = storage_module.rushes_sound_key(user_id, project_id, filename)
-        client = _media_handler_client()
-        client.extract_audio_from_spaces(
-            input_key=source_key,
-            in_time=in_time,
-            out_time=out_time,
-            output_key=output_key,
-        )
-        labels = storage_module.read_asset_labels(user_id, project_id)
-        labels[output_key] = select_label
-        storage_module.write_asset_labels(user_id, project_id, labels)
-        logger.info("Audio extracted for select %s → %s", select_id, output_key)
-    except Exception as exc:
-        logger.warning("Audio extraction failed for select %s: %s", select_id, exc)
-
-
 class _RushesUploadUrlRequest(BaseModel):
     filename: str
     content_type: str
@@ -640,11 +609,10 @@ def rushes_update_select_label(
 def rushes_save_select(
     project_id: str,
     body: RushesSelectBody,
-    background_tasks: BackgroundTasks,
     session: SessionContainer = Depends(verify_session()),
     db: Session = Depends(get_session),
 ):
-    """Save a select (JSON metadata only) and trigger background audio extraction."""
+    """Save a select (JSON metadata only — no file is copied to Spaces)."""
     user_id = session.get_user_id()
     _ensure_project_member(db, project_id, user_id)
 
@@ -669,18 +637,6 @@ def rushes_save_select(
     selects = storage_module.read_selects(user_id, project_id)
     selects.append(new_select)
     storage_module.write_selects(user_id, project_id, selects)
-
-    background_tasks.add_task(
-        _background_extract_audio_from_select,
-        user_id,
-        project_id,
-        new_select["id"],
-        new_select["label"],
-        body.source_key,
-        body.in_time,
-        body.out_time,
-    )
-
     return new_select
 
 

@@ -841,8 +841,6 @@ function RushesViewer({ projectId }: { projectId: string }) {
       setInPoint(null);
       setOutPoint(null);
       setSectionStep(0);
-      // Re-fetch after delay so the background-extracted audio file appears in Sound tab
-      setTimeout(() => fetchClips(), 6000);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "Save failed");
     } finally {

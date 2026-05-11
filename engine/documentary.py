@@ -536,9 +536,29 @@ def rushes_list(
     for ins in inserts:
         ins["url"] = storage_module.generate_rushes_url(ins["key"], expires_seconds=7200) or ""
 
+    sounds = storage_module.list_rushes_sound(user_id, project_id)
+    for s in sounds:
+        s["url"] = storage_module.generate_rushes_url(s["key"], expires_seconds=7200) or ""
+
+    effects = storage_module.list_rushes_effects(user_id, project_id)
+    for e in effects:
+        e["url"] = storage_module.generate_rushes_url(e["key"], expires_seconds=7200) or ""
+
+    backgrounds = storage_module.list_rushes_backgrounds(user_id, project_id)
+    for b in backgrounds:
+        b["url"] = storage_module.generate_rushes_url(b["key"], expires_seconds=7200) or ""
+
     audio_peaks = storage_module.read_audio_peaks(user_id, project_id)
 
-    return {"clips": clips, "selects": selects, "inserts": inserts, "audio_peaks": audio_peaks}
+    return {
+        "clips": clips,
+        "selects": selects,
+        "inserts": inserts,
+        "sounds": sounds,
+        "effects": effects,
+        "backgrounds": backgrounds,
+        "audio_peaks": audio_peaks,
+    }
 
 
 @router.post("/projects/{project_id}/rushes/selects")
@@ -660,6 +680,133 @@ def rushes_insert_delete(
     key = storage_module.rushes_insert_key(user_id, project_id, insert_name)
     deleted = storage_module.delete_rushes_file(key)
     return {"success": deleted}
+
+
+_ALLOWED_AUDIO_TYPES = {
+    "audio/mpeg", "audio/wav", "audio/x-wav", "audio/aac",
+    "audio/x-m4a", "audio/mp4", "audio/flac", "audio/x-aiff", "audio/aiff",
+}
+_ALLOWED_BACKGROUND_TYPES = {
+    "image/jpeg", "image/png", "image/webp",
+    "video/mp4", "video/quicktime",
+}
+
+
+@router.post("/projects/{project_id}/rushes/sound/upload")
+async def rushes_sound_upload(
+    project_id: str,
+    file: UploadFile = File(...),
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    """Upload an audio file to the Sound library."""
+    user_id = session.get_user_id()
+    _ensure_project_member(db, project_id, user_id)
+
+    filename = (file.filename or "sound.mp3").replace(" ", "_")
+    content_type = _resolve_content_type(filename, file.content_type or "")
+    if content_type not in _ALLOWED_AUDIO_TYPES:
+        raise HTTPException(status_code=415, detail="Only .mp3, .wav, .aac, .m4a, .flac, and .aiff files are supported.")
+
+    key = storage_module.rushes_sound_key(user_id, project_id, filename)
+    await file.seek(0)
+    try:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, lambda: storage_module.upload_rushes_file(key, file.file, content_type))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Upload failed: {exc}")
+    return {"key": key, "filename": filename}
+
+
+@router.delete("/projects/{project_id}/rushes/sound/{sound_name:path}")
+def rushes_sound_delete(
+    project_id: str,
+    sound_name: str,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    _ensure_project_member(db, project_id, user_id)
+    key = storage_module.rushes_sound_key(user_id, project_id, sound_name)
+    return {"success": storage_module.delete_rushes_file(key)}
+
+
+@router.post("/projects/{project_id}/rushes/effects/upload")
+async def rushes_effects_upload(
+    project_id: str,
+    file: UploadFile = File(...),
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    """Upload an audio file to the Effects library."""
+    user_id = session.get_user_id()
+    _ensure_project_member(db, project_id, user_id)
+
+    filename = (file.filename or "effect.mp3").replace(" ", "_")
+    content_type = _resolve_content_type(filename, file.content_type or "")
+    if content_type not in _ALLOWED_AUDIO_TYPES:
+        raise HTTPException(status_code=415, detail="Only .mp3, .wav, .aac, .m4a, .flac, and .aiff files are supported.")
+
+    key = storage_module.rushes_effects_key(user_id, project_id, filename)
+    await file.seek(0)
+    try:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, lambda: storage_module.upload_rushes_file(key, file.file, content_type))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Upload failed: {exc}")
+    return {"key": key, "filename": filename}
+
+
+@router.delete("/projects/{project_id}/rushes/effects/{effect_name:path}")
+def rushes_effects_delete(
+    project_id: str,
+    effect_name: str,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    _ensure_project_member(db, project_id, user_id)
+    key = storage_module.rushes_effects_key(user_id, project_id, effect_name)
+    return {"success": storage_module.delete_rushes_file(key)}
+
+
+@router.post("/projects/{project_id}/rushes/backgrounds/upload")
+async def rushes_backgrounds_upload(
+    project_id: str,
+    file: UploadFile = File(...),
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    """Upload an image or video background plate."""
+    user_id = session.get_user_id()
+    _ensure_project_member(db, project_id, user_id)
+
+    filename = (file.filename or "background.jpg").replace(" ", "_")
+    content_type = _resolve_content_type(filename, file.content_type or "")
+    if content_type not in _ALLOWED_BACKGROUND_TYPES:
+        raise HTTPException(status_code=415, detail="Only .jpg, .png, .webp, .mp4, and .mov files are supported.")
+
+    key = storage_module.rushes_backgrounds_key(user_id, project_id, filename)
+    await file.seek(0)
+    try:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, lambda: storage_module.upload_rushes_file(key, file.file, content_type))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Upload failed: {exc}")
+    return {"key": key, "filename": filename}
+
+
+@router.delete("/projects/{project_id}/rushes/backgrounds/{background_name:path}")
+def rushes_backgrounds_delete(
+    project_id: str,
+    background_name: str,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    user_id = session.get_user_id()
+    _ensure_project_member(db, project_id, user_id)
+    key = storage_module.rushes_backgrounds_key(user_id, project_id, background_name)
+    return {"success": storage_module.delete_rushes_file(key)}
 
 
 @router.delete("/projects/{project_id}/rushes/{clip_name:path}")

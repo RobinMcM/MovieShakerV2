@@ -387,6 +387,18 @@ def rushes_insert_key(user_id: str, project_id: str, filename: str) -> str:
     return f"{user_id}/{project_id}/rushes/inserts/{filename}"
 
 
+def rushes_sound_key(user_id: str, project_id: str, filename: str) -> str:
+    return f"{user_id}/{project_id}/rushes/sound/{filename}"
+
+
+def rushes_effects_key(user_id: str, project_id: str, filename: str) -> str:
+    return f"{user_id}/{project_id}/rushes/effects/{filename}"
+
+
+def rushes_backgrounds_key(user_id: str, project_id: str, filename: str) -> str:
+    return f"{user_id}/{project_id}/rushes/backgrounds/{filename}"
+
+
 def upload_rushes_file(key: str, file_obj, content_type: str) -> None:
     """Stream-upload a rushes clip to Spaces (boto3 multipart, no size limit)."""
     if uses_spaces():
@@ -428,7 +440,8 @@ def list_rushes_clips(user_id: str, project_id: str) -> list[dict]:
             for obj in page.get("Contents") or []:
                 k = obj["Key"]
                 filename = k.split("/")[-1]
-                if not filename or filename.endswith(".json") or "/rushes/inserts/" in k:
+                _EXCLUDED = {"/rushes/inserts/", "/rushes/sound/", "/rushes/effects/", "/rushes/backgrounds/"}
+                if not filename or filename.endswith(".json") or any(x in k for x in _EXCLUDED):
                     continue
                 modified = obj.get("LastModified")
                 clips.append({
@@ -446,7 +459,8 @@ def list_rushes_clips(user_id: str, project_id: str) -> list[dict]:
         return []
     clips = []
     for path in sorted(prefix_path.rglob("*")):
-        if path.is_file() and not path.name.endswith(".json") and "rushes/inserts" not in str(path):
+        _EXCLUDED_LOCAL = {"rushes/inserts", "rushes/sound", "rushes/effects", "rushes/backgrounds"}
+        if path.is_file() and not path.name.endswith(".json") and not any(x in str(path) for x in _EXCLUDED_LOCAL):
             k = str(path.relative_to(STORAGE_ROOT)).replace("\\", "/")
             clips.append({
                 "key": k,
@@ -495,6 +509,56 @@ def list_rushes_inserts(user_id: str, project_id: str) -> list[dict]:
                 "last_modified": "",
             })
     return inserts
+
+
+def _list_rushes_subdir(user_id: str, project_id: str, subdir: str) -> list[dict]:
+    """Generic helper: list all files under rushes/{subdir}/."""
+    prefix = f"{user_id}/{project_id}/rushes/{subdir}/"
+    if uses_spaces():
+        client = _spaces_client()
+        paginator = client.get_paginator("list_objects_v2")
+        items: list[dict] = []
+        for page in paginator.paginate(Bucket=DO_SPACES_BUCKET, Prefix=prefix):
+            for obj in page.get("Contents") or []:
+                k = obj["Key"]
+                filename = k.split("/")[-1]
+                if not filename:
+                    continue
+                modified = obj.get("LastModified")
+                items.append({
+                    "key": k,
+                    "filename": filename,
+                    "size": obj.get("Size", 0),
+                    "last_modified": modified.isoformat() if modified else "",
+                })
+        items.sort(key=lambda i: i["last_modified"], reverse=True)
+        return items
+    prefix_path = STORAGE_ROOT / user_id / str(project_id) / "rushes" / subdir
+    if not prefix_path.exists():
+        return []
+    items = []
+    for path in sorted(prefix_path.rglob("*")):
+        if path.is_file():
+            k = str(path.relative_to(STORAGE_ROOT)).replace("\\", "/")
+            items.append({
+                "key": k,
+                "filename": path.name,
+                "size": path.stat().st_size,
+                "last_modified": "",
+            })
+    return items
+
+
+def list_rushes_sound(user_id: str, project_id: str) -> list[dict]:
+    return _list_rushes_subdir(user_id, project_id, "sound")
+
+
+def list_rushes_effects(user_id: str, project_id: str) -> list[dict]:
+    return _list_rushes_subdir(user_id, project_id, "effects")
+
+
+def list_rushes_backgrounds(user_id: str, project_id: str) -> list[dict]:
+    return _list_rushes_subdir(user_id, project_id, "backgrounds")
 
 
 def generate_rushes_url(key: str, expires_seconds: int = 3600) -> Optional[str]:

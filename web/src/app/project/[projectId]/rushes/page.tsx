@@ -11,12 +11,14 @@ import {
   Image as ImageIcon,
   Loader2,
   MapPin,
+  Music,
   Pause,
   Play,
   Scissors,
   Trash2,
   Upload,
   X,
+  Zap,
 } from "lucide-react";
 import { API_URL } from "@/lib/api";
 
@@ -52,6 +54,10 @@ interface InsertMeta {
   url: string;
   last_modified: string;
 }
+
+interface SoundMeta { filename: string; key: string; size: number; url: string; last_modified: string; }
+interface EffectsMeta { filename: string; key: string; size: number; url: string; last_modified: string; }
+interface BackgroundsMeta { filename: string; key: string; size: number; url: string; last_modified: string; }
 
 type TimelineMode = "section" | "place" | null;
 type SectionStep = 0 | 1 | 2;
@@ -252,6 +258,74 @@ function InsertCard({ insert, active, onClick, onDelete }: InsertCardProps) {
 }
 
 // ---------------------------------------------------------------------------
+// AudioCard — shared card for Sound and Effects items
+// ---------------------------------------------------------------------------
+
+interface AudioCardProps {
+  item: SoundMeta | EffectsMeta;
+  icon: React.ReactNode;
+  onDelete: () => void;
+}
+
+function AudioCard({ item, icon, onDelete }: AudioCardProps) {
+  return (
+    <div className="relative flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-left">
+      <div className="flex-shrink-0 text-muted-foreground">{icon}</div>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs text-foreground truncate leading-tight">{item.filename}</p>
+        <p className="text-[10px] text-muted-foreground">{formatSize(item.size)}</p>
+      </div>
+      <button
+        onClick={onDelete}
+        className="flex-shrink-0 rounded p-0.5 text-muted-foreground hover:bg-red-500 hover:text-white transition-colors"
+        title="Delete"
+      >
+        <Trash2 className="w-3 h-3" />
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// BackgroundCard
+// ---------------------------------------------------------------------------
+
+interface BackgroundCardProps {
+  item: BackgroundsMeta;
+  onDelete: () => void;
+}
+
+function BackgroundCard({ item, onDelete }: BackgroundCardProps) {
+  const ext = item.filename.split(".").pop()?.toLowerCase() ?? "";
+  const isImage = ["jpg", "jpeg", "png", "webp"].includes(ext);
+  return (
+    <div className="relative flex-shrink-0 w-44 rounded-lg overflow-hidden border border-border">
+      <div className="relative w-full h-24 bg-muted overflow-hidden flex items-center justify-center">
+        {isImage ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={item.url} alt={item.filename} className="w-full h-full object-cover" />
+        ) : (
+          <Film className="w-6 h-6 text-muted-foreground" />
+        )}
+        <span className="absolute bottom-1 left-1 bg-background/70 text-foreground text-[10px] px-1 rounded">
+          {formatSize(item.size)}
+        </span>
+      </div>
+      <div className="px-2 pt-1 pb-1.5 bg-card">
+        <p className="text-xs text-foreground truncate leading-tight">{item.filename}</p>
+      </div>
+      <button
+        onClick={onDelete}
+        className="absolute top-1 right-1 z-10 rounded bg-background/70 p-0.5 text-muted-foreground hover:bg-red-500 hover:text-white transition-colors"
+        title="Delete background"
+      >
+        <Trash2 className="w-3 h-3" />
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // RushesViewer
 // ---------------------------------------------------------------------------
 
@@ -260,6 +334,9 @@ function RushesViewer({ projectId }: { projectId: string }) {
   const timelineRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const insertInputRef = useRef<HTMLInputElement>(null);
+  const soundInputRef = useRef<HTMLInputElement>(null);
+  const effectsInputRef = useRef<HTMLInputElement>(null);
+  const backgroundsInputRef = useRef<HTMLInputElement>(null);
   const waveformCanvasRef = useRef<HTMLCanvasElement>(null);
   const isPlayingSelectionRef = useRef(false);
 
@@ -283,6 +360,20 @@ function RushesViewer({ projectId }: { projectId: string }) {
   const [insertUploading, setInsertUploading] = useState(false);
   const [insertUploadProgress, setInsertUploadProgress] = useState(0);
   const [insertUploadError, setInsertUploadError] = useState<string | null>(null);
+
+  // sound / effects / backgrounds state
+  const [sounds, setSounds] = useState<SoundMeta[]>([]);
+  const [effects, setEffects] = useState<EffectsMeta[]>([]);
+  const [backgrounds, setBackgrounds] = useState<BackgroundsMeta[]>([]);
+  const [soundUploading, setSoundUploading] = useState(false);
+  const [soundUploadProgress, setSoundUploadProgress] = useState(0);
+  const [soundUploadError, setSoundUploadError] = useState<string | null>(null);
+  const [effectsUploading, setEffectsUploading] = useState(false);
+  const [effectsUploadProgress, setEffectsUploadProgress] = useState(0);
+  const [effectsUploadError, setEffectsUploadError] = useState<string | null>(null);
+  const [backgroundsUploading, setBackgroundsUploading] = useState(false);
+  const [backgroundsUploadProgress, setBackgroundsUploadProgress] = useState(0);
+  const [backgroundsUploadError, setBackgroundsUploadError] = useState<string | null>(null);
 
   // timeline state — mode is intentionally NOT reset on clip change (matches documentary studio)
   const [playheadTime, setPlayheadTime] = useState(0);
@@ -322,15 +413,29 @@ function RushesViewer({ projectId }: { projectId: string }) {
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to load clips");
-      const data = await res.json() as { clips: ClipMeta[]; selects: SelectMeta[]; inserts: InsertMeta[]; audio_peaks?: Record<string, number[] | "processing"> };
+      const data = await res.json() as {
+        clips: ClipMeta[];
+        selects: SelectMeta[];
+        inserts: InsertMeta[];
+        sounds: SoundMeta[];
+        effects: EffectsMeta[];
+        backgrounds: BackgroundsMeta[];
+        audio_peaks?: Record<string, number[] | "processing">;
+      };
       setClips(data.clips);
       setSelects(data.selects || []);
       setInserts(data.inserts || []);
+      setSounds(data.sounds || []);
+      setEffects(data.effects || []);
+      setBackgrounds(data.backgrounds || []);
       setAudioPeaks(data.audio_peaks || {});
     } catch {
       setClips([]);
       setSelects([]);
       setInserts([]);
+      setSounds([]);
+      setEffects([]);
+      setBackgrounds([]);
     } finally {
       setClipsLoading(false);
     }
@@ -659,6 +764,35 @@ function RushesViewer({ projectId }: { projectId: string }) {
     }
   }
 
+  // ---- delete sound / effects / backgrounds ----
+
+  async function handleDeleteSound(item: SoundMeta) {
+    try {
+      await fetch(`${API_URL}/api/documentary/projects/${projectId}/rushes/sound/${item.filename}`, {
+        method: "DELETE", credentials: "include",
+      });
+      setSounds((prev) => prev.filter((s) => s.key !== item.key));
+    } catch { /* silent */ }
+  }
+
+  async function handleDeleteEffects(item: EffectsMeta) {
+    try {
+      await fetch(`${API_URL}/api/documentary/projects/${projectId}/rushes/effects/${item.filename}`, {
+        method: "DELETE", credentials: "include",
+      });
+      setEffects((prev) => prev.filter((e) => e.key !== item.key));
+    } catch { /* silent */ }
+  }
+
+  async function handleDeleteBackground(item: BackgroundsMeta) {
+    try {
+      await fetch(`${API_URL}/api/documentary/projects/${projectId}/rushes/backgrounds/${item.filename}`, {
+        method: "DELETE", credentials: "include",
+      });
+      setBackgrounds((prev) => prev.filter((b) => b.key !== item.key));
+    } catch { /* silent */ }
+  }
+
   // ---- upload insert ----
 
   const handleUploadInsert = useCallback((files: FileList | null) => {
@@ -707,6 +841,113 @@ function RushesViewer({ projectId }: { projectId: string }) {
       };
       xhr.onerror = () => { releaseWakeLock(); setInsertUploading(false); setInsertUploadError("Upload failed"); };
       xhr.open("POST", `${API_URL}/api/documentary/projects/${projectId}/rushes/inserts/upload`);
+      xhr.withCredentials = true;
+      xhr.send(formData);
+    });
+  }, [projectId, fetchClips]);
+
+  // ---- upload sound / effects / backgrounds ----
+
+  function makeAudioUploadHandler(
+    endpoint: string,
+    setUploading: (v: boolean) => void,
+    setProgress: (v: number) => void,
+    setError: (v: string | null) => void,
+    tab: ActiveTab,
+  ) {
+    return (files: FileList | null) => {
+      if (!files || files.length === 0) return;
+      const file = files[0];
+      const ALLOWED = ["audio/mpeg", "audio/wav", "audio/x-wav", "audio/aac", "audio/x-m4a", "audio/mp4", "audio/flac", "audio/x-aiff", "audio/aiff"];
+      const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+      const effectiveType = ALLOWED.includes(file.type) ? file.type
+        : ext === "mp3" ? "audio/mpeg"
+        : ext === "wav" ? "audio/wav"
+        : ext === "aac" ? "audio/aac"
+        : ext === "m4a" ? "audio/x-m4a"
+        : ext === "flac" ? "audio/flac"
+        : ext === "aiff" || ext === "aif" ? "audio/aiff"
+        : file.type;
+      if (!ALLOWED.includes(effectiveType)) {
+        setError("Only .mp3, .wav, .aac, .m4a, .flac, and .aiff files are supported.");
+        return;
+      }
+      setUploading(true);
+      setProgress(0);
+      setError(null);
+      const formData = new FormData();
+      formData.append("file", file);
+      acquireWakeLock().then((releaseWakeLock) => {
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = (e) => { if (e.lengthComputable) setProgress(Math.round((e.loaded / e.total) * 100)); };
+        xhr.onload = () => {
+          releaseWakeLock();
+          setUploading(false);
+          if (xhr.status >= 200 && xhr.status < 300) {
+            fetchClips();
+            setActiveTab(tab);
+          } else {
+            try { setError(JSON.parse(xhr.responseText).detail || "Upload failed"); }
+            catch { setError("Upload failed"); }
+          }
+        };
+        xhr.onerror = () => { releaseWakeLock(); setUploading(false); setError("Upload failed"); };
+        xhr.open("POST", `${API_URL}${endpoint}`);
+        xhr.withCredentials = true;
+        xhr.send(formData);
+      });
+    };
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const handleUploadSound = useCallback(makeAudioUploadHandler(
+    `/api/documentary/projects/${projectId}/rushes/sound/upload`,
+    setSoundUploading, setSoundUploadProgress, setSoundUploadError, "sound",
+  ), [projectId, fetchClips]);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const handleUploadEffects = useCallback(makeAudioUploadHandler(
+    `/api/documentary/projects/${projectId}/rushes/effects/upload`,
+    setEffectsUploading, setEffectsUploadProgress, setEffectsUploadError, "effects",
+  ), [projectId, fetchClips]);
+
+  const handleUploadBackgrounds = useCallback((files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+    const ALLOWED = ["image/jpeg", "image/png", "image/webp", "video/mp4", "video/quicktime"];
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    const effectiveType = ALLOWED.includes(file.type) ? file.type
+      : ext === "jpg" || ext === "jpeg" ? "image/jpeg"
+      : ext === "png" ? "image/png"
+      : ext === "webp" ? "image/webp"
+      : ext === "mp4" ? "video/mp4"
+      : ext === "mov" ? "video/quicktime"
+      : file.type;
+    if (!ALLOWED.includes(effectiveType)) {
+      setBackgroundsUploadError("Only .jpg, .png, .webp, .mp4, and .mov files are supported.");
+      return;
+    }
+    setBackgroundsUploading(true);
+    setBackgroundsUploadProgress(0);
+    setBackgroundsUploadError(null);
+    const formData = new FormData();
+    formData.append("file", file);
+    acquireWakeLock().then((releaseWakeLock) => {
+      const xhr = new XMLHttpRequest();
+      xhr.upload.onprogress = (e) => { if (e.lengthComputable) setBackgroundsUploadProgress(Math.round((e.loaded / e.total) * 100)); };
+      xhr.onload = () => {
+        releaseWakeLock();
+        setBackgroundsUploading(false);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          fetchClips();
+          setActiveTab("backgrounds");
+        } else {
+          try { setBackgroundsUploadError(JSON.parse(xhr.responseText).detail || "Upload failed"); }
+          catch { setBackgroundsUploadError("Upload failed"); }
+        }
+      };
+      xhr.onerror = () => { releaseWakeLock(); setBackgroundsUploading(false); setBackgroundsUploadError("Upload failed"); };
+      xhr.open("POST", `${API_URL}/api/documentary/projects/${projectId}/rushes/backgrounds/upload`);
       xhr.withCredentials = true;
       xhr.send(formData);
     });
@@ -859,6 +1100,27 @@ function RushesViewer({ projectId }: { projectId: string }) {
           className="hidden"
           onChange={(e) => { handleUploadInsert(e.target.files); e.target.value = ""; }}
         />
+        <input
+          ref={soundInputRef}
+          type="file"
+          accept=".mp3,.wav,.aac,.m4a,.flac,.aiff,.aif,audio/*"
+          className="hidden"
+          onChange={(e) => { handleUploadSound(e.target.files); e.target.value = ""; }}
+        />
+        <input
+          ref={effectsInputRef}
+          type="file"
+          accept=".mp3,.wav,.aac,.m4a,.flac,.aiff,.aif,audio/*"
+          className="hidden"
+          onChange={(e) => { handleUploadEffects(e.target.files); e.target.value = ""; }}
+        />
+        <input
+          ref={backgroundsInputRef}
+          type="file"
+          accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,image/jpeg,image/png,image/webp,video/mp4,video/quicktime"
+          className="hidden"
+          onChange={(e) => { handleUploadBackgrounds(e.target.files); e.target.value = ""; }}
+        />
 
         <Button
           variant="outline"
@@ -866,19 +1128,27 @@ function RushesViewer({ projectId }: { projectId: string }) {
           onClick={
             activeTab === "inserts" ? () => insertInputRef.current?.click()
             : activeTab === "clips" ? () => fileInputRef.current?.click()
+            : activeTab === "sound" ? () => soundInputRef.current?.click()
+            : activeTab === "effects" ? () => effectsInputRef.current?.click()
+            : activeTab === "backgrounds" ? () => backgroundsInputRef.current?.click()
             : undefined
           }
           disabled={
-            (activeTab !== "clips" && activeTab !== "inserts") ||
-            (activeTab === "inserts" ? insertUploading : uploading)
+            activeTab === "selects" ||
+            (activeTab === "clips" && uploading) ||
+            (activeTab === "inserts" && insertUploading) ||
+            (activeTab === "sound" && soundUploading) ||
+            (activeTab === "effects" && effectsUploading) ||
+            (activeTab === "backgrounds" && backgroundsUploading)
           }
           className="ml-auto flex-shrink-0 gap-1.5"
         >
           <Upload className="w-3.5 h-3.5" />
-          {activeTab === "inserts"
-            ? insertUploading ? "Uploading…" : "Upload Insert"
-            : activeTab === "clips"
-            ? uploading ? "Uploading…" : "Upload Clip"
+          {activeTab === "inserts" ? (insertUploading ? "Uploading…" : "Upload Insert")
+            : activeTab === "clips" ? (uploading ? "Uploading…" : "Upload Clip")
+            : activeTab === "sound" ? (soundUploading ? "Uploading…" : "Upload Sound")
+            : activeTab === "effects" ? (effectsUploading ? "Uploading…" : "Upload Effect")
+            : activeTab === "backgrounds" ? (backgroundsUploading ? "Uploading…" : "Upload Background")
             : "Upload"}
         </Button>
       </div>
@@ -1298,9 +1568,9 @@ function RushesViewer({ projectId }: { projectId: string }) {
             <option value="clips">Clips ({clips.length})</option>
             <option value="selects">Selects ({selects.length})</option>
             <option value="inserts">Inserts ({inserts.length})</option>
-            <option value="sound">Sound</option>
-            <option value="effects">Effects</option>
-            <option value="backgrounds">Backgrounds</option>
+            <option value="sound">Sound ({sounds.length})</option>
+            <option value="effects">Effects ({effects.length})</option>
+            <option value="backgrounds">Backgrounds ({backgrounds.length})</option>
           </select>
         </div>
 
@@ -1367,24 +1637,68 @@ function RushesViewer({ projectId }: { projectId: string }) {
           )}
 
           {activeTab === "sound" && (
-            <div className="text-xs text-muted-foreground self-center px-2 text-center space-y-1 mt-4">
-              <p className="font-medium text-foreground">Sound</p>
-              <p className="opacity-60">Coming soon — upload audio tracks and sound effects</p>
-            </div>
+            <>
+              {soundUploadError && <p className="text-xs text-red-500 px-1">{soundUploadError}</p>}
+              {soundUploading && (
+                <p className="text-xs text-muted-foreground px-1">Uploading… {soundUploadProgress}%</p>
+              )}
+              {sounds.map((s) => (
+                <AudioCard
+                  key={s.key}
+                  item={s}
+                  icon={<Music className="w-4 h-4" />}
+                  onDelete={() => handleDeleteSound(s)}
+                />
+              ))}
+              {sounds.length === 0 && !soundUploading && (
+                <p className="text-xs text-muted-foreground self-center px-2">
+                  No sound files yet — click "Upload Sound" above
+                </p>
+              )}
+            </>
           )}
 
           {activeTab === "effects" && (
-            <div className="text-xs text-muted-foreground self-center px-2 text-center space-y-1 mt-4">
-              <p className="font-medium text-foreground">Effects</p>
-              <p className="opacity-60">Coming soon — manage visual effects assets</p>
-            </div>
+            <>
+              {effectsUploadError && <p className="text-xs text-red-500 px-1">{effectsUploadError}</p>}
+              {effectsUploading && (
+                <p className="text-xs text-muted-foreground px-1">Uploading… {effectsUploadProgress}%</p>
+              )}
+              {effects.map((e) => (
+                <AudioCard
+                  key={e.key}
+                  item={e}
+                  icon={<Zap className="w-4 h-4" />}
+                  onDelete={() => handleDeleteEffects(e)}
+                />
+              ))}
+              {effects.length === 0 && !effectsUploading && (
+                <p className="text-xs text-muted-foreground self-center px-2">
+                  No effects files yet — click "Upload Effect" above
+                </p>
+              )}
+            </>
           )}
 
           {activeTab === "backgrounds" && (
-            <div className="text-xs text-muted-foreground self-center px-2 text-center space-y-1 mt-4">
-              <p className="font-medium text-foreground">Backgrounds</p>
-              <p className="opacity-60">Coming soon — manage background plates and images</p>
-            </div>
+            <>
+              {backgroundsUploadError && <p className="text-xs text-red-500 px-1">{backgroundsUploadError}</p>}
+              {backgroundsUploading && (
+                <p className="text-xs text-muted-foreground px-1">Uploading… {backgroundsUploadProgress}%</p>
+              )}
+              {backgrounds.map((b) => (
+                <BackgroundCard
+                  key={b.key}
+                  item={b}
+                  onDelete={() => handleDeleteBackground(b)}
+                />
+              ))}
+              {backgrounds.length === 0 && !backgroundsUploading && (
+                <p className="text-xs text-muted-foreground self-center px-2">
+                  No backgrounds yet — click "Upload Background" above
+                </p>
+              )}
+            </>
           )}
         </div>
       </div>

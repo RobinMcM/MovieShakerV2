@@ -192,6 +192,7 @@ function EditorView({ projectId }: { projectId: string }) {
   const [loading, setLoading] = useState(true);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragSrcRef = useRef<{ track: TrackType; index: number } | null>(null);
+  const playerVideoRef = useRef<HTMLVideoElement>(null);
 
   // ---- fetch ----
 
@@ -313,10 +314,25 @@ function EditorView({ projectId }: { projectId: string }) {
     return { id: makeId(), type: "backgrounds", key: b.key, filename: b.filename, label: b.filename, duration: isImg ? 5 : 0, url: b.url };
   }
 
-  // ---- render ----
+  // ---- render helpers ----
 
   const totalVideoTime = timeline.video_track.reduce((s, i) => s + (i.duration || 0), 0);
   const totalAudioTime = timeline.audio_track.reduce((s, i) => s + (i.duration || 0), 0);
+
+  const allItems = [...timeline.video_track, ...timeline.audio_track];
+  const selectedItem = selectedId ? allItems.find((i) => i.id === selectedId) ?? null : null;
+
+  function isAudioItem(item: TimelineItem) {
+    return item.type === "sound" || item.type === "effects";
+  }
+  function isImageItem(item: TimelineItem) {
+    if (item.type === "insert") return true;
+    if (item.type === "backgrounds") {
+      const ext = item.filename.split(".").pop()?.toLowerCase() ?? "";
+      return ["jpg", "jpeg", "png", "webp"].includes(ext);
+    }
+    return false;
+  }
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
@@ -483,102 +499,191 @@ function EditorView({ projectId }: { projectId: string }) {
 
           {/* ── BUILD TAB ── */}
           {tab === "build" && (
-            <div className="flex-1 flex flex-col min-h-0 p-4 gap-4">
+            <div className="flex-1 flex min-h-0">
 
-              {/* Legend */}
-              <div className="flex items-center gap-4 flex-wrap text-[10px] text-muted-foreground flex-shrink-0">
-                {(Object.entries(TRACK_COLORS) as [AssetType, string][]).map(([type, cls]) => (
-                  <span key={type} className="flex items-center gap-1">
-                    <span className={`w-3 h-3 rounded border ${cls} inline-block`} />
-                    {type}
+              {/* Left: Preview player */}
+              <div className="w-72 flex-shrink-0 flex flex-col border-r border-border bg-card">
+                <div className="px-3 py-2 border-b border-border flex-shrink-0">
+                  <p className="text-xs font-medium text-foreground">Preview</p>
+                  {selectedItem && (
+                    <p className="text-[10px] text-muted-foreground truncate">{selectedItem.label}</p>
+                  )}
+                </div>
+
+                <div className="flex-1 flex flex-col items-center justify-center bg-black min-h-0 overflow-hidden">
+                  {!selectedItem ? (
+                    <div className="text-center space-y-2 px-4">
+                      <Play className="w-8 h-8 text-white/20 mx-auto" />
+                      <p className="text-xs text-white/40">Click a block in the timeline to preview</p>
+                    </div>
+                  ) : isImageItem(selectedItem) ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={selectedItem.url ?? ""}
+                      alt={selectedItem.filename}
+                      className="max-w-full max-h-full object-contain"
+                    />
+                  ) : isAudioItem(selectedItem) ? (
+                    <div className="flex flex-col items-center gap-4 px-4 w-full">
+                      <Music className="w-10 h-10 text-white/30" />
+                      <p className="text-xs text-white/60 text-center truncate w-full">{selectedItem.filename}</p>
+                      {selectedItem.url ? (
+                        <audio
+                          key={selectedItem.id}
+                          controls
+                          className="w-full"
+                          src={selectedItem.url}
+                        />
+                      ) : (
+                        <p className="text-[10px] text-white/30">No preview available</p>
+                      )}
+                    </div>
+                  ) : (
+                    // Video (select, clip, video background)
+                    selectedItem.url ? (
+                      <video
+                        key={selectedItem.id}
+                        ref={playerVideoRef}
+                        src={selectedItem.url}
+                        controls
+                        playsInline
+                        className="w-full h-full object-contain"
+                        onLoadedMetadata={() => {
+                          const vid = playerVideoRef.current;
+                          if (!vid) return;
+                          if (selectedItem.in_time != null) {
+                            vid.currentTime = selectedItem.in_time;
+                          }
+                        }}
+                        onTimeUpdate={() => {
+                          const vid = playerVideoRef.current;
+                          if (!vid || selectedItem.out_time == null) return;
+                          if (vid.currentTime >= selectedItem.out_time) vid.pause();
+                        }}
+                      />
+                    ) : (
+                      <div className="text-center px-4">
+                        <Film className="w-8 h-8 text-white/20 mx-auto mb-2" />
+                        <p className="text-[10px] text-white/30">Reload the page to get a fresh preview link</p>
+                      </div>
+                    )
+                  )}
+                </div>
+
+                {selectedItem && (
+                  <div className="px-3 py-2 border-t border-border flex-shrink-0 space-y-0.5">
+                    <p className="text-[10px] text-muted-foreground">
+                      Type: <span className="text-foreground">{selectedItem.type}</span>
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Duration: <span className="text-foreground">{formatDuration(selectedItem.duration)}</span>
+                    </p>
+                    {selectedItem.in_time != null && (
+                      <p className="text-[10px] text-muted-foreground">
+                        In → Out: <span className="text-foreground">{formatDuration(selectedItem.in_time)} → {formatDuration(selectedItem.out_time ?? 0)}</span>
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Right: Timeline */}
+              <div className="flex-1 flex flex-col min-h-0 p-4 gap-4">
+
+                {/* Legend */}
+                <div className="flex items-center gap-4 flex-wrap text-[10px] text-muted-foreground flex-shrink-0">
+                  {(Object.entries(TRACK_COLORS) as [AssetType, string][]).map(([type, cls]) => (
+                    <span key={type} className="flex items-center gap-1">
+                      <span className={`w-3 h-3 rounded border ${cls} inline-block`} />
+                      {type}
+                    </span>
+                  ))}
+                  <span className="ml-auto">Drag to reorder · Click to preview · × to remove</span>
+                </div>
+
+                {/* Timeline tracks */}
+                <div className="flex-1 flex flex-col gap-3 min-h-0">
+
+                  {/* Video track */}
+                  <div className="flex flex-col gap-1 flex-1">
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <Film className="w-3.5 h-3.5 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground font-medium">Video</span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {timeline.video_track.length} clips · {formatDuration(totalVideoTime)}
+                      </span>
+                    </div>
+                    <div className="flex-1 bg-muted/30 border border-border rounded-lg overflow-x-auto p-2 min-h-[80px]">
+                      <div className="flex gap-1.5 h-full min-h-[64px] items-stretch">
+                        {timeline.video_track.map((item, idx) => (
+                          <TimelineBlock
+                            key={item.id}
+                            item={item}
+                            selected={selectedId === item.id}
+                            onSelect={() => setSelectedId(selectedId === item.id ? null : item.id)}
+                            onRemove={() => removeFromTimeline("video", item.id)}
+                            onDragStart={() => handleDragStart("video", idx)}
+                            onDragOver={() => {}}
+                            onDrop={() => handleDrop("video", idx)}
+                          />
+                        ))}
+                        {timeline.video_track.length === 0 && (
+                          <p className="text-xs text-muted-foreground self-center mx-auto">
+                            Click "Add →" on a video asset in the Design tab
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Audio track */}
+                  <div className="flex flex-col gap-1 flex-1">
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <Music className="w-3.5 h-3.5 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground font-medium">Audio</span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {timeline.audio_track.length} clips · {formatDuration(totalAudioTime)}
+                      </span>
+                    </div>
+                    <div className="flex-1 bg-muted/30 border border-border rounded-lg overflow-x-auto p-2 min-h-[80px]">
+                      <div className="flex gap-1.5 h-full min-h-[64px] items-stretch">
+                        {timeline.audio_track.map((item, idx) => (
+                          <TimelineBlock
+                            key={item.id}
+                            item={item}
+                            selected={selectedId === item.id}
+                            onSelect={() => setSelectedId(selectedId === item.id ? null : item.id)}
+                            onRemove={() => removeFromTimeline("audio", item.id)}
+                            onDragStart={() => handleDragStart("audio", idx)}
+                            onDragOver={() => {}}
+                            onDrop={() => handleDrop("audio", idx)}
+                          />
+                        ))}
+                        {timeline.audio_track.length === 0 && (
+                          <p className="text-xs text-muted-foreground self-center mx-auto">
+                            Click "Add →" on a sound or effects asset in the Design tab
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* Bottom bar */}
+                <div className="flex items-center gap-3 flex-shrink-0 pt-2 border-t border-border">
+                  <span className="text-xs text-muted-foreground">
+                    Total: {formatDuration(Math.max(totalVideoTime, totalAudioTime))} estimated
                   </span>
-                ))}
-                <span className="ml-auto">Drag blocks to reorder · Click to select · × to remove</span>
-              </div>
-
-              {/* Timeline tracks */}
-              <div className="flex-1 flex flex-col gap-3 min-h-0">
-
-                {/* Video track */}
-                <div className="flex flex-col gap-1 flex-1">
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <Film className="w-3.5 h-3.5 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground font-medium">Video</span>
-                    <span className="text-[10px] text-muted-foreground">
-                      {timeline.video_track.length} clips · {formatDuration(totalVideoTime)}
-                    </span>
-                  </div>
-                  <div className="flex-1 bg-muted/30 border border-border rounded-lg overflow-x-auto p-2 min-h-[80px]">
-                    <div className="flex gap-1.5 h-full min-h-[64px] items-stretch">
-                      {timeline.video_track.map((item, idx) => (
-                        <TimelineBlock
-                          key={item.id}
-                          item={item}
-                          selected={selectedId === item.id}
-                          onSelect={() => setSelectedId(selectedId === item.id ? null : item.id)}
-                          onRemove={() => removeFromTimeline("video", item.id)}
-                          onDragStart={() => handleDragStart("video", idx)}
-                          onDragOver={() => {}}
-                          onDrop={() => handleDrop("video", idx)}
-                        />
-                      ))}
-                      {timeline.video_track.length === 0 && (
-                        <p className="text-xs text-muted-foreground self-center mx-auto">
-                          Click "Add →" on a video asset in the Design tab
-                        </p>
-                      )}
-                    </div>
-                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="ml-auto text-xs"
+                    onClick={() => setTab("design")}
+                  >
+                    ← Back to Design
+                  </Button>
                 </div>
-
-                {/* Audio track */}
-                <div className="flex flex-col gap-1 flex-1">
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <Music className="w-3.5 h-3.5 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground font-medium">Audio</span>
-                    <span className="text-[10px] text-muted-foreground">
-                      {timeline.audio_track.length} clips · {formatDuration(totalAudioTime)}
-                    </span>
-                  </div>
-                  <div className="flex-1 bg-muted/30 border border-border rounded-lg overflow-x-auto p-2 min-h-[80px]">
-                    <div className="flex gap-1.5 h-full min-h-[64px] items-stretch">
-                      {timeline.audio_track.map((item, idx) => (
-                        <TimelineBlock
-                          key={item.id}
-                          item={item}
-                          selected={selectedId === item.id}
-                          onSelect={() => setSelectedId(selectedId === item.id ? null : item.id)}
-                          onRemove={() => removeFromTimeline("audio", item.id)}
-                          onDragStart={() => handleDragStart("audio", idx)}
-                          onDragOver={() => {}}
-                          onDrop={() => handleDrop("audio", idx)}
-                        />
-                      ))}
-                      {timeline.audio_track.length === 0 && (
-                        <p className="text-xs text-muted-foreground self-center mx-auto">
-                          Click "Add →" on a sound or effects asset in the Design tab
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-              </div>
-
-              {/* Bottom bar */}
-              <div className="flex items-center gap-3 flex-shrink-0 pt-2 border-t border-border">
-                <Play className="w-4 h-4 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">
-                  Total: {formatDuration(Math.max(totalVideoTime, totalAudioTime))} estimated
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="ml-auto text-xs"
-                  onClick={() => setTab("design")}
-                >
-                  ← Back to Design
-                </Button>
               </div>
             </div>
           )}

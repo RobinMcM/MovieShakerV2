@@ -49,6 +49,53 @@ interface SelectMeta {
 }
 
 // ---------------------------------------------------------------------------
+// ConfirmDeleteDialog — modal confirmation before any delete action
+// ---------------------------------------------------------------------------
+
+function ConfirmDeleteDialog({
+  itemName,
+  onConfirm,
+  onCancel,
+}: {
+  itemName: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onCancel}
+    >
+      <div
+        className="bg-card border border-border rounded-xl shadow-2xl p-6 w-full max-w-sm mx-4 space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="space-y-1">
+          <p className="text-sm font-semibold text-foreground">Delete this file?</p>
+          <p className="text-xs text-muted-foreground break-all">
+            <span className="font-medium text-foreground">{itemName}</span> will be permanently
+            removed and cannot be recovered.
+          </p>
+        </div>
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" size="sm" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            onClick={onConfirm}
+            className="bg-red-600 hover:bg-red-700 text-white border-0"
+          >
+            <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+            Delete
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // InlineRename — shared inline-edit name field used by all cards
 // ---------------------------------------------------------------------------
 
@@ -465,6 +512,9 @@ function RushesViewer({ projectId }: { projectId: string }) {
   // asset labels (display-name overrides keyed by storage key or select id)
   const [labels, setLabels] = useState<Record<string, string>>({});
   const labelsSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // delete confirmation dialog
+  const [pendingDelete, setPendingDelete] = useState<{ label: string; onConfirm: () => void } | null>(null);
 
   // save select state
   const [isSaving, setIsSaving] = useState(false);
@@ -903,6 +953,12 @@ function RushesViewer({ projectId }: { projectId: string }) {
     } catch { /* silent */ }
   }
 
+  // ---- delete confirmation ----
+
+  function confirmDelete(displayName: string, onConfirm: () => void) {
+    setPendingDelete({ label: displayName, onConfirm });
+  }
+
   // ---- upload insert ----
 
   const handleUploadInsert = useCallback((files: FileList | null) => {
@@ -1168,6 +1224,13 @@ function RushesViewer({ projectId }: { projectId: string }) {
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground overflow-hidden">
+      {pendingDelete && (
+        <ConfirmDeleteDialog
+          itemName={pendingDelete.label}
+          onConfirm={() => { pendingDelete.onConfirm(); setPendingDelete(null); }}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
       <AppHeader />
 
       {/* Toolbar */}
@@ -1695,7 +1758,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
                   label={labels[clip.key] || clip.filename}
                   active={currentClip?.key === clip.key}
                   onClick={() => playClip(clip)}
-                  onDelete={() => handleDeleteClip(clip)}
+                  onDelete={() => confirmDelete(labels[clip.key] || clip.filename, () => handleDeleteClip(clip))}
                   onRename={(name) => handleRenameAsset(clip.key, name)}
                 />
               ))}
@@ -1715,7 +1778,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
                   select={sel}
                   active={currentSelect?.id === sel.id}
                   onClick={() => playSelect(sel)}
-                  onDelete={() => handleDeleteSelect(sel.id)}
+                  onDelete={() => confirmDelete(sel.label || sel.source_filename, () => handleDeleteSelect(sel.id))}
                   onRename={(name) => handleRenameSelect(sel.id, name)}
                   sourceUrl={clipUrlMap.get(sel.source_key)}
                 />
@@ -1738,7 +1801,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
                   label={labels[ins.key] || ins.filename}
                   active={currentInsert?.key === ins.key}
                   onClick={() => playInsert(ins)}
-                  onDelete={() => handleDeleteInsert(ins)}
+                  onDelete={() => confirmDelete(labels[ins.key] || ins.filename, () => handleDeleteInsert(ins))}
                   onRename={(name) => handleRenameAsset(ins.key, name)}
                 />
               ))}
@@ -1763,7 +1826,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
                   item={s}
                   label={labels[s.key] || s.filename}
                   icon={<Music className="w-4 h-4" />}
-                  onDelete={() => handleDeleteSound(s)}
+                  onDelete={() => confirmDelete(labels[s.key] || s.filename, () => handleDeleteSound(s))}
                   onRename={(name) => handleRenameAsset(s.key, name)}
                 />
               ))}
@@ -1787,7 +1850,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
                   item={e}
                   label={labels[e.key] || e.filename}
                   icon={<Zap className="w-4 h-4" />}
-                  onDelete={() => handleDeleteEffects(e)}
+                  onDelete={() => confirmDelete(labels[e.key] || e.filename, () => handleDeleteEffects(e))}
                   onRename={(name) => handleRenameAsset(e.key, name)}
                 />
               ))}
@@ -1810,7 +1873,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
                   key={b.key}
                   item={b}
                   label={labels[b.key] || b.filename}
-                  onDelete={() => handleDeleteBackground(b)}
+                  onDelete={() => confirmDelete(labels[b.key] || b.filename, () => handleDeleteBackground(b))}
                   onRename={(name) => handleRenameAsset(b.key, name)}
                 />
               ))}

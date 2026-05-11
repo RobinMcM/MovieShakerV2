@@ -549,6 +549,7 @@ def rushes_list(
         b["url"] = storage_module.generate_rushes_url(b["key"], expires_seconds=7200) or ""
 
     audio_peaks = storage_module.read_audio_peaks(user_id, project_id)
+    labels = storage_module.read_asset_labels(user_id, project_id)
 
     return {
         "clips": clips,
@@ -558,7 +559,50 @@ def rushes_list(
         "effects": effects,
         "backgrounds": backgrounds,
         "audio_peaks": audio_peaks,
+        "labels": labels,
     }
+
+
+class AssetLabelsBody(BaseModel):
+    labels: dict[str, str]
+
+
+@router.put("/projects/{project_id}/rushes/labels")
+def rushes_save_labels(
+    project_id: str,
+    body: AssetLabelsBody,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    """Persist the display-label map for all file-based assets."""
+    user_id = session.get_user_id()
+    _ensure_project_member(db, project_id, user_id)
+    storage_module.write_asset_labels(user_id, project_id, body.labels)
+    return {"success": True}
+
+
+class SelectLabelBody(BaseModel):
+    label: str
+
+
+@router.patch("/projects/{project_id}/rushes/selects/{select_id}")
+def rushes_update_select_label(
+    project_id: str,
+    select_id: str,
+    body: SelectLabelBody,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    """Rename a saved select."""
+    user_id = session.get_user_id()
+    _ensure_project_member(db, project_id, user_id)
+    selects = storage_module.read_selects(user_id, project_id)
+    for sel in selects:
+        if sel["id"] == select_id:
+            sel["label"] = body.label.strip() or sel["label"]
+            storage_module.write_selects(user_id, project_id, selects)
+            return {"success": True}
+    raise HTTPException(status_code=404, detail="Select not found")
 
 
 @router.post("/projects/{project_id}/rushes/selects")

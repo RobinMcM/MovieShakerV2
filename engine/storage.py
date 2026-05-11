@@ -672,6 +672,43 @@ def write_timeline(user_id: str, project_id: str, timeline: dict) -> None:
     path.write_bytes(body)
 
 
+def asset_labels_key(user_id: str, project_id: str) -> str:
+    return f"{user_id}/{project_id}/asset_labels.json"
+
+
+def read_asset_labels(user_id: str, project_id: str) -> dict:
+    key = asset_labels_key(user_id, project_id)
+    if uses_spaces():
+        try:
+            client = _spaces_client()
+            resp = client.get_object(Bucket=DO_SPACES_BUCKET, Key=key)
+            return json.loads(resp["Body"].read())
+        except Exception:
+            return {}
+    path = STORAGE_ROOT / key
+    if not path.is_file():
+        return {}
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return {}
+
+
+def write_asset_labels(user_id: str, project_id: str, labels: dict) -> None:
+    key = asset_labels_key(user_id, project_id)
+    body = json.dumps(labels, indent=2).encode()
+    if uses_spaces():
+        client = _spaces_client()
+        client.put_object(
+            Bucket=DO_SPACES_BUCKET, Key=key,
+            Body=body, ContentType="application/json",
+        )
+        return
+    path = STORAGE_ROOT / key
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(body)
+
+
 def audio_peaks_key(user_id: str, project_id: str) -> str:
     return f"{user_id}/{project_id}/rushes/audio_peaks.json"
 

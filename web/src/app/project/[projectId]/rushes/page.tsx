@@ -13,6 +13,7 @@ import {
   MapPin,
   Music,
   Pause,
+  Pencil,
   Play,
   Scissors,
   Trash2,
@@ -45,6 +46,69 @@ interface SelectMeta {
   duration: number;
   created_at: string;
   source_url?: string;
+}
+
+// ---------------------------------------------------------------------------
+// InlineRename — shared inline-edit name field used by all cards
+// ---------------------------------------------------------------------------
+
+function InlineRename({
+  name,
+  onSave,
+}: {
+  name: string;
+  onSave: (newName: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(name);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function startEdit(e: React.MouseEvent) {
+    e.stopPropagation();
+    setValue(name);
+    setEditing(true);
+    setTimeout(() => { inputRef.current?.select(); }, 0);
+  }
+
+  function commit() {
+    const trimmed = value.trim();
+    if (trimmed && trimmed !== name) onSave(trimmed);
+    setEditing(false);
+  }
+
+  function handleKey(e: React.KeyboardEvent) {
+    if (e.key === "Enter") commit();
+    if (e.key === "Escape") setEditing(false);
+    e.stopPropagation();
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        autoFocus
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={handleKey}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full text-xs bg-background border border-primary rounded px-1 py-0 leading-tight focus:outline-none"
+      />
+    );
+  }
+
+  return (
+    <span className="group/rename flex items-center gap-0.5 min-w-0">
+      <span className="truncate text-xs text-foreground leading-tight">{name}</span>
+      <button
+        onClick={startEdit}
+        className="flex-shrink-0 opacity-0 group-hover/rename:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+        title="Rename"
+      >
+        <Pencil className="w-2.5 h-2.5" />
+      </button>
+    </span>
+  );
 }
 
 interface InsertMeta {
@@ -115,12 +179,14 @@ function ClipThumbnail({ url, seekTo }: { url: string; seekTo?: number }) {
 
 interface ClipCardProps {
   clip: ClipMeta;
+  label: string;
   active: boolean;
   onClick: () => void;
   onDelete: () => void;
+  onRename: (name: string) => void;
 }
 
-function ClipCard({ clip, active, onClick, onDelete }: ClipCardProps) {
+function ClipCard({ clip, label, active, onClick, onDelete, onRename }: ClipCardProps) {
   return (
     <div className={`
       relative flex-shrink-0 w-44 rounded-lg overflow-hidden text-left transition-all border-2
@@ -142,7 +208,7 @@ function ClipCard({ clip, active, onClick, onDelete }: ClipCardProps) {
           </span>
         </div>
         <div className="px-2 pt-1 pb-1.5 bg-card">
-          <p className="text-xs text-foreground truncate leading-tight">{clip.filename}</p>
+          <InlineRename name={label} onSave={onRename} />
         </div>
       </button>
       <button
@@ -165,10 +231,11 @@ interface SelectCardProps {
   active: boolean;
   onClick: () => void;
   onDelete: () => void;
+  onRename: (name: string) => void;
   sourceUrl?: string;
 }
 
-function SelectCard({ select, active, onClick, onDelete, sourceUrl }: SelectCardProps) {
+function SelectCard({ select, active, onClick, onDelete, onRename, sourceUrl }: SelectCardProps) {
   return (
     <div className={`
       relative flex-shrink-0 w-44 rounded-lg overflow-hidden text-left transition-all border-2
@@ -194,7 +261,7 @@ function SelectCard({ select, active, onClick, onDelete, sourceUrl }: SelectCard
           </span>
         </div>
         <div className="px-2 pt-1 pb-1.5 bg-card text-left">
-          <p className="text-xs text-foreground truncate leading-tight">{select.source_filename}</p>
+          <InlineRename name={select.label || select.source_filename} onSave={onRename} />
           <p className="text-[10px] text-muted-foreground font-mono">
             {formatTimecode(select.in_time)} → {formatTimecode(select.out_time)}
           </p>
@@ -217,12 +284,14 @@ function SelectCard({ select, active, onClick, onDelete, sourceUrl }: SelectCard
 
 interface InsertCardProps {
   insert: InsertMeta;
+  label: string;
   active: boolean;
   onClick: () => void;
   onDelete: () => void;
+  onRename: (name: string) => void;
 }
 
-function InsertCard({ insert, active, onClick, onDelete }: InsertCardProps) {
+function InsertCard({ insert, label, active, onClick, onDelete, onRename }: InsertCardProps) {
   return (
     <div className={`
       relative flex-shrink-0 w-44 rounded-lg overflow-hidden text-left transition-all border-2
@@ -243,7 +312,7 @@ function InsertCard({ insert, active, onClick, onDelete }: InsertCardProps) {
           </span>
         </div>
         <div className="px-2 pt-1 pb-1.5 bg-card">
-          <p className="text-xs text-foreground truncate leading-tight">{insert.filename}</p>
+          <InlineRename name={label} onSave={onRename} />
         </div>
       </button>
       <button
@@ -263,16 +332,18 @@ function InsertCard({ insert, active, onClick, onDelete }: InsertCardProps) {
 
 interface AudioCardProps {
   item: SoundMeta | EffectsMeta;
+  label: string;
   icon: React.ReactNode;
   onDelete: () => void;
+  onRename: (name: string) => void;
 }
 
-function AudioCard({ item, icon, onDelete }: AudioCardProps) {
+function AudioCard({ item, label, icon, onDelete, onRename }: AudioCardProps) {
   return (
     <div className="relative flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-left">
       <div className="flex-shrink-0 text-muted-foreground">{icon}</div>
       <div className="min-w-0 flex-1">
-        <p className="text-xs text-foreground truncate leading-tight">{item.filename}</p>
+        <InlineRename name={label} onSave={onRename} />
         <p className="text-[10px] text-muted-foreground">{formatSize(item.size)}</p>
       </div>
       <button
@@ -292,10 +363,12 @@ function AudioCard({ item, icon, onDelete }: AudioCardProps) {
 
 interface BackgroundCardProps {
   item: BackgroundsMeta;
+  label: string;
   onDelete: () => void;
+  onRename: (name: string) => void;
 }
 
-function BackgroundCard({ item, onDelete }: BackgroundCardProps) {
+function BackgroundCard({ item, label, onDelete, onRename }: BackgroundCardProps) {
   const ext = item.filename.split(".").pop()?.toLowerCase() ?? "";
   const isImage = ["jpg", "jpeg", "png", "webp"].includes(ext);
   return (
@@ -312,7 +385,7 @@ function BackgroundCard({ item, onDelete }: BackgroundCardProps) {
         </span>
       </div>
       <div className="px-2 pt-1 pb-1.5 bg-card">
-        <p className="text-xs text-foreground truncate leading-tight">{item.filename}</p>
+        <InlineRename name={label} onSave={onRename} />
       </div>
       <button
         onClick={onDelete}
@@ -389,6 +462,10 @@ function RushesViewer({ projectId }: { projectId: string }) {
   // stored peaks keyed by clip filename — "processing" while background task runs
   const [audioPeaks, setAudioPeaks] = useState<Record<string, number[] | "processing">>({});
 
+  // asset labels (display-name overrides keyed by storage key or select id)
+  const [labels, setLabels] = useState<Record<string, string>>({});
+  const labelsSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // save select state
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -421,6 +498,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
         effects: EffectsMeta[];
         backgrounds: BackgroundsMeta[];
         audio_peaks?: Record<string, number[] | "processing">;
+        labels?: Record<string, string>;
       };
       setClips(data.clips);
       setSelects(data.selects || []);
@@ -429,6 +507,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
       setEffects(data.effects || []);
       setBackgrounds(data.backgrounds || []);
       setAudioPeaks(data.audio_peaks || {});
+      setLabels(data.labels || {});
     } catch {
       setClips([]);
       setSelects([]);
@@ -790,6 +869,37 @@ function RushesViewer({ projectId }: { projectId: string }) {
         method: "DELETE", credentials: "include",
       });
       setBackgrounds((prev) => prev.filter((b) => b.key !== item.key));
+    } catch { /* silent */ }
+  }
+
+  // ---- rename handlers ----
+
+  // File-based assets (clips, inserts, sound, effects, backgrounds) use asset_labels.json.
+  // Saves immediately to local state and debounces the API write by 800ms.
+  function handleRenameAsset(key: string, newLabel: string) {
+    const next = { ...labels, [key]: newLabel };
+    setLabels(next);
+    if (labelsSaveTimerRef.current) clearTimeout(labelsSaveTimerRef.current);
+    labelsSaveTimerRef.current = setTimeout(() => {
+      fetch(`${API_URL}/api/documentary/projects/${projectId}/rushes/labels`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ labels: next }),
+      }).catch(() => {});
+    }, 800);
+  }
+
+  // Selects store their label in selects.json via PATCH.
+  async function handleRenameSelect(selectId: string, newLabel: string) {
+    setSelects((prev) => prev.map((s) => s.id === selectId ? { ...s, label: newLabel } : s));
+    try {
+      await fetch(`${API_URL}/api/documentary/projects/${projectId}/rushes/selects/${selectId}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: newLabel }),
+      });
     } catch { /* silent */ }
   }
 
@@ -1582,9 +1692,11 @@ function RushesViewer({ projectId }: { projectId: string }) {
                 <ClipCard
                   key={clip.key}
                   clip={clip}
+                  label={labels[clip.key] || clip.filename}
                   active={currentClip?.key === clip.key}
                   onClick={() => playClip(clip)}
                   onDelete={() => handleDeleteClip(clip)}
+                  onRename={(name) => handleRenameAsset(clip.key, name)}
                 />
               ))}
               {clips.length === 0 && !clipsLoading && (
@@ -1604,6 +1716,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
                   active={currentSelect?.id === sel.id}
                   onClick={() => playSelect(sel)}
                   onDelete={() => handleDeleteSelect(sel.id)}
+                  onRename={(name) => handleRenameSelect(sel.id, name)}
                   sourceUrl={clipUrlMap.get(sel.source_key)}
                 />
               ))}
@@ -1622,9 +1735,11 @@ function RushesViewer({ projectId }: { projectId: string }) {
                 <InsertCard
                   key={ins.key}
                   insert={ins}
+                  label={labels[ins.key] || ins.filename}
                   active={currentInsert?.key === ins.key}
                   onClick={() => playInsert(ins)}
                   onDelete={() => handleDeleteInsert(ins)}
+                  onRename={(name) => handleRenameAsset(ins.key, name)}
                 />
               ))}
               {inserts.length === 0 && (
@@ -1646,8 +1761,10 @@ function RushesViewer({ projectId }: { projectId: string }) {
                 <AudioCard
                   key={s.key}
                   item={s}
+                  label={labels[s.key] || s.filename}
                   icon={<Music className="w-4 h-4" />}
                   onDelete={() => handleDeleteSound(s)}
+                  onRename={(name) => handleRenameAsset(s.key, name)}
                 />
               ))}
               {sounds.length === 0 && !soundUploading && (
@@ -1668,8 +1785,10 @@ function RushesViewer({ projectId }: { projectId: string }) {
                 <AudioCard
                   key={e.key}
                   item={e}
+                  label={labels[e.key] || e.filename}
                   icon={<Zap className="w-4 h-4" />}
                   onDelete={() => handleDeleteEffects(e)}
+                  onRename={(name) => handleRenameAsset(e.key, name)}
                 />
               ))}
               {effects.length === 0 && !effectsUploading && (
@@ -1690,7 +1809,9 @@ function RushesViewer({ projectId }: { projectId: string }) {
                 <BackgroundCard
                   key={b.key}
                   item={b}
+                  label={labels[b.key] || b.filename}
                   onDelete={() => handleDeleteBackground(b)}
+                  onRename={(name) => handleRenameAsset(b.key, name)}
                 />
               ))}
               {backgrounds.length === 0 && !backgroundsUploading && (

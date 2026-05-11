@@ -8,6 +8,7 @@ import {
   List,
   MessageCircle,
   Palette,
+  Scissors,
   Settings,
   Ticket,
   Users,
@@ -77,6 +78,12 @@ export const PROJECT_TOOL_NAV: ProjectNavItem[] = [
     label: "Studio",
     href: (projectId) => `/project/${projectId}/rushes`,
     icon: Film,
+  },
+  {
+    id: "editor",
+    label: "Editor",
+    href: (projectId) => `/project/${projectId}/editor`,
+    icon: Scissors,
   },
 ];
 

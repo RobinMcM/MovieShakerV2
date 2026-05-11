@@ -634,6 +634,44 @@ def write_selects(user_id: str, project_id: str, selects: list[dict]) -> None:
     path.write_bytes(body)
 
 
+def timeline_key(user_id: str, project_id: str) -> str:
+    return f"{user_id}/{project_id}/timeline.json"
+
+
+def read_timeline(user_id: str, project_id: str) -> dict:
+    key = timeline_key(user_id, project_id)
+    empty: dict = {"video_track": [], "audio_track": []}
+    if uses_spaces():
+        try:
+            client = _spaces_client()
+            resp = client.get_object(Bucket=DO_SPACES_BUCKET, Key=key)
+            return json.loads(resp["Body"].read())
+        except Exception:
+            return empty
+    path = STORAGE_ROOT / key
+    if not path.is_file():
+        return empty
+    try:
+        return json.loads(path.read_text())
+    except Exception:
+        return empty
+
+
+def write_timeline(user_id: str, project_id: str, timeline: dict) -> None:
+    key = timeline_key(user_id, project_id)
+    body = json.dumps(timeline, indent=2).encode()
+    if uses_spaces():
+        client = _spaces_client()
+        client.put_object(
+            Bucket=DO_SPACES_BUCKET, Key=key,
+            Body=body, ContentType="application/json",
+        )
+        return
+    path = STORAGE_ROOT / key
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(body)
+
+
 def audio_peaks_key(user_id: str, project_id: str) -> str:
     return f"{user_id}/{project_id}/rushes/audio_peaks.json"
 

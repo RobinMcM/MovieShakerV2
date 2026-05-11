@@ -57,6 +57,7 @@ interface RushesData {
   sounds: AudioMeta[];
   effects: AudioMeta[];
   backgrounds: InsertMeta[];
+  labels?: Record<string, string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -215,6 +216,7 @@ function TimelineBlock({
 function EditorView({ projectId }: { projectId: string }) {
   const [tab, setTab] = useState<"design" | "build">("design");
   const [rushes, setRushes] = useState<RushesData | null>(null);
+  const [labels, setLabels] = useState<Record<string, string>>({});
   const [timeline, setTimeline] = useState<Timeline>({ video_track: [], audio_track: [] });
   const [loading, setLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -247,7 +249,8 @@ function EditorView({ projectId }: { projectId: string }) {
           ? await timelineRes.json()
           : { video_track: [], audio_track: [] };
 
-        // Enrich timeline items with current presigned URLs from rushes data
+        // Enrich timeline items with current presigned URLs and user labels from rushes data
+        const labelMap = rushesData.labels ?? {};
         const urlMap = new Map<string, string>();
         for (const c of rushesData.clips) urlMap.set(c.key, c.url);
         for (const s of rushesData.selects) { if (s.source_key) urlMap.set(s.source_key, s.source_url ?? ""); }
@@ -257,12 +260,18 @@ function EditorView({ projectId }: { projectId: string }) {
         for (const b of rushesData.backgrounds) urlMap.set(b.key, b.url);
 
         const enrich = (items: TimelineItem[]) =>
-          items.map((item) => ({ ...item, url: urlMap.get(item.key) ?? item.url }));
+          items.map((item) => ({
+            ...item,
+            url: urlMap.get(item.key) ?? item.url,
+            // Refresh label from current user-defined names (selects keep their own label)
+            label: item.type === "select" ? item.label : (labelMap[item.key] || item.label),
+          }));
 
         const vt = enrich(timelineData.video_track ?? []);
         const at = enrich(timelineData.audio_track ?? []);
 
         setRushes(rushesData);
+        setLabels(labelMap);
         setTimeline({ video_track: vt, audio_track: at });
         // Default insert points to end (append mode)
         setVideoInsertPoint(vt.length);
@@ -408,18 +417,18 @@ function EditorView({ projectId }: { projectId: string }) {
     return { id: makeId(), type: "select", key: s.source_key, filename: s.source_filename, label: s.label, duration: s.duration, in_time: s.in_time, out_time: s.out_time, url: s.source_url };
   }
   function fromClip(c: ClipMeta): TimelineItem {
-    return { id: makeId(), type: "clip", key: c.key, filename: c.filename, label: c.filename, duration: 0, url: c.url };
+    return { id: makeId(), type: "clip", key: c.key, filename: c.filename, label: labels[c.key] || c.filename, duration: 0, url: c.url };
   }
   function fromInsert(i: InsertMeta): TimelineItem {
-    return { id: makeId(), type: "insert", key: i.key, filename: i.filename, label: i.filename, duration: 5, url: i.url };
+    return { id: makeId(), type: "insert", key: i.key, filename: i.filename, label: labels[i.key] || i.filename, duration: 5, url: i.url };
   }
   function fromAudio(a: AudioMeta, type: "sound" | "effects"): TimelineItem {
-    return { id: makeId(), type, key: a.key, filename: a.filename, label: a.filename, duration: 0, url: a.url };
+    return { id: makeId(), type, key: a.key, filename: a.filename, label: labels[a.key] || a.filename, duration: 0, url: a.url };
   }
   function fromBackground(b: InsertMeta): TimelineItem {
     const ext = b.filename.split(".").pop()?.toLowerCase() ?? "";
     const isImg = ["jpg", "jpeg", "png", "webp"].includes(ext);
-    return { id: makeId(), type: "backgrounds", key: b.key, filename: b.filename, label: b.filename, duration: isImg ? 5 : 0, url: b.url };
+    return { id: makeId(), type: "backgrounds", key: b.key, filename: b.filename, label: labels[b.key] || b.filename, duration: isImg ? 5 : 0, url: b.url };
   }
 
   // ---- track renderer — interleaved blocks + gap markers ----
@@ -526,7 +535,7 @@ function EditorView({ projectId }: { projectId: string }) {
                   </h3>
                   <div className="space-y-1.5">
                     {rushes.clips.map((c) => (
-                      <AssetRow key={c.key} label={c.filename} sublabel={formatSize(c.size)} badge="video" onAdd={() => addToTimeline(fromClip(c))} />
+                      <AssetRow key={c.key} label={labels[c.key] || c.filename} sublabel={formatSize(c.size)} badge="video" onAdd={() => addToTimeline(fromClip(c))} />
                     ))}
                   </div>
                 </section>
@@ -539,7 +548,7 @@ function EditorView({ projectId }: { projectId: string }) {
                   </h3>
                   <div className="space-y-1.5">
                     {rushes.inserts.map((i) => (
-                      <AssetRow key={i.key} label={i.filename} sublabel="5s default" badge="video" onAdd={() => addToTimeline(fromInsert(i))} />
+                      <AssetRow key={i.key} label={labels[i.key] || i.filename} sublabel="5s default" badge="video" onAdd={() => addToTimeline(fromInsert(i))} />
                     ))}
                   </div>
                 </section>
@@ -552,7 +561,7 @@ function EditorView({ projectId }: { projectId: string }) {
                   </h3>
                   <div className="space-y-1.5">
                     {rushes.backgrounds.map((b) => (
-                      <AssetRow key={b.key} label={b.filename} sublabel={formatSize(b.size)} badge="video" onAdd={() => addToTimeline(fromBackground(b))} />
+                      <AssetRow key={b.key} label={labels[b.key] || b.filename} sublabel={formatSize(b.size)} badge="video" onAdd={() => addToTimeline(fromBackground(b))} />
                     ))}
                   </div>
                 </section>
@@ -565,7 +574,7 @@ function EditorView({ projectId }: { projectId: string }) {
                   </h3>
                   <div className="space-y-1.5">
                     {rushes.sounds.map((s) => (
-                      <AssetRow key={s.key} label={s.filename} sublabel={formatSize(s.size)} badge="audio" onAdd={() => addToTimeline(fromAudio(s, "sound"))} />
+                      <AssetRow key={s.key} label={labels[s.key] || s.filename} sublabel={formatSize(s.size)} badge="audio" onAdd={() => addToTimeline(fromAudio(s, "sound"))} />
                     ))}
                   </div>
                 </section>
@@ -578,7 +587,7 @@ function EditorView({ projectId }: { projectId: string }) {
                   </h3>
                   <div className="space-y-1.5">
                     {rushes.effects.map((e) => (
-                      <AssetRow key={e.key} label={e.filename} sublabel={formatSize(e.size)} badge="audio" onAdd={() => addToTimeline(fromAudio(e, "effects"))} />
+                      <AssetRow key={e.key} label={labels[e.key] || e.filename} sublabel={formatSize(e.size)} badge="audio" onAdd={() => addToTimeline(fromAudio(e, "effects"))} />
                     ))}
                   </div>
                 </section>

@@ -509,6 +509,9 @@ function RushesViewer({ projectId }: { projectId: string }) {
   // stored peaks keyed by clip filename — "processing" while background task runs
   const [audioPeaks, setAudioPeaks] = useState<Record<string, number[] | "processing">>({});
 
+  // full duration of the source video currently loaded (needed to slice select peaks)
+  const [sourceVideoDuration, setSourceVideoDuration] = useState<number>(0);
+
   // asset labels (display-name overrides keyed by storage key or select id)
   const [labels, setLabels] = useState<Record<string, string>>({});
   const labelsSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -582,6 +585,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
     setSectionStep(0);
     setPlayheadTime(0);
     setVideoDuration(0);
+    setSourceVideoDuration(0);
     setSaveError(null);
     setVideoError(null);
     setIsPlaying(false);
@@ -589,19 +593,28 @@ function RushesViewer({ projectId }: { projectId: string }) {
     vid.load();
   }, [videoId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // When the active clip changes, hydrate waveformSamples from persisted peaks if available.
+  // Hydrate waveformSamples from persisted peaks. For selects, slice to the in/out portion.
   useEffect(() => {
-    const entry = currentClip ? audioPeaks[currentClip.filename] : undefined;
+    const filename = currentClip?.filename ?? currentSelect?.source_filename;
+    const entry = filename ? audioPeaks[filename] : undefined;
     if (Array.isArray(entry)) {
-      setWaveformSamples(new Float32Array(entry));
+      if (currentSelect && sourceVideoDuration > 0) {
+        const total = entry.length;
+        const startIdx = Math.floor((currentSelect.in_time / sourceVideoDuration) * total);
+        const endIdx = Math.ceil((currentSelect.out_time / sourceVideoDuration) * total);
+        setWaveformSamples(new Float32Array(entry.slice(startIdx, endIdx)));
+      } else {
+        setWaveformSamples(new Float32Array(entry));
+      }
     } else {
       setWaveformSamples(null);
     }
-  }, [currentClip?.filename, audioPeaks]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentClip?.filename, currentSelect?.id, sourceVideoDuration, audioPeaks]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Poll every 5 seconds while the current clip's peaks are still processing.
+  // Poll every 5 seconds while the current item's peaks are still processing.
   useEffect(() => {
-    const entry = currentClip ? audioPeaks[currentClip.filename] : undefined;
+    const filename = currentClip?.filename ?? currentSelect?.source_filename;
+    const entry = filename ? audioPeaks[filename] : undefined;
     if (entry !== "processing") return;
     const interval = setInterval(async () => {
       try {
@@ -614,7 +627,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
       } catch { /* ignore */ }
     }, 5000);
     return () => clearInterval(interval);
-  }, [currentClip?.filename, audioPeaks, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentClip?.filename, currentSelect?.source_filename, audioPeaks, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- play actions ----
 
@@ -1126,7 +1139,8 @@ function RushesViewer({ projectId }: { projectId: string }) {
   const playheadPct = videoDuration > 0 ? (playheadTime / videoDuration) * 100 : 0;
 
   // Derived audio state from peaks map
-  const currentPeaksEntry = currentClip ? audioPeaks[currentClip.filename] : undefined;
+  const peaksFilename = currentClip?.filename ?? currentSelect?.source_filename;
+  const currentPeaksEntry = peaksFilename ? audioPeaks[peaksFilename] : undefined;
   const isAudioProcessing = currentPeaksEntry === "processing";
 
   const inPct = videoDuration > 0 && inPoint !== null ? (inPoint / videoDuration) * 100 : 0;
@@ -1355,6 +1369,7 @@ function RushesViewer({ projectId }: { projectId: string }) {
               onLoadedMetadata={() => {
                 const vid = videoRef.current;
                 if (!vid) return;
+                setSourceVideoDuration(vid.duration ?? 0);
                 if (currentSelect) {
                   setVideoDuration(currentSelect.out_time - currentSelect.in_time);
                   vid.currentTime = currentSelect.in_time;

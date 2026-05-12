@@ -980,6 +980,7 @@ function EditorView({ projectId }: { projectId: string }) {
 
               {/* ── BUILD TAB ── */}
               {tab === "build" && (
+                <div className="flex-1 flex min-h-0">
                 <div className="flex-1 flex flex-col min-h-0">
 
               {/* Preview pane — takes all available vertical space */}
@@ -1137,6 +1138,21 @@ function EditorView({ projectId }: { projectId: string }) {
                 ))}
                 <span className="ml-auto">Click clip to set insert point · Click gap ▌ to set insert point · Drag ◼ to set play start · Drag clip to reorder</span>
               </div>
+
+              </div>
+
+                <ArtifactsPanel
+                  rushes={rushes}
+                  labels={labels}
+                  onAdd={addToTimeline}
+                  onRefresh={() => setRushesVersion((v) => v + 1)}
+                  activeCategory={artifactCategory}
+                  onCategoryChange={setArtifactCategory}
+                  onPreview={setArtifactPreview}
+                  onRenameAsset={handleRenameAsset}
+                  onRenameSelect={handleRenameSelect}
+                  onUploadFiles={handleUploadFiles}
+                />
 
               </div>
               )}

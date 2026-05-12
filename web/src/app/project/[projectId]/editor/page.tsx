@@ -198,14 +198,14 @@ function ArtifactsPanel({
     );
   }
 
-  const categories: { id: ArtifactCategory; label: string; count: number }[] = ([
+  const categories = [
     { id: "selects"     as const, label: "Selects",     count: rushes.selects.length },
     { id: "clips"       as const, label: "Clips",       count: rushes.clips.length },
     { id: "inserts"     as const, label: "Inserts",     count: rushes.inserts.length },
     { id: "backgrounds" as const, label: "Backgrounds", count: rushes.backgrounds.length },
     { id: "sound"       as const, label: "Sound",       count: rushes.sounds.length },
     { id: "effects"     as const, label: "Effects",     count: rushes.effects.length },
-  ]).filter((c) => c.count > 0);
+  ].filter((c) => c.count > 0);
 
   const hasAssets = categories.length > 0;
 

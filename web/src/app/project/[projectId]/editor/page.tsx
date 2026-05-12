@@ -953,11 +953,11 @@ function EditorView({ projectId }: { projectId: string }) {
                 <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
 
               {/* Preview pane — takes all available vertical space */}
-              <div className="flex-1 min-h-0 bg-black flex items-center justify-center overflow-hidden">
+              <div className="flex-1 min-h-0 bg-background flex items-center justify-center overflow-hidden">
                 {!previewItem ? (
                   <div className="text-center space-y-2 px-4">
-                    <Play className="w-10 h-10 text-white/20 mx-auto" />
-                    <p className="text-sm text-white/40">Add clips to the timeline to preview</p>
+                    <Play className="w-10 h-10 text-muted-foreground/30 mx-auto" />
+                    <p className="text-sm text-muted-foreground">Add clips to the timeline to preview</p>
                   </div>
                 ) : isImageItem(previewItem) ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -991,43 +991,44 @@ function EditorView({ projectId }: { projectId: string }) {
                   />
                 ) : (
                   <div className="text-center px-4">
-                    <Film className="w-8 h-8 text-white/20 mx-auto mb-2" />
-                    <p className="text-xs text-white/30">Reload to get a fresh preview link</p>
+                    <Film className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                    <p className="text-xs text-muted-foreground">Reload to get a fresh preview link</p>
                   </div>
                 )}
               </div>
 
               {/* Transport bar */}
-              <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2 border-t border-b border-border bg-card">
-                <button
-                  onClick={() => { handlePause(); setPlayingVideoIdx(0); }}
-                  disabled={timeline.video_track.length === 0}
-                  className="p-1 rounded hover:bg-muted text-foreground disabled:text-muted-foreground/40 transition-colors"
-                  title="Skip to start"
-                >
-                  <SkipBack className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={isPlaying ? handlePause : handlePlay}
-                  disabled={timeline.video_track.length === 0}
-                  className="p-1.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
-                >
-                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                </button>
-                <span className="text-xs text-muted-foreground">
-                  {timeline.video_track.length > 0
-                    ? `clip ${playingVideoIdx + 1} / ${timeline.video_track.length}`
-                    : "no clips"}
-                </span>
-                {previewItem && (
-                  <span className="text-xs text-foreground/70 truncate max-w-xs">{previewItem.label}</span>
-                )}
-                <span className="ml-auto text-xs text-muted-foreground">
-                  {formatDuration(Math.max(totalVideoTime, totalAudioTime))} total
-                </span>
-                <Button variant="outline" size="sm" className="text-xs" onClick={() => setTab("design")}>
-                  ← Design
-                </Button>
+              <div className="flex-shrink-0 bg-card border-t border-border px-4 py-2">
+                <div className="grid grid-cols-3 items-center gap-2">
+                  <div className="flex items-center gap-2 text-xs min-w-0">
+                    {previewItem && <span className="text-foreground truncate">{previewItem.label}</span>}
+                  </div>
+                  <div className="flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => { handlePause(); setPlayingVideoIdx(0); }}
+                      disabled={timeline.video_track.length === 0}
+                      className="p-1 rounded border border-border hover:bg-accent text-foreground disabled:text-muted-foreground/40 transition-colors"
+                      title="Skip to start"
+                    >
+                      <SkipBack className="w-3.5 h-3.5" />
+                    </button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={isPlaying ? handlePause : handlePlay}
+                      disabled={timeline.video_track.length === 0}
+                      className="gap-1.5 h-7 text-xs border-border text-foreground hover:bg-accent"
+                    >
+                      {isPlaying ? <><Pause className="w-3.5 h-3.5" />Pause</> : <><Play className="w-3.5 h-3.5" />Play</>}
+                    </Button>
+                  </div>
+                  <div className="flex items-center justify-end gap-2 text-xs">
+                    <span className="text-muted-foreground">{formatDuration(Math.max(totalVideoTime, totalAudioTime))} total</span>
+                    <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setTab("design")}>
+                      ← Design
+                    </Button>
+                  </div>
+                </div>
               </div>
 
               {/* Audio track */}
@@ -1039,7 +1040,7 @@ function EditorView({ projectId }: { projectId: string }) {
                     {timeline.audio_track.length} clips · {formatDuration(totalAudioTime)}
                   </span>
                 </div>
-                <div className="bg-muted/30 border border-border rounded-lg overflow-x-auto p-2 h-[72px]">
+                <div className="bg-muted/30 border border-border rounded-lg overflow-x-auto p-2 h-8">
                   <div className="flex h-full items-stretch min-w-max">
                     {timeline.audio_track.length === 0 ? (
                       <p className="text-xs text-muted-foreground self-center mx-auto">
@@ -1061,7 +1062,7 @@ function EditorView({ projectId }: { projectId: string }) {
                     {timeline.video_track.length} clips · {formatDuration(totalVideoTime)}
                   </span>
                 </div>
-                <div ref={trackScrollRef} className="bg-muted/30 border border-border rounded-lg overflow-x-auto p-2 h-[88px]">
+                <div ref={trackScrollRef} className="bg-muted/30 border border-border rounded-lg overflow-x-auto p-2 h-8">
                   {timeline.video_track.length === 0 ? (
                     <div className="flex h-full items-center justify-center">
                       <p className="text-xs text-muted-foreground">
@@ -1097,16 +1098,6 @@ function EditorView({ projectId }: { projectId: string }) {
                 </div>
               </div>
 
-              {/* Legend */}
-              <div className="flex-shrink-0 flex items-center gap-3 flex-wrap px-4 py-1.5 border-t border-border text-[10px] text-muted-foreground">
-                {(Object.entries(TRACK_COLORS) as [AssetType, string][]).map(([type, cls]) => (
-                  <span key={type} className="flex items-center gap-1">
-                    <span className={`w-3 h-3 rounded border ${cls} inline-block`} />
-                    {type}
-                  </span>
-                ))}
-                <span className="ml-auto">Click clip to set insert point · Click gap ▌ to set insert point · Drag ◼ to set play start · Drag clip to reorder</span>
-              </div>
 
               </div>
 

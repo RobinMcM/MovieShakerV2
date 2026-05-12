@@ -13,12 +13,14 @@ import {
   Music,
   Pause,
   Play,
+  RefreshCw,
   Scissors,
   SkipBack,
   Trash2,
   Zap,
 } from "lucide-react";
 import { API_URL } from "@/lib/api";
+import { RushesViewer } from "@/components/project/RushesViewer";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -92,6 +94,26 @@ const ASSET_TRACK: Record<AssetType, TrackType> = {
   sound: "audio", effects: "audio",
 };
 
+// Module-level factory helpers (used by ArtifactsPanel; EditorView has its own with label context)
+function makeId() { return Math.random().toString(36).slice(2, 10); }
+function fromSelectMeta(s: SelectMeta): TimelineItem {
+  return { id: makeId(), type: "select", key: s.source_key, filename: s.source_filename, label: s.label, duration: s.duration, in_time: s.in_time, out_time: s.out_time, url: s.source_url };
+}
+function fromClipMeta(c: ClipMeta): TimelineItem {
+  return { id: makeId(), type: "clip", key: c.key, filename: c.filename, label: c.filename, duration: 0, url: c.url };
+}
+function fromInsertMeta(i: InsertMeta): TimelineItem {
+  return { id: makeId(), type: "insert", key: i.key, filename: i.filename, label: i.filename, duration: 5, url: i.url };
+}
+function fromAudioMeta(a: AudioMeta, type: "sound" | "effects"): TimelineItem {
+  return { id: makeId(), type, key: a.key, filename: a.filename, label: a.filename, duration: 0, url: a.url };
+}
+function fromBackgroundMeta(b: InsertMeta): TimelineItem {
+  const ext = b.filename.split(".").pop()?.toLowerCase() ?? "";
+  const isImg = ["jpg", "jpeg", "png", "webp"].includes(ext);
+  return { id: makeId(), type: "backgrounds", key: b.key, filename: b.filename, label: b.filename, duration: isImg ? 5 : 0, url: b.url };
+}
+
 function blockWidth(duration: number): number {
   if (!duration || duration <= 0) return 100;
   return Math.max(80, Math.round(duration * 3));
@@ -161,6 +183,133 @@ function AssetRow({
 }
 
 // ---------------------------------------------------------------------------
+// ArtifactsPanel — persistent right sidebar listing assets ready to add
+// ---------------------------------------------------------------------------
+
+function ArtifactsPanel({
+  rushes, labels, onAdd, onRefresh,
+}: {
+  rushes: RushesData | null;
+  labels: Record<string, string>;
+  onAdd: (item: TimelineItem) => void;
+  onRefresh: () => void;
+}) {
+  if (!rushes) {
+    return (
+      <div className="w-72 flex-shrink-0 border-l border-border bg-card flex items-center justify-center text-xs text-muted-foreground">
+        Loading…
+      </div>
+    );
+  }
+
+  const totalAssets =
+    rushes.selects.length + rushes.clips.length + rushes.inserts.length +
+    rushes.backgrounds.length + rushes.sounds.length + rushes.effects.length;
+
+  return (
+    <div className="w-72 flex-shrink-0 border-l border-border bg-card flex flex-col">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border flex-shrink-0">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          Artifacts
+        </span>
+        <button
+          onClick={onRefresh}
+          title="Refresh assets"
+          className="text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto p-3 space-y-4">
+        {totalAssets === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-8">
+            No assets yet — upload footage in the Design tab
+          </p>
+        )}
+
+        {rushes.selects.length > 0 && (
+          <section>
+            <h3 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1">
+              <Scissors className="w-3 h-3" /> Selects ({rushes.selects.length})
+            </h3>
+            <div className="space-y-1">
+              {rushes.selects.map((s) => (
+                <AssetRow key={s.id} label={s.label} sublabel={formatDuration(s.duration)} badge="video" onAdd={() => onAdd(fromSelectMeta(s))} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {rushes.clips.length > 0 && (
+          <section>
+            <h3 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1">
+              <Film className="w-3 h-3" /> Clips ({rushes.clips.length})
+            </h3>
+            <div className="space-y-1">
+              {rushes.clips.map((c) => (
+                <AssetRow key={c.key} label={labels[c.key] || c.filename} sublabel={formatSize(c.size)} badge="video" onAdd={() => onAdd(fromClipMeta(c))} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {rushes.inserts.length > 0 && (
+          <section>
+            <h3 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1">
+              <ImageIcon className="w-3 h-3" /> Inserts ({rushes.inserts.length})
+            </h3>
+            <div className="space-y-1">
+              {rushes.inserts.map((i) => (
+                <AssetRow key={i.key} label={labels[i.key] || i.filename} sublabel="5s" badge="video" onAdd={() => onAdd(fromInsertMeta(i))} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {rushes.backgrounds.length > 0 && (
+          <section>
+            <h3 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1">
+              <Film className="w-3 h-3" /> Backgrounds ({rushes.backgrounds.length})
+            </h3>
+            <div className="space-y-1">
+              {rushes.backgrounds.map((b) => (
+                <AssetRow key={b.key} label={labels[b.key] || b.filename} sublabel={formatSize(b.size)} badge="video" onAdd={() => onAdd(fromBackgroundMeta(b))} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {rushes.sounds.length > 0 && (
+          <section>
+            <h3 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1">
+              <Music className="w-3 h-3" /> Sound ({rushes.sounds.length})
+            </h3>
+            <div className="space-y-1">
+              {rushes.sounds.map((s) => (
+                <AssetRow key={s.key} label={labels[s.key] || s.filename} sublabel={formatSize(s.size)} badge="audio" onAdd={() => onAdd(fromAudioMeta(s, "sound"))} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {rushes.effects.length > 0 && (
+          <section>
+            <h3 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 flex items-center gap-1">
+              <Zap className="w-3 h-3" /> Effects ({rushes.effects.length})
+            </h3>
+            <div className="space-y-1">
+              {rushes.effects.map((e) => (
+                <AssetRow key={e.key} label={labels[e.key] || e.filename} sublabel={formatSize(e.size)} badge="audio" onAdd={() => onAdd(fromAudioMeta(e, "effects"))} />
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // TimelineBlock — draggable block on a track
 // ---------------------------------------------------------------------------
 
@@ -224,6 +373,7 @@ function EditorView({ projectId }: { projectId: string }) {
   const [playStartIdx, setPlayStartIdx] = useState(0);
   const [videoInsertPoint, setVideoInsertPoint] = useState(0);
   const [audioInsertPoint, setAudioInsertPoint] = useState(0);
+  const [rushesVersion, setRushesVersion] = useState(0);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragSrcRef = useRef<{ track: TrackType; index: number } | null>(null);
@@ -285,6 +435,20 @@ function EditorView({ projectId }: { projectId: string }) {
     }
     load();
   }, [projectId]);
+
+  // Re-fetch rushes data only (triggered by onAssetsChanged from RushesViewer)
+  useEffect(() => {
+    if (rushesVersion === 0) return; // skip initial render — covered by main load
+    fetch(`${API_URL}/api/documentary/projects/${projectId}/rushes`, { credentials: "include" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data: RushesData | null) => {
+        if (data) {
+          setRushes(data);
+          setLabels(data.labels ?? {});
+        }
+      })
+      .catch(() => {});
+  }, [projectId, rushesVersion]);
 
   // ---- sequential playback effect ----
   // Fires when isPlaying or playingVideoIdx changes. Handles image timers and video play.
@@ -372,7 +536,6 @@ function EditorView({ projectId }: { projectId: string }) {
       setAudioInsertPoint(audioInsertPoint + 1);
     }
     updateTimeline(next);
-    setTab("build");
   }
 
   // ---- remove from timeline ----
@@ -414,8 +577,6 @@ function EditorView({ projectId }: { projectId: string }) {
   }
 
   // ---- asset → TimelineItem factories ----
-
-  function makeId() { return Math.random().toString(36).slice(2, 10); }
 
   function fromSelect(s: SelectMeta): TimelineItem {
     return { id: makeId(), type: "select", key: s.source_key, filename: s.source_filename, label: s.label, duration: s.duration, in_time: s.in_time, out_time: s.out_time, url: s.source_url };
@@ -533,35 +694,50 @@ function EditorView({ projectId }: { projectId: string }) {
     <div className="flex flex-col h-screen bg-background text-foreground">
       <AppHeader />
 
-      {/* Tab bar */}
-      <div className="flex items-center gap-0 border-b border-border px-4 flex-shrink-0">
-        {(["design", "build"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-5 py-2.5 text-sm font-medium capitalize border-b-2 transition-colors -mb-px ${
-              tab === t
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {t === "design" ? "Design" : "Build"}
-          </button>
-        ))}
-        <span className="ml-auto text-xs text-muted-foreground pr-2">
-          {timeline.video_track.length + timeline.audio_track.length} items in timeline
-        </span>
-      </div>
+      <div className="flex flex-1 min-h-0">
 
-      {loading ? (
-        <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-          Loading…
-        </div>
-      ) : (
-        <>
-          {/* ── DESIGN TAB ── */}
-          {tab === "design" && rushes && (
-            <div className="flex-1 overflow-y-auto p-4 space-y-6 max-w-2xl mx-auto w-full">
+        {/* Left column: tab bar + tab content */}
+        <div className="flex flex-col flex-1 min-w-0">
+
+          {/* Tab bar */}
+          <div className="flex items-center gap-0 border-b border-border px-4 flex-shrink-0">
+            {(["design", "build"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`px-5 py-2.5 text-sm font-medium capitalize border-b-2 transition-colors -mb-px ${
+                  tab === t
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {t === "design" ? "Design" : "Build"}
+              </button>
+            ))}
+            <span className="ml-auto text-xs text-muted-foreground pr-2">
+              {timeline.video_track.length + timeline.audio_track.length} items in timeline
+            </span>
+          </div>
+
+          {loading ? (
+            <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+              Loading…
+            </div>
+          ) : (
+            <>
+              {/* ── DESIGN TAB ── */}
+              {tab === "design" && (
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <RushesViewer
+                    projectId={projectId}
+                    onAssetsChanged={() => setRushesVersion((v) => v + 1)}
+                  />
+                </div>
+              )}
+
+              {/* ── OLD DESIGN TAB PLACEHOLDER (never shown — kept for compiler) ── */}
+              {false && rushes && (
+                <div className="flex-1 overflow-y-auto p-4 space-y-6 max-w-2xl mx-auto w-full">
 
               {rushes.selects.length > 0 && (
                 <section>
@@ -645,15 +821,14 @@ function EditorView({ projectId }: { projectId: string }) {
                rushes.inserts.length === 0 && rushes.effects.length === 0 && rushes.backgrounds.length === 0 && (
                 <div className="text-center py-16 space-y-2">
                   <p className="text-sm text-muted-foreground">No assets yet</p>
-                  <p className="text-xs text-muted-foreground opacity-60">Upload footage and audio on the Studio page first</p>
                 </div>
               )}
-            </div>
-          )}
+                </div>
+              )}
 
-          {/* ── BUILD TAB ── */}
-          {tab === "build" && (
-            <div className="flex-1 flex flex-col min-h-0">
+              {/* ── BUILD TAB ── */}
+              {tab === "build" && (
+                <div className="flex-1 flex flex-col min-h-0">
 
               {/* Preview pane — takes all available vertical space */}
               <div className="flex-1 min-h-0 bg-black flex items-center justify-center overflow-hidden">
@@ -811,10 +986,22 @@ function EditorView({ projectId }: { projectId: string }) {
                 <span className="ml-auto">Click clip to set insert point · Click gap ▌ to set insert point · Drag ◼ to set play start · Drag clip to reorder</span>
               </div>
 
-            </div>
+              </div>
+              )}
+            </>
           )}
-        </>
-      )}
+
+        </div>{/* end left column */}
+
+        {/* Right column: persistent artifacts panel */}
+        <ArtifactsPanel
+          rushes={rushes}
+          labels={labels}
+          onAdd={addToTimeline}
+          onRefresh={() => setRushesVersion((v) => v + 1)}
+        />
+
+      </div>{/* end flex row */}
     </div>
   );
 }

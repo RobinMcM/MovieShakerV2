@@ -16,6 +16,7 @@ import {
   RefreshCw,
   SkipBack,
   Trash2,
+  Upload,
   Zap,
 } from "lucide-react";
 import { API_URL } from "@/lib/api";
@@ -239,19 +240,28 @@ function ArtifactThumbnail({ url, seekTo, isImage }: { url?: string; seekTo?: nu
 type ArtifactCategory = "selects" | "clips" | "inserts" | "backgrounds" | "sound" | "effects";
 
 const CATEGORY_LABELS: Record<ArtifactCategory, string> = {
-  selects:     "a select",
   clips:       "a clip",
-  inserts:     "an insert",
-  backgrounds: "a background",
+  selects:     "a select",
   sound:       "a sound track",
-  effects:     "an effect",
+  backgrounds: "a background",
+  inserts:     "an insert",
+  effects:     "a VFX clip",
+};
+
+const CATEGORY_ACCEPT: Partial<Record<ArtifactCategory, string>> = {
+  clips:       ".mp4,.mov,video/mp4,video/quicktime",
+  inserts:     ".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp",
+  sound:       ".mp3,.wav,.aac,.m4a,.flac,.aiff,.aif,audio/*",
+  effects:     ".mp3,.wav,.aac,.m4a,.flac,.aiff,.aif,audio/*",
+  backgrounds: ".jpg,.jpeg,.png,.webp,.mp4,.mov,image/jpeg,image/png,image/webp,video/mp4,video/quicktime",
+  // selects have no direct upload — created from clips in the Design tab
 };
 
 type ArtifactPreviewItem = { url: string; in_time?: number; out_time?: number; isImage?: boolean };
 
 function ArtifactsPanel({
   rushes, labels, onAdd, onRefresh, activeCategory, onCategoryChange, onPreview,
-  onRenameAsset, onRenameSelect,
+  onRenameAsset, onRenameSelect, onUploadFiles,
 }: {
   rushes: RushesData | null;
   labels: Record<string, string>;
@@ -262,7 +272,10 @@ function ArtifactsPanel({
   onPreview: (item: ArtifactPreviewItem | null) => void;
   onRenameAsset: (key: string, newLabel: string) => void;
   onRenameSelect: (selectId: string, newLabel: string) => void;
+  onUploadFiles: (files: FileList, category: ArtifactCategory) => void;
 }) {
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+
   if (!rushes) {
     return (
       <div className="w-72 flex-shrink-0 border-l border-border bg-card flex items-center justify-center text-xs text-muted-foreground">
@@ -272,34 +285,51 @@ function ArtifactsPanel({
   }
 
   const categories = [
-    { id: "selects"     as const, label: "Selects",     count: rushes.selects.length },
     { id: "clips"       as const, label: "Clips",       count: rushes.clips.length },
-    { id: "inserts"     as const, label: "Inserts",     count: rushes.inserts.length },
-    { id: "backgrounds" as const, label: "Backgrounds", count: rushes.backgrounds.length },
+    { id: "selects"     as const, label: "Selects",     count: rushes.selects.length },
     { id: "sound"       as const, label: "Sound",       count: rushes.sounds.length },
-    { id: "effects"     as const, label: "Effects",     count: rushes.effects.length },
-  ].filter((c) => c.count > 0);
+    { id: "backgrounds" as const, label: "Backgrounds", count: rushes.backgrounds.length },
+    { id: "inserts"     as const, label: "Inserts",     count: rushes.inserts.length },
+    { id: "effects"     as const, label: "VFX",         count: rushes.effects.length },
+  ];
 
-  const hasAssets = categories.length > 0;
+  const canUpload = activeCategory in CATEGORY_ACCEPT;
+  const uploadAccept = CATEGORY_ACCEPT[activeCategory] ?? "";
 
   return (
     <div className="w-72 flex-shrink-0 border-l border-border bg-card flex flex-col">
-      {/* Header: category dropdown + refresh */}
+      {/* Hidden file input */}
+      <input
+        ref={uploadInputRef}
+        type="file"
+        accept={uploadAccept}
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files) onUploadFiles(e.target.files, activeCategory);
+          e.target.value = "";
+        }}
+      />
+
+      {/* Header: category dropdown + upload icon + refresh */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border flex-shrink-0">
         <select
           value={activeCategory}
           onChange={(e) => onCategoryChange(e.target.value as ArtifactCategory)}
-          disabled={!hasAssets}
-          className="flex-1 text-xs bg-background border border-border rounded px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer disabled:opacity-50"
+          className="flex-1 text-xs bg-background border border-border rounded px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
         >
-          {!hasAssets ? (
-            <option value="selects">No assets yet</option>
-          ) : (
-            categories.map((c) => (
-              <option key={c.id} value={c.id}>{c.label} ({c.count})</option>
-            ))
-          )}
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>{c.label} ({c.count})</option>
+          ))}
         </select>
+        {canUpload && (
+          <button
+            onClick={() => uploadInputRef.current?.click()}
+            title={`Upload to ${activeCategory}`}
+            className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Upload className="w-3.5 h-3.5" />
+          </button>
+        )}
         <button
           onClick={onRefresh}
           title="Refresh assets"
@@ -311,13 +341,10 @@ function ArtifactsPanel({
 
       {/* Asset cards */}
       <div className="flex-1 overflow-y-auto p-2 space-y-2">
-        {!hasAssets && (
-          <p className="text-xs text-muted-foreground text-center py-8">
-            No assets yet — upload footage in the Design tab
-          </p>
-        )}
-
         {/* Selects */}
+        {activeCategory === "selects" && rushes.selects.length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-8">No selects yet — mark in/out points on a clip in the Design tab</p>
+        )}
         {activeCategory === "selects" && rushes.selects.map((s) => (
           <div key={s.id} onClick={() => onPreview({ url: s.source_url ?? "", in_time: s.in_time, out_time: s.out_time })} className="rounded-lg border border-border overflow-hidden bg-card hover:border-primary cursor-pointer transition-colors">
             <div className="h-16 bg-muted overflow-hidden">
@@ -334,6 +361,9 @@ function ArtifactsPanel({
         ))}
 
         {/* Clips */}
+        {activeCategory === "clips" && rushes.clips.length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-8">No clips yet — use the upload button above</p>
+        )}
         {activeCategory === "clips" && rushes.clips.map((c) => (
           <div key={c.key} onClick={() => onPreview({ url: c.url })} className="rounded-lg border border-border overflow-hidden bg-card hover:border-primary cursor-pointer transition-colors">
             <div className="h-16 bg-muted overflow-hidden">
@@ -350,6 +380,9 @@ function ArtifactsPanel({
         ))}
 
         {/* Inserts */}
+        {activeCategory === "inserts" && rushes.inserts.length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-8">No inserts yet — use the upload button above</p>
+        )}
         {activeCategory === "inserts" && rushes.inserts.map((i) => (
           <div key={i.key} onClick={() => onPreview({ url: i.url, isImage: true })} className="rounded-lg border border-border overflow-hidden bg-card hover:border-primary cursor-pointer transition-colors">
             <div className="h-16 bg-muted overflow-hidden">
@@ -366,6 +399,9 @@ function ArtifactsPanel({
         ))}
 
         {/* Backgrounds */}
+        {activeCategory === "backgrounds" && rushes.backgrounds.length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-8">No backgrounds yet — use the upload button above</p>
+        )}
         {activeCategory === "backgrounds" && rushes.backgrounds.map((b) => {
           const ext = b.filename.split(".").pop()?.toLowerCase() ?? "";
           const isImg = ["jpg", "jpeg", "png", "webp"].includes(ext);
@@ -386,6 +422,9 @@ function ArtifactsPanel({
         })}
 
         {/* Sound */}
+        {activeCategory === "sound" && rushes.sounds.length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-8">No sound tracks yet — use the upload button above</p>
+        )}
         {activeCategory === "sound" && rushes.sounds.map((s) => (
           <div key={s.key} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-card hover:bg-muted/40 transition-colors">
             <Music className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
@@ -397,7 +436,10 @@ function ArtifactsPanel({
           </div>
         ))}
 
-        {/* Effects */}
+        {/* Effects / VFX */}
+        {activeCategory === "effects" && rushes.effects.length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-8">No VFX yet — use the upload button above</p>
+        )}
         {activeCategory === "effects" && rushes.effects.map((e) => (
           <div key={e.key} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-card hover:bg-muted/40 transition-colors">
             <Zap className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
@@ -643,6 +685,66 @@ function EditorView({ projectId }: { projectId: string }) {
       setAudioInsertPoint(audioInsertPoint + 1);
     }
     updateTimeline(next);
+  }
+
+  // ---- artifact panel upload ----
+
+  async function handleUploadFiles(files: FileList, category: ArtifactCategory) {
+    if (!files || files.length === 0) return;
+    const file = files[0];
+
+    if (category === "clips") {
+      // 2-step presigned upload (same flow as RushesViewer)
+      const ALLOWED = ["video/mp4", "video/quicktime"];
+      const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+      const effectiveType = ALLOWED.includes(file.type) ? file.type
+        : ext === "mp4" || ext === "m4v" ? "video/mp4"
+        : ext === "mov" ? "video/quicktime"
+        : file.type;
+      if (!ALLOWED.includes(effectiveType)) return;
+      try {
+        const urlRes = await fetch(`${API_URL}/api/documentary/projects/${projectId}/rushes/upload-url`, {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename: file.name, content_type: effectiveType }),
+        });
+        if (!urlRes.ok) return;
+        const { upload_url, key, filename } = await urlRes.json() as { upload_url: string; key: string; filename: string };
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject();
+          xhr.onerror = () => reject();
+          xhr.open("PUT", upload_url);
+          xhr.setRequestHeader("Content-Type", effectiveType);
+          xhr.send(file);
+        });
+        await fetch(`${API_URL}/api/documentary/projects/${projectId}/rushes/register`, {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key, filename }),
+        });
+        setRushesVersion((v) => v + 1);
+      } catch { /* silent */ }
+      return;
+    }
+
+    // All other categories: multipart POST
+    const endpointMap: Partial<Record<ArtifactCategory, string>> = {
+      inserts:     `/api/documentary/projects/${projectId}/rushes/inserts/upload`,
+      sound:       `/api/documentary/projects/${projectId}/rushes/sound/upload`,
+      effects:     `/api/documentary/projects/${projectId}/rushes/effects/upload`,
+      backgrounds: `/api/documentary/projects/${projectId}/rushes/backgrounds/upload`,
+    };
+    const endpoint = endpointMap[category];
+    if (!endpoint) return;
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`${API_URL}${endpoint}`, {
+        method: "POST", credentials: "include", body: formData,
+      });
+      if (res.ok) setRushesVersion((v) => v + 1);
+    } catch { /* silent */ }
   }
 
   // ---- asset rename ----
@@ -1053,6 +1155,7 @@ function EditorView({ projectId }: { projectId: string }) {
           onPreview={setArtifactPreview}
           onRenameAsset={handleRenameAsset}
           onRenameSelect={handleRenameSelect}
+          onUploadFiles={handleUploadFiles}
         />
 
       </div>{/* end flex row */}

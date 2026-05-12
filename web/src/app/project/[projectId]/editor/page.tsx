@@ -973,6 +973,7 @@ function EditorView({ projectId }: { projectId: string }) {
                     onAssetsChanged={() => setRushesVersion((v) => v + 1)}
                     externalPreview={artifactPreview}
                     emptyStateLabel={CATEGORY_LABELS[artifactCategory]}
+                    onClearExternalPreview={() => setArtifactPreview(null)}
                   />
                 </div>
               )}

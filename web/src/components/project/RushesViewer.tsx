@@ -449,9 +449,11 @@ function BackgroundCard({ item, label, onDelete, onRename }: BackgroundCardProps
 interface RushesViewerProps {
   projectId: string;
   onAssetsChanged?: () => void;
+  externalPreview?: { url: string; in_time?: number; out_time?: number; isImage?: boolean } | null;
+  emptyStateLabel?: string;
 }
 
-export function RushesViewer({ projectId, onAssetsChanged }: RushesViewerProps) {
+export function RushesViewer({ projectId, onAssetsChanged, externalPreview, emptyStateLabel }: RushesViewerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -533,8 +535,8 @@ export function RushesViewer({ projectId, onAssetsChanged }: RushesViewerProps) 
 
   // Stable ID for the active item — changes whenever the playing item changes.
   // Drives the load+play effect (same pattern as film-in-a-box's currentUrl effect).
-  const videoId = currentClip?.key ?? (currentSelect ? `select:${currentSelect.id}` : "");
-  const videoSrc = currentClip?.url ?? currentSelect?.source_url ?? "";
+  const videoId = currentClip?.key ?? (currentSelect ? `select:${currentSelect.id}` : "") ?? (externalPreview && !externalPreview.isImage ? externalPreview.url : "");
+  const videoSrc = (externalPreview && !externalPreview.isImage ? externalPreview.url : null) ?? currentClip?.url ?? currentSelect?.source_url ?? "";
 
   // ---- fetch ----
 
@@ -630,6 +632,16 @@ export function RushesViewer({ projectId, onAssetsChanged }: RushesViewerProps) 
     }, 5000);
     return () => clearInterval(interval);
   }, [currentClip?.filename, currentSelect?.source_filename, audioPeaks, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---- external preview sync ----
+  // When an artifact is selected in the editor's Artifacts panel, clear internal
+  // selection so the video element reloads with the externally provided URL.
+  useEffect(() => {
+    if (!externalPreview) return;
+    setCurrentClip(null);
+    setCurrentSelect(null);
+    setCurrentInsert(null);
+  }, [externalPreview]);
 
   // ---- play actions ----
 
@@ -1354,8 +1366,15 @@ export function RushesViewer({ projectId, onAssetsChanged }: RushesViewerProps) 
 
       {/* Main player */}
       <div className="relative flex-1 bg-background flex items-center justify-center overflow-hidden min-h-0">
-        {hasCurrentItem ? (
-          currentInsert ? (
+        {(hasCurrentItem || (externalPreview && externalPreview.url)) ? (
+          externalPreview?.isImage ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={externalPreview.url}
+              alt="preview"
+              className="max-w-full max-h-full object-contain"
+            />
+          ) : currentInsert ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={currentInsert.url}
@@ -1376,7 +1395,10 @@ export function RushesViewer({ projectId, onAssetsChanged }: RushesViewerProps) 
                 const vid = videoRef.current;
                 if (!vid) return;
                 setSourceVideoDuration(vid.duration ?? 0);
-                if (currentSelect) {
+                if (externalPreview && externalPreview.in_time != null) {
+                  vid.currentTime = externalPreview.in_time;
+                  setVideoDuration(vid.duration ?? 0);
+                } else if (currentSelect) {
                   setVideoDuration(currentSelect.out_time - currentSelect.in_time);
                   vid.currentTime = currentSelect.in_time;
                 } else {
@@ -1446,7 +1468,7 @@ export function RushesViewer({ projectId, onAssetsChanged }: RushesViewerProps) 
         ) : (
           <div className="text-center space-y-3 text-muted-foreground select-none">
             <Play className="w-16 h-16 mx-auto opacity-30" />
-            <p className="text-sm">Select a clip below to play</p>
+            <p className="text-sm">Select {emptyStateLabel ?? "a clip"} to play</p>
           </div>
         )}
       </div>

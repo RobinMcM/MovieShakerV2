@@ -180,16 +180,28 @@ function ArtifactThumbnail({ url, seekTo, isImage }: { url?: string; seekTo?: nu
 
 type ArtifactCategory = "selects" | "clips" | "inserts" | "backgrounds" | "sound" | "effects";
 
+const CATEGORY_LABELS: Record<ArtifactCategory, string> = {
+  selects:     "a select",
+  clips:       "a clip",
+  inserts:     "an insert",
+  backgrounds: "a background",
+  sound:       "a sound track",
+  effects:     "an effect",
+};
+
+type ArtifactPreviewItem = { url: string; in_time?: number; out_time?: number; isImage?: boolean };
+
 function ArtifactsPanel({
-  rushes, labels, onAdd, onRefresh,
+  rushes, labels, onAdd, onRefresh, activeCategory, onCategoryChange, onPreview,
 }: {
   rushes: RushesData | null;
   labels: Record<string, string>;
   onAdd: (item: TimelineItem) => void;
   onRefresh: () => void;
+  activeCategory: ArtifactCategory;
+  onCategoryChange: (cat: ArtifactCategory) => void;
+  onPreview: (item: ArtifactPreviewItem | null) => void;
 }) {
-  const [activeCategory, setActiveCategory] = useState<ArtifactCategory>("selects");
-
   if (!rushes) {
     return (
       <div className="w-72 flex-shrink-0 border-l border-border bg-card flex items-center justify-center text-xs text-muted-foreground">
@@ -215,7 +227,7 @@ function ArtifactsPanel({
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border flex-shrink-0">
         <select
           value={activeCategory}
-          onChange={(e) => setActiveCategory(e.target.value as ArtifactCategory)}
+          onChange={(e) => onCategoryChange(e.target.value as ArtifactCategory)}
           disabled={!hasAssets}
           className="flex-1 text-xs bg-background border border-border rounded px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer disabled:opacity-50"
         >
@@ -246,7 +258,7 @@ function ArtifactsPanel({
 
         {/* Selects */}
         {activeCategory === "selects" && rushes.selects.map((s) => (
-          <div key={s.id} className="rounded-lg border border-border overflow-hidden bg-card hover:border-muted-foreground transition-colors">
+          <div key={s.id} onClick={() => onPreview({ url: s.source_url ?? "", in_time: s.in_time, out_time: s.out_time })} className="rounded-lg border border-border overflow-hidden bg-card hover:border-primary cursor-pointer transition-colors">
             <div className="h-16 bg-muted overflow-hidden">
               <ArtifactThumbnail url={s.source_url} seekTo={s.in_time} />
             </div>
@@ -255,7 +267,7 @@ function ArtifactsPanel({
                 <p className="text-xs text-foreground truncate leading-tight">{s.label}</p>
                 <p className="text-[10px] text-muted-foreground">{formatDuration(s.duration)}</p>
               </div>
-              <button onClick={() => onAdd(fromSelectMeta(s))} className="flex-shrink-0 flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80 font-medium" title="Add to Timeline">
+              <button onClick={(e) => { e.stopPropagation(); onAdd(fromSelectMeta(s)); }} className="flex-shrink-0 flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80 font-medium" title="Add to Timeline">
                 Add <ChevronRight className="w-3 h-3" />
               </button>
             </div>
@@ -264,7 +276,7 @@ function ArtifactsPanel({
 
         {/* Clips */}
         {activeCategory === "clips" && rushes.clips.map((c) => (
-          <div key={c.key} className="rounded-lg border border-border overflow-hidden bg-card hover:border-muted-foreground transition-colors">
+          <div key={c.key} onClick={() => onPreview({ url: c.url })} className="rounded-lg border border-border overflow-hidden bg-card hover:border-primary cursor-pointer transition-colors">
             <div className="h-16 bg-muted overflow-hidden">
               <ArtifactThumbnail url={c.url} />
             </div>
@@ -273,7 +285,7 @@ function ArtifactsPanel({
                 <p className="text-xs text-foreground truncate leading-tight">{labels[c.key] || c.filename}</p>
                 <p className="text-[10px] text-muted-foreground">{formatSize(c.size)}</p>
               </div>
-              <button onClick={() => onAdd(fromClipMeta(c))} className="flex-shrink-0 flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80 font-medium" title="Add to Timeline">
+              <button onClick={(e) => { e.stopPropagation(); onAdd(fromClipMeta(c)); }} className="flex-shrink-0 flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80 font-medium" title="Add to Timeline">
                 Add <ChevronRight className="w-3 h-3" />
               </button>
             </div>
@@ -282,7 +294,7 @@ function ArtifactsPanel({
 
         {/* Inserts */}
         {activeCategory === "inserts" && rushes.inserts.map((i) => (
-          <div key={i.key} className="rounded-lg border border-border overflow-hidden bg-card hover:border-muted-foreground transition-colors">
+          <div key={i.key} onClick={() => onPreview({ url: i.url, isImage: true })} className="rounded-lg border border-border overflow-hidden bg-card hover:border-primary cursor-pointer transition-colors">
             <div className="h-16 bg-muted overflow-hidden">
               <ArtifactThumbnail url={i.url} isImage />
             </div>
@@ -291,7 +303,7 @@ function ArtifactsPanel({
                 <p className="text-xs text-foreground truncate leading-tight">{labels[i.key] || i.filename}</p>
                 <p className="text-[10px] text-muted-foreground">5s</p>
               </div>
-              <button onClick={() => onAdd(fromInsertMeta(i))} className="flex-shrink-0 flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80 font-medium" title="Add to Timeline">
+              <button onClick={(e) => { e.stopPropagation(); onAdd(fromInsertMeta(i)); }} className="flex-shrink-0 flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80 font-medium" title="Add to Timeline">
                 Add <ChevronRight className="w-3 h-3" />
               </button>
             </div>
@@ -303,7 +315,7 @@ function ArtifactsPanel({
           const ext = b.filename.split(".").pop()?.toLowerCase() ?? "";
           const isImg = ["jpg", "jpeg", "png", "webp"].includes(ext);
           return (
-            <div key={b.key} className="rounded-lg border border-border overflow-hidden bg-card hover:border-muted-foreground transition-colors">
+            <div key={b.key} onClick={() => onPreview({ url: b.url, isImage: isImg })} className="rounded-lg border border-border overflow-hidden bg-card hover:border-primary cursor-pointer transition-colors">
               <div className="h-16 bg-muted overflow-hidden">
                 <ArtifactThumbnail url={b.url} isImage={isImg} />
               </div>
@@ -312,7 +324,7 @@ function ArtifactsPanel({
                   <p className="text-xs text-foreground truncate leading-tight">{labels[b.key] || b.filename}</p>
                   <p className="text-[10px] text-muted-foreground">{formatSize(b.size)}</p>
                 </div>
-                <button onClick={() => onAdd(fromBackgroundMeta(b))} className="flex-shrink-0 flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80 font-medium" title="Add to Timeline">
+                <button onClick={(e) => { e.stopPropagation(); onAdd(fromBackgroundMeta(b)); }} className="flex-shrink-0 flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80 font-medium" title="Add to Timeline">
                   Add <ChevronRight className="w-3 h-3" />
                 </button>
               </div>
@@ -417,6 +429,8 @@ function EditorView({ projectId }: { projectId: string }) {
   const [videoInsertPoint, setVideoInsertPoint] = useState(0);
   const [audioInsertPoint, setAudioInsertPoint] = useState(0);
   const [rushesVersion, setRushesVersion] = useState(0);
+  const [artifactCategory, setArtifactCategory] = useState<ArtifactCategory>("clips");
+  const [artifactPreview, setArtifactPreview] = useState<ArtifactPreviewItem | null>(null);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragSrcRef = useRef<{ track: TrackType; index: number } | null>(null);
@@ -774,6 +788,8 @@ function EditorView({ projectId }: { projectId: string }) {
                   <RushesViewer
                     projectId={projectId}
                     onAssetsChanged={() => setRushesVersion((v) => v + 1)}
+                    externalPreview={artifactPreview}
+                    emptyStateLabel={CATEGORY_LABELS[artifactCategory]}
                   />
                 </div>
               )}
@@ -951,6 +967,9 @@ function EditorView({ projectId }: { projectId: string }) {
           labels={labels}
           onAdd={addToTimeline}
           onRefresh={() => setRushesVersion((v) => v + 1)}
+          activeCategory={artifactCategory}
+          onCategoryChange={setArtifactCategory}
+          onPreview={setArtifactPreview}
         />
 
       </div>{/* end flex row */}

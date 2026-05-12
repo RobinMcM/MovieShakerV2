@@ -1145,20 +1145,6 @@ function EditorView({ projectId }: { projectId: string }) {
 
         </div>{/* end left column */}
 
-        {/* Persistent media sidebar — visible on both Design and Build tabs */}
-        <ArtifactsPanel
-          rushes={rushes}
-          labels={labels}
-          onAdd={addToTimeline}
-          onRefresh={() => setRushesVersion((v) => v + 1)}
-          activeCategory={artifactCategory}
-          onCategoryChange={setArtifactCategory}
-          onPreview={setArtifactPreview}
-          onRenameAsset={handleRenameAsset}
-          onRenameSelect={handleRenameSelect}
-          onUploadFiles={handleUploadFiles}
-        />
-
       </div>{/* end flex row */}
     </div>
   );

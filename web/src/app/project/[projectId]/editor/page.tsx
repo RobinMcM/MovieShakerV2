@@ -107,19 +107,26 @@ function isImageItem(item: TimelineItem): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// GapMarker — clickable insert-point slot between timeline blocks
+// PinMarker — clickable insert-point pin between timeline blocks
 // ---------------------------------------------------------------------------
 
-function GapMarker({ active, onClick }: { active: boolean; onClick: () => void }) {
+function PinMarker({ active, onClick }: { active: boolean; onClick: () => void }) {
   return (
     <div
       onClick={onClick}
       title="Set insert point here"
-      className="flex-shrink-0 w-3 h-full cursor-pointer flex items-center justify-center hover:bg-amber-400/10 group transition-colors"
+      className="relative flex-shrink-0 w-px h-full cursor-pointer group flex flex-col items-center"
     >
       <div
-        className={`w-0.5 h-full transition-colors ${
-          active ? "bg-amber-400" : "bg-transparent group-hover:bg-amber-400/50"
+        className={`w-3 h-3 rounded-full border-2 flex-shrink-0 -mt-1 transition-colors ${
+          active
+            ? "bg-amber-400 border-amber-300"
+            : "bg-transparent border-muted-foreground/20 group-hover:bg-amber-400/30 group-hover:border-amber-400/60"
+        }`}
+      />
+      <div
+        className={`flex-1 w-px transition-colors ${
+          active ? "bg-amber-400" : "group-hover:bg-amber-400/40"
         }`}
       />
     </div>
@@ -221,6 +228,7 @@ function EditorView({ projectId }: { projectId: string }) {
   const [loading, setLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playingVideoIdx, setPlayingVideoIdx] = useState(0);
+  const [playStartIdx, setPlayStartIdx] = useState(0);
   const [videoInsertPoint, setVideoInsertPoint] = useState(0);
   const [audioInsertPoint, setAudioInsertPoint] = useState(0);
 
@@ -336,6 +344,7 @@ function EditorView({ projectId }: { projectId: string }) {
 
   function handlePlay() {
     if (timeline.video_track.length === 0) return;
+    setPlayingVideoIdx(playStartIdx);
     setIsPlaying(true);
   }
 
@@ -431,21 +440,36 @@ function EditorView({ projectId }: { projectId: string }) {
     return { id: makeId(), type: "backgrounds", key: b.key, filename: b.filename, label: labels[b.key] || b.filename, duration: isImg ? 5 : 0, url: b.url };
   }
 
-  // ---- track renderer — interleaved blocks + gap markers ----
+  // ---- pixel offset for the playback start marker ----
+
+  function computeMarkerOffset(idx: number): number {
+    let offset = 0;
+    for (let i = 0; i < idx && i < timeline.video_track.length; i++) {
+      offset += blockWidth(timeline.video_track[i].duration);
+      offset += 1; // 1px per pin
+    }
+    return offset;
+  }
+
+  // ---- track renderer — interleaved blocks + pin markers ----
 
   function renderTrack(
     trackItems: TimelineItem[],
     trackType: TrackType,
     insertPoint: number,
     setInsertPoint: (n: number) => void,
+    onPinClick?: (i: number) => void,
   ) {
     const nodes = [];
     for (let i = 0; i <= trackItems.length; i++) {
       nodes.push(
-        <GapMarker
+        <PinMarker
           key={`gap-${i}`}
           active={insertPoint === i}
-          onClick={() => setInsertPoint(i)}
+          onClick={() => {
+            setInsertPoint(i);
+            onPinClick?.(i);
+          }}
         />
       );
       if (i < trackItems.length) {
@@ -637,7 +661,10 @@ function EditorView({ projectId }: { projectId: string }) {
                     onTimeUpdate={() => {
                       const vid = playerVideoRef.current;
                       if (!vid || previewItem.out_time == null) return;
-                      if (vid.currentTime >= previewItem.out_time) vid.pause();
+                      if (vid.currentTime >= previewItem.out_time && !vid.paused) {
+                        vid.pause();
+                        handleVideoEnded();
+                      }
                     }}
                     onEnded={handleVideoEnded}
                   />
@@ -713,16 +740,31 @@ function EditorView({ projectId }: { projectId: string }) {
                     {timeline.video_track.length} clips · {formatDuration(totalVideoTime)}
                   </span>
                 </div>
-                <div className="bg-muted/30 border border-border rounded-lg overflow-x-auto p-2 h-[72px]">
-                  <div className="flex h-full items-stretch min-w-max">
-                    {timeline.video_track.length === 0 ? (
-                      <p className="text-xs text-muted-foreground self-center mx-auto">
+                <div className="bg-muted/30 border border-border rounded-lg overflow-x-auto p-2 h-[88px]">
+                  {timeline.video_track.length === 0 ? (
+                    <div className="flex h-full items-center justify-center">
+                      <p className="text-xs text-muted-foreground">
                         Add selects or clips from the Design tab
                       </p>
-                    ) : (
-                      renderTrack(timeline.video_track, "video", videoInsertPoint, setVideoInsertPoint)
-                    )}
-                  </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col h-full min-w-max">
+                      {/* Marker rail — play-start indicator */}
+                      <div className="relative h-4 flex-shrink-0">
+                        <div
+                          className="absolute top-0 text-emerald-400 text-xs leading-none select-none pointer-events-none"
+                          style={{ left: `${computeMarkerOffset(playStartIdx)}px` }}
+                          title="Playback starts here"
+                        >
+                          ▼
+                        </div>
+                      </div>
+                      {/* Clip row */}
+                      <div className="flex flex-1 items-stretch">
+                        {renderTrack(timeline.video_track, "video", videoInsertPoint, setVideoInsertPoint, setPlayStartIdx)}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -734,7 +776,7 @@ function EditorView({ projectId }: { projectId: string }) {
                     {type}
                   </span>
                 ))}
-                <span className="ml-auto">Click gap ▌ to set insert point · Click clip to preview · Drag to reorder</span>
+                <span className="ml-auto">Click pin ◉ to set insert + play start · Click clip to preview · Drag to reorder</span>
               </div>
 
             </div>

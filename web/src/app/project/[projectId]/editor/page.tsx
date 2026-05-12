@@ -107,26 +107,19 @@ function isImageItem(item: TimelineItem): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// PinMarker — clickable insert-point pin between timeline blocks
+// GapMarker — clickable insert-point slot between timeline blocks
 // ---------------------------------------------------------------------------
 
-function PinMarker({ active, onClick }: { active: boolean; onClick: () => void }) {
+function GapMarker({ active, onClick }: { active: boolean; onClick: () => void }) {
   return (
     <div
       onClick={onClick}
       title="Set insert point here"
-      className="relative flex-shrink-0 w-px h-full cursor-pointer group flex flex-col items-center"
+      className="flex-shrink-0 w-3 h-full cursor-pointer flex items-center justify-center hover:bg-amber-400/10 group transition-colors"
     >
       <div
-        className={`w-3 h-3 rounded-full border-2 flex-shrink-0 -mt-1 transition-colors ${
-          active
-            ? "bg-amber-400 border-amber-300"
-            : "bg-transparent border-muted-foreground/20 group-hover:bg-amber-400/30 group-hover:border-amber-400/60"
-        }`}
-      />
-      <div
-        className={`flex-1 w-px transition-colors ${
-          active ? "bg-amber-400" : "group-hover:bg-amber-400/40"
+        className={`w-0.5 h-full transition-colors ${
+          active ? "bg-amber-400" : "bg-transparent group-hover:bg-amber-400/50"
         }`}
       />
     </div>
@@ -236,6 +229,8 @@ function EditorView({ projectId }: { projectId: string }) {
   const dragSrcRef = useRef<{ track: TrackType; index: number } | null>(null);
   const playerVideoRef = useRef<HTMLVideoElement>(null);
   const playTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const trackScrollRef = useRef<HTMLDivElement>(null);
+  const isDraggingMarkerRef = useRef(false);
   // Ref so event-handler closures see the latest isPlaying without staling
   const isPlayingRef = useRef(false);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
@@ -440,36 +435,64 @@ function EditorView({ projectId }: { projectId: string }) {
     return { id: makeId(), type: "backgrounds", key: b.key, filename: b.filename, label: labels[b.key] || b.filename, duration: isImg ? 5 : 0, url: b.url };
   }
 
-  // ---- pixel offset for the playback start marker ----
+  // ---- play-start marker helpers ----
 
   function computeMarkerOffset(idx: number): number {
-    let offset = 0;
+    const GAP = 12; // GapMarker w-3 = 12px
+    let offset = GAP;
     for (let i = 0; i < idx && i < timeline.video_track.length; i++) {
-      offset += blockWidth(timeline.video_track[i].duration);
-      offset += 1; // 1px per pin
+      offset += blockWidth(timeline.video_track[i].duration) + GAP;
     }
     return offset;
   }
 
-  // ---- track renderer — interleaved blocks + pin markers ----
+  function pixelToClipIdx(px: number): number {
+    const GAP = 12;
+    let cumulative = GAP;
+    for (let i = 0; i < timeline.video_track.length; i++) {
+      const clipEnd = cumulative + blockWidth(timeline.video_track[i].duration);
+      if (px <= clipEnd) return i;
+      cumulative = clipEnd + GAP;
+    }
+    return Math.max(0, timeline.video_track.length - 1);
+  }
+
+  function handleMarkerMouseDown(e: React.MouseEvent) {
+    e.preventDefault();
+    isDraggingMarkerRef.current = true;
+
+    const handleMove = (ev: MouseEvent) => {
+      if (!isDraggingMarkerRef.current || !trackScrollRef.current) return;
+      const rect = trackScrollRef.current.getBoundingClientRect();
+      const rawX = ev.clientX - rect.left + trackScrollRef.current.scrollLeft;
+      setPlayStartIdx(pixelToClipIdx(Math.max(0, rawX)));
+    };
+
+    const handleUp = () => {
+      isDraggingMarkerRef.current = false;
+      document.removeEventListener("mousemove", handleMove);
+      document.removeEventListener("mouseup", handleUp);
+    };
+
+    document.addEventListener("mousemove", handleMove);
+    document.addEventListener("mouseup", handleUp);
+  }
+
+  // ---- track renderer — interleaved blocks + gap markers ----
 
   function renderTrack(
     trackItems: TimelineItem[],
     trackType: TrackType,
     insertPoint: number,
     setInsertPoint: (n: number) => void,
-    onPinClick?: (i: number) => void,
   ) {
     const nodes = [];
     for (let i = 0; i <= trackItems.length; i++) {
       nodes.push(
-        <PinMarker
+        <GapMarker
           key={`gap-${i}`}
           active={insertPoint === i}
-          onClick={() => {
-            setInsertPoint(i);
-            onPinClick?.(i);
-          }}
+          onClick={() => setInsertPoint(i)}
         />
       );
       if (i < trackItems.length) {
@@ -484,6 +507,7 @@ function EditorView({ projectId }: { projectId: string }) {
               if (trackType === "video") {
                 if (isPlaying) handlePause();
                 setPlayingVideoIdx(i);
+                setInsertPoint(i);
               }
             }}
             onRemove={() => removeFromTimeline(trackType, item.id)}
@@ -740,7 +764,7 @@ function EditorView({ projectId }: { projectId: string }) {
                     {timeline.video_track.length} clips · {formatDuration(totalVideoTime)}
                   </span>
                 </div>
-                <div className="bg-muted/30 border border-border rounded-lg overflow-x-auto p-2 h-[88px]">
+                <div ref={trackScrollRef} className="bg-muted/30 border border-border rounded-lg overflow-x-auto p-2 h-[88px]">
                   {timeline.video_track.length === 0 ? (
                     <div className="flex h-full items-center justify-center">
                       <p className="text-xs text-muted-foreground">
@@ -749,19 +773,27 @@ function EditorView({ projectId }: { projectId: string }) {
                     </div>
                   ) : (
                     <div className="flex flex-col h-full min-w-max">
-                      {/* Marker rail — play-start indicator */}
-                      <div className="relative h-4 flex-shrink-0">
+                      {/* Marker rail — draggable play-start handle */}
+                      <div className="relative h-6 flex-shrink-0">
                         <div
-                          className="absolute top-0 text-emerald-400 text-xs leading-none select-none pointer-events-none"
-                          style={{ left: `${computeMarkerOffset(playStartIdx)}px` }}
-                          title="Playback starts here"
+                          onMouseDown={handleMarkerMouseDown}
+                          className="absolute top-0 cursor-ew-resize select-none z-10"
+                          style={{ left: `${computeMarkerOffset(playStartIdx)}px`, transform: "translateX(-50%)" }}
+                          title="Drag to set play start"
                         >
-                          ▼
+                          <div className="w-5 h-5 bg-emerald-500 rounded-sm flex items-center justify-center shadow border border-emerald-400">
+                            <div className="flex gap-0.5">
+                              <div className="w-px h-3 bg-emerald-200 rounded-full" />
+                              <div className="w-px h-3 bg-emerald-200 rounded-full" />
+                              <div className="w-px h-3 bg-emerald-200 rounded-full" />
+                            </div>
+                          </div>
+                          <div className="w-0.5 h-2 bg-emerald-500 mx-auto" />
                         </div>
                       </div>
                       {/* Clip row */}
                       <div className="flex flex-1 items-stretch">
-                        {renderTrack(timeline.video_track, "video", videoInsertPoint, setVideoInsertPoint, setPlayStartIdx)}
+                        {renderTrack(timeline.video_track, "video", videoInsertPoint, setVideoInsertPoint)}
                       </div>
                     </div>
                   )}
@@ -776,7 +808,7 @@ function EditorView({ projectId }: { projectId: string }) {
                     {type}
                   </span>
                 ))}
-                <span className="ml-auto">Click pin ◉ to set insert + play start · Click clip to preview · Drag to reorder</span>
+                <span className="ml-auto">Click clip to set insert point · Click gap ▌ to set insert point · Drag ◼ to set play start · Drag clip to reorder</span>
               </div>
 
             </div>

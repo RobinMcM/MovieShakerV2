@@ -1145,20 +1145,6 @@ function EditorView({ projectId }: { projectId: string }) {
 
         </div>{/* end left column */}
 
-        {/* Right column: persistent artifacts panel */}
-        <ArtifactsPanel
-          rushes={rushes}
-          labels={labels}
-          onAdd={addToTimeline}
-          onRefresh={() => setRushesVersion((v) => v + 1)}
-          activeCategory={artifactCategory}
-          onCategoryChange={setArtifactCategory}
-          onPreview={setArtifactPreview}
-          onRenameAsset={handleRenameAsset}
-          onRenameSelect={handleRenameSelect}
-          onUploadFiles={handleUploadFiles}
-        />
-
       </div>{/* end flex row */}
     </div>
   );

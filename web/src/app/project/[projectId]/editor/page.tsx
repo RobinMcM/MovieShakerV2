@@ -926,9 +926,6 @@ function EditorView({ projectId }: { projectId: string }) {
                 {t === "design" ? "Design" : "Build"}
               </button>
             ))}
-            <span className="ml-auto text-xs text-muted-foreground pr-2">
-              {timeline.video_track.length + timeline.audio_track.length} items in timeline
-            </span>
           </div>
 
           {loading ? (

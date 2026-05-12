@@ -1271,51 +1271,12 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
         />
       )}
 
-      {/* Toolbar */}
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-border flex-shrink-0">
-        <Film className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-        <span className="text-sm text-foreground font-medium">Studio</span>
-        <span className="text-xs text-muted-foreground flex-shrink-0">
-          {clips.length} clips · {selects.length} selects · {inserts.length} inserts
-        </span>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".mp4,.mov,video/mp4,video/quicktime"
-          className="hidden"
-          onChange={(e) => { handleUpload(e.target.files); e.target.value = ""; }}
-        />
-        <input
-          ref={insertInputRef}
-          type="file"
-          accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-          className="hidden"
-          onChange={(e) => { handleUploadInsert(e.target.files); e.target.value = ""; }}
-        />
-        <input
-          ref={soundInputRef}
-          type="file"
-          accept=".mp3,.wav,.aac,.m4a,.flac,.aiff,.aif,audio/*"
-          className="hidden"
-          onChange={(e) => { handleUploadSound(e.target.files); e.target.value = ""; }}
-        />
-        <input
-          ref={effectsInputRef}
-          type="file"
-          accept=".mp3,.wav,.aac,.m4a,.flac,.aiff,.aif,audio/*"
-          className="hidden"
-          onChange={(e) => { handleUploadEffects(e.target.files); e.target.value = ""; }}
-        />
-        <input
-          ref={backgroundsInputRef}
-          type="file"
-          accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,image/jpeg,image/png,image/webp,video/mp4,video/quicktime"
-          className="hidden"
-          onChange={(e) => { handleUploadBackgrounds(e.target.files); e.target.value = ""; }}
-        />
-
-      </div>
+      {/* Hidden file inputs */}
+      <input ref={fileInputRef} type="file" accept=".mp4,.mov,video/mp4,video/quicktime" className="hidden" onChange={(e) => { handleUpload(e.target.files); e.target.value = ""; }} />
+      <input ref={insertInputRef} type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => { handleUploadInsert(e.target.files); e.target.value = ""; }} />
+      <input ref={soundInputRef} type="file" accept=".mp3,.wav,.aac,.m4a,.flac,.aiff,.aif,audio/*" className="hidden" onChange={(e) => { handleUploadSound(e.target.files); e.target.value = ""; }} />
+      <input ref={effectsInputRef} type="file" accept=".mp3,.wav,.aac,.m4a,.flac,.aiff,.aif,audio/*" className="hidden" onChange={(e) => { handleUploadEffects(e.target.files); e.target.value = ""; }} />
+      <input ref={backgroundsInputRef} type="file" accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,image/jpeg,image/png,image/webp,video/mp4,video/quicktime" className="hidden" onChange={(e) => { handleUploadBackgrounds(e.target.files); e.target.value = ""; }} />
 
       {/* Content row: video+timeline (left) | media sidebar (right) */}
       <div className="flex-1 flex min-h-0 overflow-hidden">

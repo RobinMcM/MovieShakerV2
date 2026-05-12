@@ -16,7 +16,6 @@ import {
   RefreshCw,
   SkipBack,
   Trash2,
-  Upload,
   Zap,
 } from "lucide-react";
 import { API_URL } from "@/lib/api";
@@ -261,7 +260,7 @@ type ArtifactPreviewItem = { url: string; in_time?: number; out_time?: number; i
 
 function ArtifactsPanel({
   rushes, labels, onAdd, onRefresh, activeCategory, onCategoryChange, onPreview,
-  onRenameAsset, onRenameSelect, onUploadFiles,
+  onRenameAsset, onRenameSelect,
 }: {
   rushes: RushesData | null;
   labels: Record<string, string>;
@@ -272,13 +271,10 @@ function ArtifactsPanel({
   onPreview: (item: ArtifactPreviewItem | null) => void;
   onRenameAsset: (key: string, newLabel: string) => void;
   onRenameSelect: (selectId: string, newLabel: string) => void;
-  onUploadFiles: (files: FileList, category: ArtifactCategory) => void;
 }) {
-  const uploadInputRef = useRef<HTMLInputElement>(null);
-
   if (!rushes) {
     return (
-      <div className="w-72 flex-shrink-0 border-l border-border bg-card flex items-center justify-center text-xs text-muted-foreground">
+      <div className="w-52 flex-shrink-0 border-l border-border bg-card flex items-center justify-center text-xs text-muted-foreground">
         Loading…
       </div>
     );
@@ -293,25 +289,10 @@ function ArtifactsPanel({
     { id: "effects"     as const, label: "VFX",         count: rushes.effects.length },
   ];
 
-  const canUpload = activeCategory in CATEGORY_ACCEPT;
-  const uploadAccept = CATEGORY_ACCEPT[activeCategory] ?? "";
-
   return (
-    <div className="w-72 flex-shrink-0 border-l border-border bg-card flex flex-col">
-      {/* Hidden file input */}
-      <input
-        ref={uploadInputRef}
-        type="file"
-        accept={uploadAccept}
-        className="hidden"
-        onChange={(e) => {
-          if (e.target.files) onUploadFiles(e.target.files, activeCategory);
-          e.target.value = "";
-        }}
-      />
-
-      {/* Header: category dropdown + upload icon + refresh */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-border flex-shrink-0">
+    <div className="w-52 flex-shrink-0 border-l border-border bg-card flex flex-col">
+      {/* Header: category dropdown + refresh */}
+      <div className="flex items-center gap-2 px-2 py-2 border-b border-border flex-shrink-0">
         <select
           value={activeCategory}
           onChange={(e) => onCategoryChange(e.target.value as ArtifactCategory)}
@@ -321,15 +302,6 @@ function ArtifactsPanel({
             <option key={c.id} value={c.id}>{c.label} ({c.count})</option>
           ))}
         </select>
-        {canUpload && (
-          <button
-            onClick={() => uploadInputRef.current?.click()}
-            title={`Upload to ${activeCategory}`}
-            className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <Upload className="w-3.5 h-3.5" />
-          </button>
-        )}
         <button
           onClick={onRefresh}
           title="Refresh assets"
@@ -1151,7 +1123,6 @@ function EditorView({ projectId }: { projectId: string }) {
                   onPreview={setArtifactPreview}
                   onRenameAsset={handleRenameAsset}
                   onRenameSelect={handleRenameSelect}
-                  onUploadFiles={handleUploadFiles}
                 />
 
               </div>

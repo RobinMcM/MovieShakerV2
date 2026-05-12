@@ -12,6 +12,7 @@ import {
   Pause,
   Pencil,
   Play,
+  RefreshCw,
   Scissors,
   Trash2,
   Upload,
@@ -1278,24 +1279,6 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
           {clips.length} clips · {selects.length} selects · {inserts.length} inserts
         </span>
 
-        {uploadError && <span className="text-red-400 text-xs ml-2">{uploadError}</span>}
-        {insertUploadError && <span className="text-red-400 text-xs ml-2">{insertUploadError}</span>}
-
-        {(uploading || insertUploading) && (
-          <div className="flex items-center gap-2 ml-2">
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
-            <div className="w-32 h-1.5 bg-muted rounded-full overflow-hidden">
-              <div
-                className="h-full bg-primary rounded-full transition-all"
-                style={{ width: `${uploading ? uploadProgress : insertUploadProgress}%` }}
-              />
-            </div>
-            <span className="text-xs text-muted-foreground">
-              {uploading ? uploadProgress : insertUploadProgress}%
-            </span>
-          </div>
-        )}
-
         <input
           ref={fileInputRef}
           type="file"
@@ -1332,35 +1315,6 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
           onChange={(e) => { handleUploadBackgrounds(e.target.files); e.target.value = ""; }}
         />
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={
-            activeTab === "inserts" ? () => insertInputRef.current?.click()
-            : activeTab === "clips" ? () => fileInputRef.current?.click()
-            : activeTab === "sound" ? () => soundInputRef.current?.click()
-            : activeTab === "effects" ? () => effectsInputRef.current?.click()
-            : activeTab === "backgrounds" ? () => backgroundsInputRef.current?.click()
-            : undefined
-          }
-          disabled={
-            activeTab === "selects" ||
-            (activeTab === "clips" && uploading) ||
-            (activeTab === "inserts" && insertUploading) ||
-            (activeTab === "sound" && soundUploading) ||
-            (activeTab === "effects" && effectsUploading) ||
-            (activeTab === "backgrounds" && backgroundsUploading)
-          }
-          className="ml-auto flex-shrink-0 gap-1.5"
-        >
-          <Upload className="w-3.5 h-3.5" />
-          {activeTab === "inserts" ? (insertUploading ? "Uploading…" : "Upload Insert")
-            : activeTab === "clips" ? (uploading ? "Uploading…" : "Upload Clip")
-            : activeTab === "sound" ? (soundUploading ? "Uploading…" : "Upload Sound")
-            : activeTab === "effects" ? (effectsUploading ? "Uploading…" : "Upload Effect")
-            : activeTab === "backgrounds" ? (backgroundsUploading ? "Uploading…" : "Upload Background")
-            : "Upload"}
-        </Button>
       </div>
 
       {/* Content row: video+timeline (left) | media sidebar (right) */}
@@ -1456,7 +1410,7 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
             <Film className="w-16 h-16 mx-auto opacity-30" />
             <p className="text-sm">No footage uploaded yet</p>
             <p className="text-xs">
-              Click "Upload Clip" in the toolbar to add your raw footage. Files are stored securely
+              Use the upload icon in the sidebar to add your raw footage. Files are stored securely
               in your project on DigitalOcean Spaces.
             </p>
             <Button
@@ -1484,9 +1438,24 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
         {/* Controls row — 3-column grid: left info | centre buttons | right actions */}
         <div className="grid grid-cols-3 items-center gap-2">
 
-          {/* LEFT — contextual info */}
+          {/* LEFT — contextual info / upload progress */}
           <div className="flex items-center gap-2 text-xs min-w-0">
-            {currentInsert ? (
+            {(uploading || insertUploading || soundUploading || effectsUploading || backgroundsUploading) ? (
+              <div className="flex items-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground flex-shrink-0" />
+                <div className="w-28 h-1.5 bg-muted rounded-full overflow-hidden flex-shrink-0">
+                  <div
+                    className="h-full bg-primary rounded-full transition-all"
+                    style={{ width: `${uploading ? uploadProgress : insertUploading ? insertUploadProgress : soundUploading ? soundUploadProgress : effectsUploading ? effectsUploadProgress : backgroundsUploadProgress}%` }}
+                  />
+                </div>
+                <span className="text-muted-foreground flex-shrink-0">
+                  {uploading ? uploadProgress : insertUploading ? insertUploadProgress : soundUploading ? soundUploadProgress : effectsUploading ? effectsUploadProgress : backgroundsUploadProgress}%
+                </span>
+              </div>
+            ) : (uploadError || insertUploadError) ? (
+              <span className="text-red-400 truncate">{uploadError || insertUploadError}</span>
+            ) : currentInsert ? (
               <>
                 <ImageIcon className="w-3.5 h-3.5 text-primary flex-shrink-0" />
                 <span className="text-foreground truncate">{currentInsert.filename}</span>
@@ -1782,12 +1751,12 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
       {/* Right sidebar: media browser */}
       <div className="w-52 flex-shrink-0 border-l border-border flex flex-col min-h-0 bg-card">
 
-        {/* Category dropdown */}
-        <div className="px-2 py-2 border-b border-border flex-shrink-0">
+        {/* Category dropdown + upload + refresh */}
+        <div className="flex items-center gap-1.5 px-2 py-2 border-b border-border flex-shrink-0">
           <select
             value={activeTab}
             onChange={(e) => setActiveTab(e.target.value as ActiveTab)}
-            className="w-full text-xs bg-background border border-border rounded px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+            className="flex-1 text-xs bg-background border border-border rounded px-2 py-1.5 text-foreground focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
           >
             <option value="clips">Clips ({clips.length})</option>
             <option value="selects">Selects ({selects.length})</option>
@@ -1796,6 +1765,28 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
             <option value="effects">VFX ({effects.length})</option>
             <option value="backgrounds">Backgrounds ({backgrounds.length})</option>
           </select>
+          {activeTab !== "selects" && (
+            <button
+              onClick={() => {
+                if (activeTab === "clips") fileInputRef.current?.click();
+                else if (activeTab === "inserts") insertInputRef.current?.click();
+                else if (activeTab === "sound") soundInputRef.current?.click();
+                else if (activeTab === "effects") effectsInputRef.current?.click();
+                else if (activeTab === "backgrounds") backgroundsInputRef.current?.click();
+              }}
+              title={`Upload ${activeTab}`}
+              className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Upload className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <button
+            onClick={fetchClips}
+            title="Refresh"
+            className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
         </div>
 
         {/* Cards */}

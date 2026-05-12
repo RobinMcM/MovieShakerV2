@@ -11,6 +11,7 @@ import {
   GripHorizontal,
   Music,
   Pause,
+  Pencil,
   Play,
   RefreshCw,
   SkipBack,
@@ -147,6 +148,63 @@ function GapMarker({ active, onClick }: { active: boolean; onClick: () => void }
 }
 
 // ---------------------------------------------------------------------------
+// InlineRename — pencil-icon triggered inline text edit
+// ---------------------------------------------------------------------------
+
+function InlineRename({ name, onSave }: { name: string; onSave: (n: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(name);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function startEdit(e: React.MouseEvent) {
+    e.stopPropagation();
+    setValue(name);
+    setEditing(true);
+    setTimeout(() => { inputRef.current?.select(); }, 0);
+  }
+
+  function commit() {
+    const trimmed = value.trim();
+    if (trimmed && trimmed !== name) onSave(trimmed);
+    setEditing(false);
+  }
+
+  function handleKey(e: React.KeyboardEvent) {
+    if (e.key === "Enter") commit();
+    if (e.key === "Escape") setEditing(false);
+    e.stopPropagation();
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        autoFocus
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={handleKey}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full text-xs bg-background border border-primary rounded px-1 py-0 leading-tight focus:outline-none"
+      />
+    );
+  }
+
+  return (
+    <span className="group/rename flex items-center gap-0.5 min-w-0 flex-1">
+      <span className="truncate text-xs text-foreground leading-tight">{name}</span>
+      <button
+        onClick={startEdit}
+        className="flex-shrink-0 opacity-0 group-hover/rename:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+        title="Rename"
+      >
+        <Pencil className="w-2.5 h-2.5" />
+      </button>
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // ArtifactThumbnail — video first-frame or image preview for panel cards
 // ---------------------------------------------------------------------------
 
@@ -193,6 +251,7 @@ type ArtifactPreviewItem = { url: string; in_time?: number; out_time?: number; i
 
 function ArtifactsPanel({
   rushes, labels, onAdd, onRefresh, activeCategory, onCategoryChange, onPreview,
+  onRenameAsset, onRenameSelect,
 }: {
   rushes: RushesData | null;
   labels: Record<string, string>;
@@ -201,6 +260,8 @@ function ArtifactsPanel({
   activeCategory: ArtifactCategory;
   onCategoryChange: (cat: ArtifactCategory) => void;
   onPreview: (item: ArtifactPreviewItem | null) => void;
+  onRenameAsset: (key: string, newLabel: string) => void;
+  onRenameSelect: (selectId: string, newLabel: string) => void;
 }) {
   if (!rushes) {
     return (
@@ -263,10 +324,8 @@ function ArtifactsPanel({
               <ArtifactThumbnail url={s.source_url} seekTo={s.in_time} />
             </div>
             <div className="px-2 py-1.5 flex items-center gap-1">
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-foreground truncate leading-tight">{s.label}</p>
-                <p className="text-[10px] text-muted-foreground">{formatDuration(s.duration)}</p>
-              </div>
+              <InlineRename name={s.label} onSave={(n) => onRenameSelect(s.id, n)} />
+              <p className="flex-shrink-0 text-[10px] text-muted-foreground">{formatDuration(s.duration)}</p>
               <button onClick={(e) => { e.stopPropagation(); onAdd(fromSelectMeta(s)); }} className="flex-shrink-0 flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80 font-medium" title="Add to Timeline">
                 Add <ChevronRight className="w-3 h-3" />
               </button>
@@ -281,10 +340,8 @@ function ArtifactsPanel({
               <ArtifactThumbnail url={c.url} />
             </div>
             <div className="px-2 py-1.5 flex items-center gap-1">
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-foreground truncate leading-tight">{labels[c.key] || c.filename}</p>
-                <p className="text-[10px] text-muted-foreground">{formatSize(c.size)}</p>
-              </div>
+              <InlineRename name={labels[c.key] || c.filename} onSave={(n) => onRenameAsset(c.key, n)} />
+              <p className="flex-shrink-0 text-[10px] text-muted-foreground">{formatSize(c.size)}</p>
               <button onClick={(e) => { e.stopPropagation(); onAdd(fromClipMeta(c)); }} className="flex-shrink-0 flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80 font-medium" title="Add to Timeline">
                 Add <ChevronRight className="w-3 h-3" />
               </button>
@@ -299,10 +356,8 @@ function ArtifactsPanel({
               <ArtifactThumbnail url={i.url} isImage />
             </div>
             <div className="px-2 py-1.5 flex items-center gap-1">
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-foreground truncate leading-tight">{labels[i.key] || i.filename}</p>
-                <p className="text-[10px] text-muted-foreground">5s</p>
-              </div>
+              <InlineRename name={labels[i.key] || i.filename} onSave={(n) => onRenameAsset(i.key, n)} />
+              <p className="flex-shrink-0 text-[10px] text-muted-foreground">5s</p>
               <button onClick={(e) => { e.stopPropagation(); onAdd(fromInsertMeta(i)); }} className="flex-shrink-0 flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80 font-medium" title="Add to Timeline">
                 Add <ChevronRight className="w-3 h-3" />
               </button>
@@ -320,10 +375,8 @@ function ArtifactsPanel({
                 <ArtifactThumbnail url={b.url} isImage={isImg} />
               </div>
               <div className="px-2 py-1.5 flex items-center gap-1">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-foreground truncate leading-tight">{labels[b.key] || b.filename}</p>
-                  <p className="text-[10px] text-muted-foreground">{formatSize(b.size)}</p>
-                </div>
+                <InlineRename name={labels[b.key] || b.filename} onSave={(n) => onRenameAsset(b.key, n)} />
+                <p className="flex-shrink-0 text-[10px] text-muted-foreground">{formatSize(b.size)}</p>
                 <button onClick={(e) => { e.stopPropagation(); onAdd(fromBackgroundMeta(b)); }} className="flex-shrink-0 flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80 font-medium" title="Add to Timeline">
                   Add <ChevronRight className="w-3 h-3" />
                 </button>
@@ -336,10 +389,8 @@ function ArtifactsPanel({
         {activeCategory === "sound" && rushes.sounds.map((s) => (
           <div key={s.key} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-card hover:bg-muted/40 transition-colors">
             <Music className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-foreground truncate leading-tight">{labels[s.key] || s.filename}</p>
-              <p className="text-[10px] text-muted-foreground">{formatSize(s.size)}</p>
-            </div>
+            <InlineRename name={labels[s.key] || s.filename} onSave={(n) => onRenameAsset(s.key, n)} />
+            <p className="flex-shrink-0 text-[10px] text-muted-foreground">{formatSize(s.size)}</p>
             <button onClick={() => onAdd(fromAudioMeta(s, "sound"))} className="flex-shrink-0 flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80 font-medium" title="Add to Timeline">
               Add <ChevronRight className="w-3 h-3" />
             </button>
@@ -350,10 +401,8 @@ function ArtifactsPanel({
         {activeCategory === "effects" && rushes.effects.map((e) => (
           <div key={e.key} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-card hover:bg-muted/40 transition-colors">
             <Zap className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-foreground truncate leading-tight">{labels[e.key] || e.filename}</p>
-              <p className="text-[10px] text-muted-foreground">{formatSize(e.size)}</p>
-            </div>
+            <InlineRename name={labels[e.key] || e.filename} onSave={(n) => onRenameAsset(e.key, n)} />
+            <p className="flex-shrink-0 text-[10px] text-muted-foreground">{formatSize(e.size)}</p>
             <button onClick={() => onAdd(fromAudioMeta(e, "effects"))} className="flex-shrink-0 flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80 font-medium" title="Add to Timeline">
               Add <ChevronRight className="w-3 h-3" />
             </button>
@@ -433,6 +482,7 @@ function EditorView({ projectId }: { projectId: string }) {
   const [artifactPreview, setArtifactPreview] = useState<ArtifactPreviewItem | null>(null);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const labelsSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragSrcRef = useRef<{ track: TrackType; index: number } | null>(null);
   const playerVideoRef = useRef<HTMLVideoElement>(null);
   const playTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -593,6 +643,37 @@ function EditorView({ projectId }: { projectId: string }) {
       setAudioInsertPoint(audioInsertPoint + 1);
     }
     updateTimeline(next);
+  }
+
+  // ---- asset rename ----
+
+  function handleRenameAsset(key: string, newLabel: string) {
+    const next = { ...labels, [key]: newLabel };
+    setLabels(next);
+    if (labelsSaveTimerRef.current) clearTimeout(labelsSaveTimerRef.current);
+    labelsSaveTimerRef.current = setTimeout(() => {
+      fetch(`${API_URL}/api/documentary/projects/${projectId}/rushes/labels`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ labels: next }),
+      }).catch(() => {});
+    }, 800);
+  }
+
+  async function handleRenameSelect(selectId: string, newLabel: string) {
+    setRushes((prev) => prev ? {
+      ...prev,
+      selects: prev.selects.map((s) => s.id === selectId ? { ...s, label: newLabel } : s),
+    } : prev);
+    try {
+      await fetch(`${API_URL}/api/documentary/projects/${projectId}/rushes/selects/${selectId}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: newLabel }),
+      });
+    } catch { /* silent */ }
   }
 
   // ---- remove from timeline ----
@@ -970,6 +1051,8 @@ function EditorView({ projectId }: { projectId: string }) {
           activeCategory={artifactCategory}
           onCategoryChange={setArtifactCategory}
           onPreview={setArtifactPreview}
+          onRenameAsset={handleRenameAsset}
+          onRenameSelect={handleRenameSelect}
         />
 
       </div>{/* end flex row */}

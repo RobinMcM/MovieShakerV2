@@ -535,7 +535,7 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
 
   // Stable ID for the active item — changes whenever the playing item changes.
   // Drives the load+play effect (same pattern as film-in-a-box's currentUrl effect).
-  const videoId = currentClip?.key ?? (currentSelect ? `select:${currentSelect.id}` : "") ?? (externalPreview && !externalPreview.isImage ? externalPreview.url : "");
+  const videoId = currentClip?.key ?? (currentSelect ? `select:${currentSelect.id}` : (externalPreview && !externalPreview.isImage ? externalPreview.url : ""));
   const videoSrc = (externalPreview && !externalPreview.isImage ? externalPreview.url : null) ?? currentClip?.url ?? currentSelect?.source_url ?? "";
 
   // ---- fetch ----

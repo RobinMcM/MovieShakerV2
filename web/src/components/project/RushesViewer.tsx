@@ -8,7 +8,6 @@ import {
   Image as ImageIcon,
   Loader2,
   MapPin,
-  Music,
   Pause,
   Pencil,
   Play,
@@ -16,7 +15,6 @@ import {
   Trash2,
   Upload,
   X,
-  Zap,
 } from "lucide-react";
 import { API_URL } from "@/lib/api";
 
@@ -1779,180 +1777,9 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
 
       </div> {/* end left column */}
 
-      {/* Right sidebar: media browser */}
-      <div className="w-52 flex-shrink-0 border-l border-border flex flex-col min-h-0 bg-card">
-
-        {/* Tab buttons */}
-        <div className="flex flex-wrap gap-1 p-2 border-b border-border flex-shrink-0">
-          {(["clips", "selects", "inserts", "sound", "effects", "backgrounds"] as const).map((t) => {
-            const count =
-              t === "clips" ? clips.length : t === "selects" ? selects.length :
-              t === "inserts" ? inserts.length : t === "sound" ? sounds.length :
-              t === "effects" ? effects.length : backgrounds.length;
-            return (
-              <button key={t} onClick={() => setActiveTab(t)}
-                className={`text-[10px] px-2 py-0.5 rounded capitalize transition-colors ${
-                  activeTab === t
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                }`}
-              >
-                {t} {count > 0 && <span className="opacity-60">({count})</span>}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Cards */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
-
-          {/* ── CLIPS ── */}
-          {activeTab === "clips" && clips.length === 0 && (
-            <p className="text-[10px] text-muted-foreground text-center py-6">No clips yet</p>
-          )}
-          {activeTab === "clips" && clips.map((c) => (
-            <div key={c.key} onClick={() => playClip(c)}
-              className={`group rounded border cursor-pointer transition-colors overflow-hidden ${
-                currentClip?.key === c.key ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground"
-              }`}
-            >
-              <div className="h-10 bg-muted overflow-hidden">
-                <video src={c.url} muted playsInline preload="metadata" className="w-full h-full object-cover"
-                  onLoadedMetadata={(e) => { e.currentTarget.currentTime = 0; }} />
-              </div>
-              <div className="px-1.5 py-1 flex items-center gap-1">
-                <InlineRename name={labels[c.key] || c.filename}
-                  onSave={(n) => handleRenameAsset(c.key, n)} />
-                <button onClick={(e) => { e.stopPropagation();
-                  confirmDelete(labels[c.key] || c.filename, () => handleDeleteClip(c)); }}
-                  className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-400">
-                  <Trash2 className="w-2.5 h-2.5" />
-                </button>
-              </div>
-            </div>
-          ))}
-
-          {/* ── SELECTS ── */}
-          {activeTab === "selects" && selects.length === 0 && (
-            <p className="text-[10px] text-muted-foreground text-center py-6">No selects yet — load a clip and mark in/out points</p>
-          )}
-          {activeTab === "selects" && selects.map((s) => (
-            <div key={s.id} onClick={() => playSelect(s)}
-              className={`group rounded border cursor-pointer transition-colors overflow-hidden ${
-                currentSelect?.id === s.id ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground"
-              }`}
-            >
-              <div className="h-10 bg-muted overflow-hidden">
-                <video src={s.source_url} muted playsInline preload="metadata" className="w-full h-full object-cover"
-                  onLoadedMetadata={(e) => { e.currentTarget.currentTime = s.in_time ?? 0; }} />
-              </div>
-              <div className="px-1.5 py-1 flex items-center gap-1">
-                <InlineRename name={s.label} onSave={(n) => handleRenameSelect(s.id, n)} />
-                <span className="flex-shrink-0 text-[9px] text-muted-foreground font-mono">
-                  {formatDuration(s.duration)}
-                </span>
-                <button onClick={(e) => { e.stopPropagation();
-                  confirmDelete(s.label, () => handleDeleteSelect(s.id)); }}
-                  className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-400">
-                  <Trash2 className="w-2.5 h-2.5" />
-                </button>
-              </div>
-            </div>
-          ))}
-
-          {/* ── INSERTS ── */}
-          {activeTab === "inserts" && inserts.length === 0 && (
-            <p className="text-[10px] text-muted-foreground text-center py-6">No inserts yet</p>
-          )}
-          {activeTab === "inserts" && inserts.map((i) => (
-            <div key={i.key} onClick={() => playInsert(i)}
-              className={`group rounded border cursor-pointer transition-colors overflow-hidden ${
-                currentInsert?.key === i.key ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground"
-              }`}
-            >
-              <div className="h-10 bg-muted overflow-hidden">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={i.url} alt="" className="w-full h-full object-cover" />
-              </div>
-              <div className="px-1.5 py-1 flex items-center gap-1">
-                <InlineRename name={labels[i.key] || i.filename}
-                  onSave={(n) => handleRenameAsset(i.key, n)} />
-                <button onClick={(e) => { e.stopPropagation();
-                  confirmDelete(labels[i.key] || i.filename, () => handleDeleteInsert(i)); }}
-                  className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-400">
-                  <Trash2 className="w-2.5 h-2.5" />
-                </button>
-              </div>
-            </div>
-          ))}
-
-          {/* ── SOUND ── */}
-          {activeTab === "sound" && sounds.length === 0 && (
-            <p className="text-[10px] text-muted-foreground text-center py-6">No sound tracks yet</p>
-          )}
-          {activeTab === "sound" && sounds.map((s) => (
-            <div key={s.key} className="group flex items-center gap-1.5 px-2 py-1.5 rounded border border-border hover:border-muted-foreground transition-colors">
-              <Music className="w-3 h-3 text-muted-foreground flex-shrink-0" />
-              <InlineRename name={labels[s.key] || s.filename}
-                onSave={(n) => handleRenameAsset(s.key, n)} />
-              <button onClick={() => confirmDelete(labels[s.key] || s.filename, () => handleDeleteSound(s))}
-                className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-400">
-                <Trash2 className="w-2.5 h-2.5" />
-              </button>
-            </div>
-          ))}
-
-          {/* ── EFFECTS / VFX ── */}
-          {activeTab === "effects" && effects.length === 0 && (
-            <p className="text-[10px] text-muted-foreground text-center py-6">No VFX yet</p>
-          )}
-          {activeTab === "effects" && effects.map((e) => (
-            <div key={e.key} className="group flex items-center gap-1.5 px-2 py-1.5 rounded border border-border hover:border-muted-foreground transition-colors">
-              <Zap className="w-3 h-3 text-muted-foreground flex-shrink-0" />
-              <InlineRename name={labels[e.key] || e.filename}
-                onSave={(n) => handleRenameAsset(e.key, n)} />
-              <button onClick={() => confirmDelete(labels[e.key] || e.filename, () => handleDeleteEffects(e))}
-                className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-400">
-                <Trash2 className="w-2.5 h-2.5" />
-              </button>
-            </div>
-          ))}
-
-          {/* ── BACKGROUNDS ── */}
-          {activeTab === "backgrounds" && backgrounds.length === 0 && (
-            <p className="text-[10px] text-muted-foreground text-center py-6">No backgrounds yet</p>
-          )}
-          {activeTab === "backgrounds" && backgrounds.map((b) => {
-            const ext = b.filename.split(".").pop()?.toLowerCase() ?? "";
-            const isImg = ["jpg", "jpeg", "png", "webp"].includes(ext);
-            return (
-              <div key={b.key}
-                className="group rounded border border-border hover:border-muted-foreground transition-colors overflow-hidden cursor-default">
-                <div className="h-10 bg-muted overflow-hidden">
-                  {isImg
-                    // eslint-disable-next-line @next/next/no-img-element
-                    ? <img src={b.url} alt="" className="w-full h-full object-cover" />
-                    : <video src={b.url} muted playsInline preload="metadata" className="w-full h-full object-cover"
-                        onLoadedMetadata={(e) => { e.currentTarget.currentTime = 0; }} />
-                  }
-                </div>
-                <div className="px-1.5 py-1 flex items-center gap-1">
-                  <InlineRename name={labels[b.key] || b.filename}
-                    onSave={(n) => handleRenameAsset(b.key, n)} />
-                  <button onClick={() => confirmDelete(labels[b.key] || b.filename, () => handleDeleteBackground(b))}
-                    className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-400">
-                    <Trash2 className="w-2.5 h-2.5" />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-
-        </div>
-      </div>
-
       </div> {/* end content row */}
     </div>
   );
 }
+
 

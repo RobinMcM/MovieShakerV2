@@ -1187,6 +1187,7 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
   }
 
   const hasCurrentItem = currentClip !== null || currentSelect !== null || currentInsert !== null;
+  const hasPlayableItem = hasCurrentItem || !!(externalPreview && !externalPreview.isImage);
 
   // Redraw waveform canvas whenever peaks or overlay positions change.
   useEffect(() => {
@@ -1509,7 +1510,7 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
               variant="outline"
               size="sm"
               onClick={handlePlayPause}
-              disabled={!hasCurrentItem}
+              disabled={!hasPlayableItem}
               className="gap-1.5 h-7 text-xs border-border text-foreground hover:bg-accent"
               title={isPlaying ? "Pause" : "Play"}
             >
@@ -1698,7 +1699,9 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
 
               {!videoDuration && (
                 <span className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground">
-                  Play a clip to use the timeline
+                  {(externalPreview && !externalPreview.isImage) || currentClip
+                    ? "Loading…"
+                    : "Play a clip to use the timeline"}
                 </span>
               )}
             </div>
@@ -1733,7 +1736,7 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
             </div>
 
             {/* Audio waveform */}
-            <div className="relative w-full h-14 rounded overflow-hidden bg-muted/40">
+            <div className="relative w-full h-8 rounded overflow-hidden bg-muted/40">
               {/* Canvas always mounted so the drawing effect finds it immediately after peaks load */}
               <canvas
                 ref={waveformCanvasRef}

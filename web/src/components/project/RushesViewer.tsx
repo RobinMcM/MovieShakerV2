@@ -168,7 +168,7 @@ interface SoundMeta { filename: string; key: string; size: number; url: string; 
 interface EffectsMeta { filename: string; key: string; size: number; url: string; last_modified: string; }
 interface BackgroundsMeta { filename: string; key: string; size: number; url: string; last_modified: string; }
 
-type TimelineMode = "section" | "place" | null;
+type TimelineMode = "section" | null;
 type SectionStep = 0 | 1 | 2;
 type ActiveTab = "clips" | "selects" | "inserts" | "sound" | "effects" | "backgrounds";
 
@@ -508,7 +508,6 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
   const [sectionStep, setSectionStep] = useState<SectionStep>(0);
   const [inPoint, setInPoint] = useState<number | null>(null);
   const [outPoint, setOutPoint] = useState<number | null>(null);
-  const [placePoint, setPlacePoint] = useState<number | null>(null);
 
   // audio waveform state
   const [waveformSamples, setWaveformSamples] = useState<Float32Array | null>(null);
@@ -587,7 +586,6 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
     const vid = videoRef.current;
     setInPoint(null);
     setOutPoint(null);
-    setPlacePoint(null);
     setSectionStep(0);
     setPlayheadTime(0);
     setVideoDuration(0);
@@ -809,13 +807,9 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
 
   function activateMode(mode: NonNullable<TimelineMode>) {
     setTimelineMode(mode);
-    if (mode === "section") {
-      setInPoint(null);
-      setOutPoint(null);
-      setSectionStep(0);
-    } else {
-      setPlacePoint(null);
-    }
+    setInPoint(null);
+    setOutPoint(null);
+    setSectionStep(0);
   }
 
   // ---- bar interaction — identical to film-in-a-box ----
@@ -839,8 +833,6 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
         setInPoint(newIn); setOutPoint(newOut); setSectionStep(2);
       }
       // sectionStep === 2: no-op — section is locked
-    } else if (timelineMode === "place") {
-      setPlacePoint(t);
     }
     // null mode: bar is passive, no action
   }
@@ -1169,8 +1161,6 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
 
   const inPct = videoDuration > 0 && inPoint !== null ? (inPoint / videoDuration) * 100 : 0;
   const outPct = videoDuration > 0 && outPoint !== null ? (outPoint / videoDuration) * 100 : 0;
-  const placePct = videoDuration > 0 && placePoint !== null ? (placePoint / videoDuration) * 100 : 0;
-
   const modeButtonClass = (mode: TimelineMode) =>
     `gap-1.5 h-7 text-xs border transition-colors ${
       timelineMode === mode
@@ -1186,8 +1176,6 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
     if (timelineMode === "section") {
       if (sectionStep === 0) hintText = "Click the bar to set section start";
       else if (sectionStep === 1) hintText = "Click the bar to set section end";
-    } else if (timelineMode === "place" && placePoint === null) {
-      hintText = "Click the bar to drop a placement marker";
     }
   }
 
@@ -1467,16 +1455,6 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
                   Section
                 </Button>
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => activateMode("place")}
-                  className={modeButtonClass("place")}
-                  title="Click to drop a placement marker (always resets previous)"
-                >
-                  <MapPin className="w-3.5 h-3.5" />
-                  Place
-                </Button>
               </>
             )}
           </div>
@@ -1513,18 +1491,6 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
                     : <><Bookmark className="w-3.5 h-3.5" />Save Select</>
                   }
                 </Button>
-              </>
-            ) : placePoint !== null ? (
-              <>
-                <MapPin className="w-3.5 h-3.5 text-yellow-400" />
-                <span className="font-mono text-yellow-400">PLACE {formatTimecode(placePoint)}</span>
-                <button
-                  onClick={() => setPlacePoint(null)}
-                  className="text-muted-foreground hover:text-foreground"
-                  title="Clear marker"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
               </>
             ) : null}
           </div>
@@ -1586,27 +1552,6 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
                     onPointerMove={(e) => {
                       if (e.buttons === 0) return;
                       setOutPoint(Math.max(inPoint ?? 0, Math.min(timeFromBarX(e.clientX), videoDuration)));
-                    }}
-                  />
-                </>
-              )}
-
-              {placePoint !== null && !currentSelect && (
-                <>
-                  <div
-                    className="absolute top-0 h-full w-0.5 bg-yellow-400 pointer-events-none"
-                    style={{ left: `${placePct}%` }}
-                  >
-                    <MapPin className="absolute -top-0.5 -left-[5px] w-3 h-3 text-yellow-400 fill-yellow-400" />
-                  </div>
-                  <div
-                    className="absolute top-0 h-full w-4 -translate-x-1/2 cursor-ew-resize z-10"
-                    style={{ left: `${placePct}%` }}
-                    onClick={(e) => e.stopPropagation()}
-                    onPointerDown={(e) => { e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); }}
-                    onPointerMove={(e) => {
-                      if (e.buttons === 0) return;
-                      setPlacePoint(Math.max(0, Math.min(timeFromBarX(e.clientX), videoDuration)));
                     }}
                   />
                 </>

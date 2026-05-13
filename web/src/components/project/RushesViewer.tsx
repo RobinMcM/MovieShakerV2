@@ -1496,9 +1496,46 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
           </div>
         </div>
 
-        {/* Scrubber bar + bridge + audio waveform — grouped so the playhead spans all three */}
+        {/* Audio waveform + bridge + film scrubber — grouped so the playhead spans all three */}
         {!currentInsert && (
           <div className="relative flex flex-col">
+
+            {/* Audio waveform */}
+            <div className="relative w-full h-14 rounded overflow-hidden bg-muted/40">
+              {/* Canvas always mounted so the drawing effect finds it immediately after peaks load */}
+              <canvas
+                ref={waveformCanvasRef}
+                className={`w-full h-full block ${waveformSamples ? "" : "hidden"}`}
+              />
+              {!waveformSamples && videoSrc && isAudioProcessing && (
+                <div className="absolute inset-0 flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Analysing audio…
+                </div>
+              )}
+              {!waveformSamples && videoSrc && !isAudioProcessing && (
+                <div className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground select-none">
+                  No audio data
+                </div>
+              )}
+              {!videoSrc && (
+                <div className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground select-none">
+                  Audio
+                </div>
+              )}
+            </div>
+
+            {/* Bridge: position label only — the connector line is the wrapper-level overlay below */}
+            <div className="relative h-5 flex-shrink-0 pointer-events-none">
+              {videoDuration > 0 && (
+                <span
+                  className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 text-[9px] font-mono text-foreground bg-card px-1 rounded whitespace-nowrap shadow-sm z-20"
+                  style={{ left: `${playheadPct}%` }}
+                >
+                  {formatTimecode(playheadTime)}
+                </span>
+              )}
+            </div>
 
             {/* Film scrubber bar */}
             <div
@@ -1557,7 +1594,7 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
                 </>
               )}
 
-              {/* Playhead line only — label moved to bridge below */}
+              {/* Playhead line */}
               {videoDuration > 0 && (
                 <div
                   className="absolute top-0 h-full w-0.5 bg-foreground/70 pointer-events-none"
@@ -1600,50 +1637,11 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
               </div>
             )}
 
-            {/* Bridge: position label only — the connector line is the wrapper-level overlay below */}
-            <div className="relative h-5 flex-shrink-0 pointer-events-none">
-              {videoDuration > 0 && (
-                <>
-                  <span
-                    className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 text-[9px] font-mono text-foreground bg-card px-1 rounded whitespace-nowrap shadow-sm z-20"
-                    style={{ left: `${playheadPct}%` }}
-                  >
-                    {formatTimecode(playheadTime)}
-                  </span>
-                </>
-              )}
-            </div>
-
-            {/* Audio waveform */}
-            <div className="relative w-full h-14 rounded overflow-hidden bg-muted/40">
-              {/* Canvas always mounted so the drawing effect finds it immediately after peaks load */}
-              <canvas
-                ref={waveformCanvasRef}
-                className={`w-full h-full block ${waveformSamples ? "" : "hidden"}`}
-              />
-              {!waveformSamples && videoSrc && isAudioProcessing && (
-                <div className="absolute inset-0 flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  Analysing audio…
-                </div>
-              )}
-              {!waveformSamples && videoSrc && !isAudioProcessing && (
-                <div className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground select-none">
-                  No audio data
-                </div>
-              )}
-              {!videoSrc && (
-                <div className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground select-none">
-                  Audio
-                </div>
-              )}
-            </div>
-
-            {/* Wrapper-level overlay: single playhead line spanning bridge + audio bar,
-                in front of the audio bar canvas (z-10). top-20 = film bar height (h-20 = 80px). */}
+            {/* Wrapper-level overlay: single playhead line spanning bridge + film scrubber,
+                in front of the scrubber canvas (z-10). top-14 = audio waveform height (h-14 = 56px). */}
             {videoDuration > 0 && (
               <div
-                className="absolute top-20 bottom-0 w-0.5 -translate-x-1/2 bg-foreground/70 pointer-events-none z-10"
+                className="absolute top-14 bottom-0 w-0.5 -translate-x-1/2 bg-foreground/70 pointer-events-none z-10"
                 style={{ left: `${playheadPct}%` }}
               />
             )}

@@ -488,7 +488,7 @@ function EditorView({ projectId }: { projectId: string }) {
   const [loading, setLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playingVideoIdx, setPlayingVideoIdx] = useState(0);
-  const [playStartIdx, setPlayStartIdx] = useState(0);
+  const [playStartX, setPlayStartX] = useState(12); // pixel offset within marker rail (12 = first gap = clip 0 start)
   const [videoInsertPoint, setVideoInsertPoint] = useState(0);
   const [audioInsertPoint, setAudioInsertPoint] = useState(0);
   const [rushesVersion, setRushesVersion] = useState(0);
@@ -501,6 +501,7 @@ function EditorView({ projectId }: { projectId: string }) {
   const playerVideoRef = useRef<HTMLVideoElement>(null);
   const playTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const trackScrollRef = useRef<HTMLDivElement>(null);
+  const playStartOffsetRef = useRef(0); // time offset within clip, applied on next onLoadedMetadata
   // Ref so event-handler closures see the latest isPlaying without staling
   const isPlayingRef = useRef(false);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
@@ -623,7 +624,15 @@ function EditorView({ projectId }: { projectId: string }) {
 
   function handlePlay() {
     if (timeline.video_track.length === 0) return;
-    setPlayingVideoIdx(playStartIdx);
+    const { clipIdx, timeOffset } = pixelToPlayPoint(playStartX);
+    if (clipIdx === playingVideoIdx) {
+      const vid = playerVideoRef.current;
+      const baseTime = timeline.video_track[clipIdx]?.in_time ?? 0;
+      if (vid) { vid.currentTime = baseTime + timeOffset; vid.play().catch(() => {}); }
+    } else {
+      playStartOffsetRef.current = timeOffset;
+      setPlayingVideoIdx(clipIdx);
+    }
     setIsPlaying(true);
   }
 
@@ -809,31 +818,33 @@ function EditorView({ projectId }: { projectId: string }) {
 
   // ---- play-start marker helpers ----
 
-  function computeMarkerOffset(idx: number): number {
-    const GAP = 12; // GapMarker w-3 = 12px
-    let offset = GAP;
-    for (let i = 0; i < idx && i < timeline.video_track.length; i++) {
-      offset += blockWidth(timeline.video_track[i].duration) + GAP;
-    }
-    return offset;
-  }
-
-  function pixelToClipIdx(px: number): number {
+  function pixelToPlayPoint(px: number): { clipIdx: number; timeOffset: number } {
     const GAP = 12;
     let cumulative = GAP;
     for (let i = 0; i < timeline.video_track.length; i++) {
-      const clipEnd = cumulative + blockWidth(timeline.video_track[i].duration);
-      if (px <= clipEnd) return i;
+      const item = timeline.video_track[i];
+      const w = blockWidth(item.duration);
+      const clipEnd = cumulative + w;
+      if (px <= clipEnd) {
+        const posInClip = Math.max(0, px - cumulative);
+        return { clipIdx: i, timeOffset: (posInClip / w) * item.duration };
+      }
       cumulative = clipEnd + GAP;
     }
-    return Math.max(0, timeline.video_track.length - 1);
+    return { clipIdx: Math.max(0, timeline.video_track.length - 1), timeOffset: 0 };
   }
 
   function handleMarkerPointerMove(e: React.PointerEvent) {
     if (e.buttons === 0 || !trackScrollRef.current) return;
+    const GAP = 12;
     const rect = trackScrollRef.current.getBoundingClientRect();
-    const rawX = e.clientX - rect.left + trackScrollRef.current.scrollLeft;
-    setPlayStartIdx(pixelToClipIdx(Math.max(0, rawX)));
+    // subtract p-2 (8px) padding so position is relative to flex-col content, not container edge
+    const rawX = e.clientX - rect.left + trackScrollRef.current.scrollLeft - 8;
+    // compute max x = end of last clip
+    let maxX = GAP;
+    for (const item of timeline.video_track) maxX += blockWidth(item.duration) + GAP;
+    maxX -= GAP; // remove trailing gap — cap at end of last clip
+    setPlayStartX(Math.max(GAP, Math.min(rawX, maxX)));
   }
 
   // ---- track renderer — interleaved blocks + gap markers ----
@@ -961,7 +972,9 @@ function EditorView({ projectId }: { projectId: string }) {
                     onLoadedMetadata={() => {
                       const vid = playerVideoRef.current;
                       if (!vid) return;
-                      if (previewItem.in_time != null) vid.currentTime = previewItem.in_time;
+                      const baseTime = previewItem.in_time ?? 0;
+                      vid.currentTime = baseTime + playStartOffsetRef.current;
+                      playStartOffsetRef.current = 0;
                       if (isPlayingRef.current) vid.play().catch(() => {});
                     }}
                     onTimeUpdate={() => {
@@ -990,7 +1003,7 @@ function EditorView({ projectId }: { projectId: string }) {
                   </div>
                   <div className="flex items-center justify-center gap-2">
                     <button
-                      onClick={() => { handlePause(); setPlayingVideoIdx(0); }}
+                      onClick={() => { handlePause(); setPlayingVideoIdx(0); setPlayStartX(12); }}
                       disabled={timeline.video_track.length === 0}
                       className="p-1 rounded border border-border hover:bg-accent text-foreground disabled:text-muted-foreground/40 transition-colors"
                       title="Skip to start"
@@ -1060,7 +1073,7 @@ function EditorView({ projectId }: { projectId: string }) {
                       <div className="relative h-6 flex-shrink-0">
                         <div
                           className="absolute top-0 cursor-ew-resize select-none z-10 flex flex-col items-center"
-                          style={{ left: `${computeMarkerOffset(playStartIdx)}px`, transform: "translateX(-50%)" }}
+                          style={{ left: `${playStartX}px`, transform: "translateX(-50%)" }}
                           title="Drag to set play start"
                           onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); e.preventDefault(); }}
                           onPointerMove={handleMarkerPointerMove}

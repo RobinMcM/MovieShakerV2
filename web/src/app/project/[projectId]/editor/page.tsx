@@ -593,7 +593,14 @@ function EditorView({ projectId }: { projectId: string }) {
       // Video — seek and play. onLoadedMetadata also plays if still isPlaying.
       const vid = playerVideoRef.current;
       if (!vid) return;
-      vid.currentTime = item.in_time ?? 0;
+      const baseTime = item.in_time ?? 0;
+      if (vid.readyState >= 2) {
+        // Video already loaded (same clip) — consume offset now
+        const offset = playStartOffsetRef.current;
+        playStartOffsetRef.current = 0;
+        vid.currentTime = baseTime + offset;
+      }
+      // If not loaded (different clip / remount), onLoadedMetadata handles the seek
       vid.play().catch(() => {});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -625,14 +632,8 @@ function EditorView({ projectId }: { projectId: string }) {
   function handlePlay() {
     if (timeline.video_track.length === 0) return;
     const { clipIdx, timeOffset } = pixelToPlayPoint(playStartX);
-    if (clipIdx === playingVideoIdx) {
-      const vid = playerVideoRef.current;
-      const baseTime = timeline.video_track[clipIdx]?.in_time ?? 0;
-      if (vid) { vid.currentTime = baseTime + timeOffset; vid.play().catch(() => {}); }
-    } else {
-      playStartOffsetRef.current = timeOffset;
-      setPlayingVideoIdx(clipIdx);
-    }
+    playStartOffsetRef.current = timeOffset;
+    if (clipIdx !== playingVideoIdx) setPlayingVideoIdx(clipIdx);
     setIsPlaying(true);
   }
 

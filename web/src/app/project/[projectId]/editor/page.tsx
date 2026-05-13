@@ -868,16 +868,19 @@ function EditorView({ projectId }: { projectId: string }) {
     trackType: TrackType,
     insertPoint: number,
     setInsertPoint: (n: number) => void,
+    showGaps = true,
   ) {
     const nodes = [];
     for (let i = 0; i <= trackItems.length; i++) {
-      nodes.push(
-        <GapMarker
-          key={`gap-${i}`}
-          active={insertPoint === i}
-          onClick={() => setInsertPoint(i)}
-        />
-      );
+      if (showGaps) {
+        nodes.push(
+          <GapMarker
+            key={`gap-${i}`}
+            active={insertPoint === i}
+            onClick={() => setInsertPoint(i)}
+          />
+        );
+      }
       if (i < trackItems.length) {
         const item = trackItems[i];
         const isSelected = trackType === "video" && playingVideoIdx === i;
@@ -1055,7 +1058,7 @@ function EditorView({ projectId }: { projectId: string }) {
                   >
                     <div className="flex h-full items-stretch min-w-max">
                       {timeline.audio_track.length > 0 ? (
-                        renderTrack(timeline.audio_track, "audio", audioInsertPoint, setAudioInsertPoint)
+                        renderTrack(timeline.audio_track, "audio", audioInsertPoint, setAudioInsertPoint, false)
                       ) : timeline.video_track.length > 0 ? (
                         /* Linked audio — waveform mirroring video track widths */
                         <div className="flex h-full items-stretch">

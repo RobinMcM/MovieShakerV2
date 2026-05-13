@@ -1024,22 +1024,12 @@ function EditorView({ projectId }: { projectId: string }) {
                   </div>
                   <div className="flex items-center justify-end gap-2 text-xs">
                     <span className="text-muted-foreground">{formatDuration(Math.max(totalVideoTime, totalAudioTime))} total</span>
-                    <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setTab("design")}>
-                      ← Design
-                    </Button>
                   </div>
                 </div>
               </div>
 
               {/* Audio track */}
               <div className="flex-shrink-0 border-b border-border px-4 pt-3 pb-2">
-                <div className="flex items-center gap-2 mb-1.5">
-                  <Music className="w-3.5 h-3.5 text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground font-medium">Audio</span>
-                  <span className="text-[10px] text-muted-foreground">
-                    {timeline.audio_track.length} clips · {formatDuration(totalAudioTime)}
-                  </span>
-                </div>
                 <div className="bg-muted/30 border border-border rounded-lg overflow-x-auto p-2 h-8">
                   <div className="flex h-full items-stretch min-w-max">
                     {timeline.audio_track.length === 0 ? (
@@ -1055,13 +1045,6 @@ function EditorView({ projectId }: { projectId: string }) {
 
               {/* Video track */}
               <div className="flex-shrink-0 px-4 pt-3 pb-2">
-                <div className="flex items-center gap-2 mb-1.5">
-                  <Film className="w-3.5 h-3.5 text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground font-medium">Video</span>
-                  <span className="text-[10px] text-muted-foreground">
-                    {timeline.video_track.length} clips · {formatDuration(totalVideoTime)}
-                  </span>
-                </div>
                 <div ref={trackScrollRef} className="bg-muted/30 border border-border rounded-lg overflow-x-auto p-2 h-8">
                   {timeline.video_track.length === 0 ? (
                     <div className="flex h-full items-center justify-center">

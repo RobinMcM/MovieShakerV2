@@ -1030,7 +1030,7 @@ function EditorView({ projectId }: { projectId: string }) {
 
               {/* Audio track */}
               <div className="flex-shrink-0 border-b border-border px-4 pt-3 pb-2">
-                <div className="bg-muted/30 border border-border rounded-lg overflow-x-auto p-2 h-10">
+                <div className="bg-muted/30 border border-border rounded-lg overflow-x-auto p-2 h-14">
                   <div className="flex h-full items-stretch min-w-max">
                     {timeline.audio_track.length === 0 ? (
                       <p className="text-xs text-muted-foreground self-center mx-auto">
@@ -1045,7 +1045,7 @@ function EditorView({ projectId }: { projectId: string }) {
 
               {/* Video track */}
               <div className="flex-shrink-0 px-4 pt-3 pb-2">
-                <div ref={trackScrollRef} className="bg-muted/30 border border-border rounded-lg overflow-x-auto p-2 h-14">
+                <div ref={trackScrollRef} className="bg-muted/30 border border-border rounded-lg overflow-x-auto p-2 h-20">
                   {timeline.video_track.length === 0 ? (
                     <div className="flex h-full items-center justify-center">
                       <p className="text-xs text-muted-foreground">

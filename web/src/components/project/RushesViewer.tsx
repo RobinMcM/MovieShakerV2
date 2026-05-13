@@ -1538,7 +1538,7 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
             <div
               ref={timelineRef}
               onClick={handleBarClick}
-              className={`relative w-full h-14 rounded select-none transition-opacity ${barCursor} ${
+              className={`relative w-full h-20 rounded select-none transition-opacity ${barCursor} ${
                 videoDuration > 0 ? "bg-muted" : "bg-muted opacity-40 pointer-events-none"
               }`}
             >
@@ -1670,7 +1670,7 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
             </div>
 
             {/* Audio waveform */}
-            <div className="relative w-full h-10 rounded overflow-hidden bg-muted/40">
+            <div className="relative w-full h-14 rounded overflow-hidden bg-muted/40">
               {/* Canvas always mounted so the drawing effect finds it immediately after peaks load */}
               <canvas
                 ref={waveformCanvasRef}
@@ -1695,10 +1695,10 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
             </div>
 
             {/* Wrapper-level overlay: single playhead line spanning bridge + audio bar,
-                in front of the audio bar canvas (z-10). top-14 = film bar height (h-14 = 56px). */}
+                in front of the audio bar canvas (z-10). top-20 = film bar height (h-20 = 80px). */}
             {videoDuration > 0 && (
               <div
-                className="absolute top-14 bottom-0 w-0.5 -translate-x-1/2 bg-foreground/70 pointer-events-none z-10"
+                className="absolute top-20 bottom-0 w-0.5 -translate-x-1/2 bg-foreground/70 pointer-events-none z-10"
                 style={{ left: `${playheadPct}%` }}
               />
             )}

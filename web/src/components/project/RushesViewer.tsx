@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Bookmark,
@@ -199,251 +199,6 @@ function formatSize(bytes: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// ClipCard
-// ---------------------------------------------------------------------------
-
-// Video thumbnail — preload="metadata" so only moov atom is fetched (~few KB).
-// seekTo: exact time to show (e.g. select in_time); falls back to 10% of duration.
-function ClipThumbnail({ url, seekTo }: { url: string; seekTo?: number }) {
-  return (
-    <video
-      src={url}
-      muted
-      playsInline
-      preload="metadata"
-      onLoadedMetadata={(e) => {
-        const v = e.currentTarget;
-        v.currentTime = seekTo !== undefined
-          ? Math.min(seekTo, v.duration)
-          : Math.min(1, v.duration * 0.1);
-      }}
-      className="w-full h-full object-cover"
-    />
-  );
-}
-
-interface ClipCardProps {
-  clip: ClipMeta;
-  label: string;
-  active: boolean;
-  onClick: () => void;
-  onDelete: () => void;
-  onRename: (name: string) => void;
-}
-
-function ClipCard({ clip, label, active, onClick, onDelete, onRename }: ClipCardProps) {
-  return (
-    <div className={`
-      relative flex-shrink-0 w-44 rounded-lg overflow-hidden text-left transition-all border-2
-      ${active
-        ? "border-primary ring-2 ring-primary ring-offset-2 ring-offset-background"
-        : "border-border hover:border-muted-foreground"
-      }
-    `}>
-      <button onClick={onClick} className="block w-full focus:outline-none">
-        <div className="relative w-full h-24 bg-muted overflow-hidden">
-          <ClipThumbnail url={clip.url} />
-          {active && (
-            <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-              <Play className="w-8 h-8 text-foreground fill-foreground drop-shadow" />
-            </div>
-          )}
-          <span className="absolute bottom-1 left-1 bg-background/70 text-foreground text-[10px] px-1 rounded">
-            {formatSize(clip.size)}
-          </span>
-        </div>
-        <div className="px-2 pt-1 pb-1.5 bg-card">
-          <InlineRename name={label} onSave={onRename} />
-        </div>
-      </button>
-      <button
-        onClick={(e) => { e.stopPropagation(); onDelete(); }}
-        className="absolute top-1 right-1 z-10 rounded bg-background/70 p-0.5 text-muted-foreground hover:bg-red-500 hover:text-white transition-colors"
-        title="Delete clip"
-      >
-        <Trash2 className="w-3 h-3" />
-      </button>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// SelectCard
-// ---------------------------------------------------------------------------
-
-interface SelectCardProps {
-  select: SelectMeta;
-  active: boolean;
-  onClick: () => void;
-  onDelete: () => void;
-  onRename: (name: string) => void;
-  sourceUrl?: string;
-}
-
-function SelectCard({ select, active, onClick, onDelete, onRename, sourceUrl }: SelectCardProps) {
-  return (
-    <div className={`
-      relative flex-shrink-0 w-44 rounded-lg overflow-hidden text-left transition-all border-2
-      ${active
-        ? "border-primary ring-2 ring-primary ring-offset-2 ring-offset-background"
-        : "border-border hover:border-muted-foreground"
-      }
-    `}>
-      <button onClick={onClick} className="block w-full focus:outline-none">
-        <div className="relative w-full h-24 bg-muted flex items-center justify-center overflow-hidden">
-          {sourceUrl ? (
-            <ClipThumbnail url={sourceUrl} seekTo={select.in_time} />
-          ) : (
-            <Bookmark className="w-7 h-7 text-muted-foreground" />
-          )}
-          {active && (
-            <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-              <Play className="w-7 h-7 text-foreground fill-foreground" />
-            </div>
-          )}
-          <span className="absolute bottom-1 left-1 bg-background/70 text-foreground text-[10px] px-1 rounded">
-            {formatDuration(select.duration)}
-          </span>
-        </div>
-        <div className="px-2 pt-1 pb-1.5 bg-card text-left">
-          <InlineRename name={select.label || select.source_filename} onSave={onRename} />
-          <p className="text-[10px] text-muted-foreground font-mono">
-            {formatTimecode(select.in_time)} → {formatTimecode(select.out_time)}
-          </p>
-        </div>
-      </button>
-      <button
-        onClick={(e) => { e.stopPropagation(); onDelete(); }}
-        className="absolute top-1 right-1 z-10 rounded bg-background/70 p-0.5 text-muted-foreground hover:bg-red-500 hover:text-white transition-colors"
-        title="Delete select"
-      >
-        <Trash2 className="w-3 h-3" />
-      </button>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// InsertCard
-// ---------------------------------------------------------------------------
-
-interface InsertCardProps {
-  insert: InsertMeta;
-  label: string;
-  active: boolean;
-  onClick: () => void;
-  onDelete: () => void;
-  onRename: (name: string) => void;
-}
-
-function InsertCard({ insert, label, active, onClick, onDelete, onRename }: InsertCardProps) {
-  return (
-    <div className={`
-      relative flex-shrink-0 w-44 rounded-lg overflow-hidden text-left transition-all border-2
-      ${active
-        ? "border-primary ring-2 ring-primary ring-offset-2 ring-offset-background"
-        : "border-border hover:border-muted-foreground"
-      }
-    `}>
-      <button onClick={onClick} className="block w-full focus:outline-none">
-        <div className="relative w-full h-24 bg-muted overflow-hidden">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={insert.url} alt={insert.filename} className="w-full h-full object-cover" />
-          {active && (
-            <div className="absolute inset-0 bg-primary/20" />
-          )}
-          <span className="absolute bottom-1 left-1 bg-background/70 text-foreground text-[10px] px-1 rounded">
-            {formatSize(insert.size)}
-          </span>
-        </div>
-        <div className="px-2 pt-1 pb-1.5 bg-card">
-          <InlineRename name={label} onSave={onRename} />
-        </div>
-      </button>
-      <button
-        onClick={(e) => { e.stopPropagation(); onDelete(); }}
-        className="absolute top-1 right-1 z-10 rounded bg-background/70 p-0.5 text-muted-foreground hover:bg-red-500 hover:text-white transition-colors"
-        title="Delete insert"
-      >
-        <Trash2 className="w-3 h-3" />
-      </button>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// AudioCard — shared card for Sound and Effects items
-// ---------------------------------------------------------------------------
-
-interface AudioCardProps {
-  item: SoundMeta | EffectsMeta;
-  label: string;
-  icon: React.ReactNode;
-  onDelete: () => void;
-  onRename: (name: string) => void;
-}
-
-function AudioCard({ item, label, icon, onDelete, onRename }: AudioCardProps) {
-  return (
-    <div className="relative flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-left">
-      <div className="flex-shrink-0 text-muted-foreground">{icon}</div>
-      <div className="min-w-0 flex-1">
-        <InlineRename name={label} onSave={onRename} />
-        <p className="text-[10px] text-muted-foreground">{formatSize(item.size)}</p>
-      </div>
-      <button
-        onClick={onDelete}
-        className="flex-shrink-0 rounded p-0.5 text-muted-foreground hover:bg-red-500 hover:text-white transition-colors"
-        title="Delete"
-      >
-        <Trash2 className="w-3 h-3" />
-      </button>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// BackgroundCard
-// ---------------------------------------------------------------------------
-
-interface BackgroundCardProps {
-  item: BackgroundsMeta;
-  label: string;
-  onDelete: () => void;
-  onRename: (name: string) => void;
-}
-
-function BackgroundCard({ item, label, onDelete, onRename }: BackgroundCardProps) {
-  const ext = item.filename.split(".").pop()?.toLowerCase() ?? "";
-  const isImage = ["jpg", "jpeg", "png", "webp"].includes(ext);
-  return (
-    <div className="relative flex-shrink-0 w-44 rounded-lg overflow-hidden border border-border">
-      <div className="relative w-full h-24 bg-muted overflow-hidden flex items-center justify-center">
-        {isImage ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={item.url} alt={item.filename} className="w-full h-full object-cover" />
-        ) : (
-          <Film className="w-6 h-6 text-muted-foreground" />
-        )}
-        <span className="absolute bottom-1 left-1 bg-background/70 text-foreground text-[10px] px-1 rounded">
-          {formatSize(item.size)}
-        </span>
-      </div>
-      <div className="px-2 pt-1 pb-1.5 bg-card">
-        <InlineRename name={label} onSave={onRename} />
-      </div>
-      <button
-        onClick={onDelete}
-        className="absolute top-1 right-1 z-10 rounded bg-background/70 p-0.5 text-muted-foreground hover:bg-red-500 hover:text-white transition-colors"
-        title="Delete background"
-      >
-        <Trash2 className="w-3 h-3" />
-      </button>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // RushesViewer
 // ---------------------------------------------------------------------------
 
@@ -464,14 +219,12 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
   const effectsInputRef = useRef<HTMLInputElement>(null);
   const backgroundsInputRef = useRef<HTMLInputElement>(null);
   const waveformCanvasRef = useRef<HTMLCanvasElement>(null);
-  const isPlayingSelectionRef = useRef(false);
 
   // clip / select / insert state
   const [clips, setClips] = useState<ClipMeta[]>([]);
   const [selects, setSelects] = useState<SelectMeta[]>([]);
   const [inserts, setInserts] = useState<InsertMeta[]>([]);
   const [clipsLoading, setClipsLoading] = useState(true);
-  const clipUrlMap = useMemo(() => new Map(clips.map((c) => [c.key, c.url])), [clips]);
   const [currentClip, setCurrentClip] = useState<ClipMeta | null>(null);
   const [currentSelect, setCurrentSelect] = useState<SelectMeta | null>(null);
   const [currentInsert, setCurrentInsert] = useState<InsertMeta | null>(null);
@@ -493,13 +246,10 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
   const [backgrounds, setBackgrounds] = useState<BackgroundsMeta[]>([]);
   const [soundUploading, setSoundUploading] = useState(false);
   const [soundUploadProgress, setSoundUploadProgress] = useState(0);
-  const [soundUploadError, setSoundUploadError] = useState<string | null>(null);
   const [effectsUploading, setEffectsUploading] = useState(false);
   const [effectsUploadProgress, setEffectsUploadProgress] = useState(0);
-  const [effectsUploadError, setEffectsUploadError] = useState<string | null>(null);
   const [backgroundsUploading, setBackgroundsUploading] = useState(false);
   const [backgroundsUploadProgress, setBackgroundsUploadProgress] = useState(0);
-  const [backgroundsUploadError, setBackgroundsUploadError] = useState<string | null>(null);
 
   // timeline state — mode is intentionally NOT reset on clip change (matches documentary studio)
   const [playheadTime, setPlayheadTime] = useState(0);
@@ -674,20 +424,11 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
   }, [currentClip, clips, playClip]);
 
   const handlePlayPause = useCallback(() => {
-    isPlayingSelectionRef.current = false;
     const vid = videoRef.current;
     if (!vid) return;
     if (vid.paused) vid.play().catch(() => {});
     else vid.pause();
   }, []);
-
-  const handlePlaySelection = useCallback(() => {
-    const vid = videoRef.current;
-    if (!vid || inPoint === null) return;
-    isPlayingSelectionRef.current = true;
-    vid.currentTime = inPoint;
-    vid.play().catch(() => { isPlayingSelectionRef.current = false; });
-  }, [inPoint]);
 
   // ---- upload ----
 
@@ -1045,7 +786,6 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
     endpoint: string,
     setUploading: (v: boolean) => void,
     setProgress: (v: number) => void,
-    setError: (v: string | null) => void,
     tab: ActiveTab,
   ) {
     return (files: FileList | null) => {
@@ -1061,13 +801,9 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
         : ext === "flac" ? "audio/flac"
         : ext === "aiff" || ext === "aif" ? "audio/aiff"
         : file.type;
-      if (!ALLOWED.includes(effectiveType)) {
-        setError("Only .mp3, .wav, .aac, .m4a, .flac, and .aiff files are supported.");
-        return;
-      }
+      if (!ALLOWED.includes(effectiveType)) return;
       setUploading(true);
       setProgress(0);
-      setError(null);
       const formData = new FormData();
       formData.append("file", file);
       acquireWakeLock().then((releaseWakeLock) => {
@@ -1080,12 +816,9 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
             fetchClips();
             setActiveTab(tab);
             onAssetsChanged?.();
-          } else {
-            try { setError(JSON.parse(xhr.responseText).detail || "Upload failed"); }
-            catch { setError("Upload failed"); }
           }
         };
-        xhr.onerror = () => { releaseWakeLock(); setUploading(false); setError("Upload failed"); };
+        xhr.onerror = () => { releaseWakeLock(); setUploading(false); };
         xhr.open("POST", `${API_URL}${endpoint}`);
         xhr.withCredentials = true;
         xhr.send(formData);
@@ -1096,13 +829,13 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleUploadSound = useCallback(makeAudioUploadHandler(
     `/api/documentary/projects/${projectId}/rushes/sound/upload`,
-    setSoundUploading, setSoundUploadProgress, setSoundUploadError, "sound",
+    setSoundUploading, setSoundUploadProgress, "sound",
   ), [projectId, fetchClips]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleUploadEffects = useCallback(makeAudioUploadHandler(
     `/api/documentary/projects/${projectId}/rushes/effects/upload`,
-    setEffectsUploading, setEffectsUploadProgress, setEffectsUploadError, "effects",
+    setEffectsUploading, setEffectsUploadProgress, "effects",
   ), [projectId, fetchClips]);
 
   const handleUploadBackgrounds = useCallback((files: FileList | null) => {
@@ -1117,13 +850,9 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
       : ext === "mp4" ? "video/mp4"
       : ext === "mov" ? "video/quicktime"
       : file.type;
-    if (!ALLOWED.includes(effectiveType)) {
-      setBackgroundsUploadError("Only .jpg, .png, .webp, .mp4, and .mov files are supported.");
-      return;
-    }
+    if (!ALLOWED.includes(effectiveType)) return;
     setBackgroundsUploading(true);
     setBackgroundsUploadProgress(0);
-    setBackgroundsUploadError(null);
     const formData = new FormData();
     formData.append("file", file);
     acquireWakeLock().then((releaseWakeLock) => {
@@ -1136,12 +865,9 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
           fetchClips();
           setActiveTab("backgrounds");
           onAssetsChanged?.();
-        } else {
-          try { setBackgroundsUploadError(JSON.parse(xhr.responseText).detail || "Upload failed"); }
-          catch { setBackgroundsUploadError("Upload failed"); }
         }
       };
-      xhr.onerror = () => { releaseWakeLock(); setBackgroundsUploading(false); setBackgroundsUploadError("Upload failed"); };
+      xhr.onerror = () => { releaseWakeLock(); setBackgroundsUploading(false); };
       xhr.open("POST", `${API_URL}/api/documentary/projects/${projectId}/rushes/backgrounds/upload`);
       xhr.withCredentials = true;
       xhr.send(formData);
@@ -1321,10 +1047,6 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
                   if (vid.currentTime >= currentSelect.out_time) vid.pause();
                 } else {
                   setPlayheadTime(vid.currentTime ?? 0);
-                  if (isPlayingSelectionRef.current && outPoint !== null && vid.currentTime >= outPoint) {
-                    isPlayingSelectionRef.current = false;
-                    vid.pause();
-                  }
                 }
               }}
               onError={() => {
@@ -1622,20 +1344,6 @@ export function RushesViewer({ projectId, onAssetsChanged, externalPreview, empt
               )}
             </div>
 
-            {/* Play Selection — appears when in/out section is set on a clip */}
-            {hasSection && !currentSelect && videoDuration > 0 && (
-              <div className="flex items-center justify-center py-0.5">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handlePlaySelection}
-                  className="gap-1.5 h-6 text-[10px] border-border text-foreground hover:bg-accent"
-                >
-                  <Play className="w-3 h-3" />
-                  Play Selection
-                </Button>
-              </div>
-            )}
 
             {/* Wrapper-level overlay: single playhead line spanning bridge + film scrubber,
                 in front of the scrubber canvas (z-10). top-14 = audio waveform height (h-14 = 56px). */}

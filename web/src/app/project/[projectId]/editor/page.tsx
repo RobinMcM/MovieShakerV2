@@ -247,14 +247,6 @@ const CATEGORY_LABELS: Record<ArtifactCategory, string> = {
   effects:     "a VFX clip",
 };
 
-const CATEGORY_ACCEPT: Partial<Record<ArtifactCategory, string>> = {
-  clips:       ".mp4,.mov,video/mp4,video/quicktime",
-  inserts:     ".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp",
-  sound:       ".mp3,.wav,.aac,.m4a,.flac,.aiff,.aif,audio/*",
-  effects:     ".mp3,.wav,.aac,.m4a,.flac,.aiff,.aif,audio/*",
-  backgrounds: ".jpg,.jpeg,.png,.webp,.mp4,.mov,image/jpeg,image/png,image/webp,video/mp4,video/quicktime",
-  // selects have no direct upload — created from clips in the Design tab
-};
 
 type ArtifactPreviewItem = { url: string; in_time?: number; out_time?: number; isImage?: boolean };
 
@@ -668,66 +660,6 @@ function EditorView({ projectId }: { projectId: string }) {
     updateTimeline(next);
   }
 
-  // ---- artifact panel upload ----
-
-  async function handleUploadFiles(files: FileList, category: ArtifactCategory) {
-    if (!files || files.length === 0) return;
-    const file = files[0];
-
-    if (category === "clips") {
-      // 2-step presigned upload (same flow as RushesViewer)
-      const ALLOWED = ["video/mp4", "video/quicktime"];
-      const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-      const effectiveType = ALLOWED.includes(file.type) ? file.type
-        : ext === "mp4" || ext === "m4v" ? "video/mp4"
-        : ext === "mov" ? "video/quicktime"
-        : file.type;
-      if (!ALLOWED.includes(effectiveType)) return;
-      try {
-        const urlRes = await fetch(`${API_URL}/api/documentary/projects/${projectId}/rushes/upload-url`, {
-          method: "POST", credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ filename: file.name, content_type: effectiveType }),
-        });
-        if (!urlRes.ok) return;
-        const { upload_url, key, filename } = await urlRes.json() as { upload_url: string; key: string; filename: string };
-        await new Promise<void>((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject();
-          xhr.onerror = () => reject();
-          xhr.open("PUT", upload_url);
-          xhr.setRequestHeader("Content-Type", effectiveType);
-          xhr.send(file);
-        });
-        await fetch(`${API_URL}/api/documentary/projects/${projectId}/rushes/register`, {
-          method: "POST", credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ key, filename }),
-        });
-        setRushesVersion((v) => v + 1);
-      } catch { /* silent */ }
-      return;
-    }
-
-    // All other categories: multipart POST
-    const endpointMap: Partial<Record<ArtifactCategory, string>> = {
-      inserts:     `/api/documentary/projects/${projectId}/rushes/inserts/upload`,
-      sound:       `/api/documentary/projects/${projectId}/rushes/sound/upload`,
-      effects:     `/api/documentary/projects/${projectId}/rushes/effects/upload`,
-      backgrounds: `/api/documentary/projects/${projectId}/rushes/backgrounds/upload`,
-    };
-    const endpoint = endpointMap[category];
-    if (!endpoint) return;
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch(`${API_URL}${endpoint}`, {
-        method: "POST", credentials: "include", body: formData,
-      });
-      if (res.ok) setRushesVersion((v) => v + 1);
-    } catch { /* silent */ }
-  }
-
   // ---- asset rename ----
 
   function handleRenameAsset(key: string, newLabel: string) {
@@ -795,26 +727,6 @@ function EditorView({ projectId }: { projectId: string }) {
     else next.audio_track = arr;
     dragSrcRef.current = null;
     updateTimeline(next);
-  }
-
-  // ---- asset → TimelineItem factories ----
-
-  function fromSelect(s: SelectMeta): TimelineItem {
-    return { id: makeId(), type: "select", key: s.source_key, filename: s.source_filename, label: s.label, duration: s.duration, in_time: s.in_time, out_time: s.out_time, url: s.source_url };
-  }
-  function fromClip(c: ClipMeta): TimelineItem {
-    return { id: makeId(), type: "clip", key: c.key, filename: c.filename, label: labels[c.key] || c.filename, duration: 0, url: c.url };
-  }
-  function fromInsert(i: InsertMeta): TimelineItem {
-    return { id: makeId(), type: "insert", key: i.key, filename: i.filename, label: labels[i.key] || i.filename, duration: 5, url: i.url };
-  }
-  function fromAudio(a: AudioMeta, type: "sound" | "effects"): TimelineItem {
-    return { id: makeId(), type, key: a.key, filename: a.filename, label: labels[a.key] || a.filename, duration: 0, url: a.url };
-  }
-  function fromBackground(b: InsertMeta): TimelineItem {
-    const ext = b.filename.split(".").pop()?.toLowerCase() ?? "";
-    const isImg = ["jpg", "jpeg", "png", "webp"].includes(ext);
-    return { id: makeId(), type: "backgrounds", key: b.key, filename: b.filename, label: labels[b.key] || b.filename, duration: isImg ? 5 : 0, url: b.url };
   }
 
   // ---- play-start marker helpers ----

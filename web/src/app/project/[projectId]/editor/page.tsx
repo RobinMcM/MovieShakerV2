@@ -501,7 +501,6 @@ function EditorView({ projectId }: { projectId: string }) {
   const playerVideoRef = useRef<HTMLVideoElement>(null);
   const playTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const trackScrollRef = useRef<HTMLDivElement>(null);
-  const audioTrackScrollRef = useRef<HTMLDivElement>(null);
   const playStartOffsetRef = useRef(0); // time offset within clip, applied on next onLoadedMetadata
   // Ref so event-handler closures see the latest isPlaying without staling
   const isPlayingRef = useRef(false);
@@ -1046,74 +1045,59 @@ function EditorView({ projectId }: { projectId: string }) {
                 </div>
               </div>
 
-              {/* Audio + Video — grouped and bound together */}
+              {/* Audio + Video — single scroll container, marker rail between them */}
               <div className="flex-shrink-0 px-4 py-2">
                 <div className="border border-border rounded-lg overflow-hidden bg-muted/20">
+                  <div ref={trackScrollRef} className="overflow-x-auto">
+                    <div className="min-w-max flex flex-col">
 
-                  {/* Audio row */}
-                  <div
-                    ref={audioTrackScrollRef}
-                    className="overflow-x-auto p-2 h-[50px] border-b border-border/60 bg-muted/30"
-                    onScroll={() => { if (trackScrollRef.current && audioTrackScrollRef.current) trackScrollRef.current.scrollLeft = audioTrackScrollRef.current.scrollLeft; }}
-                  >
-                    <div className="flex h-full items-stretch min-w-max">
-                      {timeline.audio_track.length > 0 ? (
-                        renderTrack(timeline.audio_track, "audio", audioInsertPoint, setAudioInsertPoint, false)
-                      ) : timeline.video_track.length > 0 ? (
-                        /* Linked audio — waveform mirroring video track widths */
-                        <div className="flex h-full items-stretch">
-                          <div className="w-3 flex-shrink-0" />
-                          {timeline.video_track.map((item, itemIdx) => {
-                            const w = blockWidth(item.duration);
-                            const barCount = Math.floor(w / 3);
-                            return (
-                              <div key={`linked-audio-${item.id}`} className="flex h-full items-stretch">
-                                <div
-                                  style={{ width: `${w}px`, minWidth: `${w}px` }}
-                                  className="flex-shrink-0 h-full rounded border border-emerald-500/40 bg-emerald-950/20 relative overflow-hidden"
-                                >
-                                  <svg className="absolute inset-0 w-full h-full" viewBox={`0 0 ${w} 40`} preserveAspectRatio="none">
-                                    {Array.from({ length: barCount }, (_, i) => {
-                                      const t = i / Math.max(1, barCount - 1);
-                                      const h = Math.max(3,
-                                        (Math.abs(Math.sin(t * Math.PI * 9 + itemIdx * 1.7)) * 16 +
-                                         Math.abs(Math.sin(t * Math.PI * 17 + itemIdx * 0.9)) * 10 +
-                                         Math.abs(Math.sin(t * Math.PI * 4 + itemIdx * 2.3)) * 6) * 0.8
-                                      );
-                                      return <rect key={i} x={i * 3} y={20 - h / 2} width={2} height={h} fill="rgba(52,211,153,0.55)" rx="1" />;
-                                    })}
-                                  </svg>
-                                  <span className="absolute left-1.5 bottom-0.5 text-[9px] text-emerald-400/70 z-10 leading-none">{item.label}</span>
-                                </div>
-                                <div className="w-3 flex-shrink-0" />
-                              </div>
-                            );
-                          })}
+                      {/* Audio row */}
+                      <div className="h-[50px] p-2 border-b border-border/60 bg-muted/30 flex items-stretch">
+                        <div className="flex h-full items-stretch min-w-max w-full">
+                          {timeline.audio_track.length > 0 ? (
+                            renderTrack(timeline.audio_track, "audio", audioInsertPoint, setAudioInsertPoint, false)
+                          ) : timeline.video_track.length > 0 ? (
+                            /* Linked audio — waveform mirroring video track widths */
+                            <div className="flex h-full items-stretch">
+                              <div className="w-3 flex-shrink-0" />
+                              {timeline.video_track.map((item, itemIdx) => {
+                                const w = blockWidth(item.duration);
+                                const barCount = Math.floor(w / 3);
+                                return (
+                                  <div key={`linked-audio-${item.id}`} className="flex h-full items-stretch">
+                                    <div
+                                      style={{ width: `${w}px`, minWidth: `${w}px` }}
+                                      className="flex-shrink-0 h-full rounded border border-emerald-500/40 bg-emerald-950/20 relative overflow-hidden"
+                                    >
+                                      <svg className="absolute inset-0 w-full h-full" viewBox={`0 0 ${w} 40`} preserveAspectRatio="none">
+                                        {Array.from({ length: barCount }, (_, i) => {
+                                          const t = i / Math.max(1, barCount - 1);
+                                          const h = Math.max(3,
+                                            (Math.abs(Math.sin(t * Math.PI * 9 + itemIdx * 1.7)) * 16 +
+                                             Math.abs(Math.sin(t * Math.PI * 17 + itemIdx * 0.9)) * 10 +
+                                             Math.abs(Math.sin(t * Math.PI * 4 + itemIdx * 2.3)) * 6) * 0.8
+                                          );
+                                          return <rect key={i} x={i * 3} y={20 - h / 2} width={2} height={h} fill="rgba(52,211,153,0.55)" rx="1" />;
+                                        })}
+                                      </svg>
+                                      <span className="absolute left-1.5 bottom-0.5 text-[9px] text-emerald-400/70 z-10 leading-none">{item.label}</span>
+                                    </div>
+                                    <div className="w-3 flex-shrink-0" />
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-muted-foreground self-center mx-auto">
+                              Add sound or effects from the Design tab
+                            </p>
+                          )}
                         </div>
-                      ) : (
-                        <p className="text-xs text-muted-foreground self-center mx-auto">
-                          Add sound or effects from the Design tab
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Video row */}
-                  <div
-                    ref={trackScrollRef}
-                    className="overflow-x-auto p-2 h-[88px] bg-muted/30"
-                    onScroll={() => { if (audioTrackScrollRef.current && trackScrollRef.current) audioTrackScrollRef.current.scrollLeft = trackScrollRef.current.scrollLeft; }}
-                  >
-                    {timeline.video_track.length === 0 ? (
-                      <div className="flex h-full items-center justify-center">
-                        <p className="text-xs text-muted-foreground">
-                          Add selects or clips from the Design tab
-                        </p>
                       </div>
-                    ) : (
-                      <div className="flex flex-col h-full min-w-max">
-                        {/* Marker rail — draggable play-start handle */}
-                        <div className="relative h-6 flex-shrink-0">
+
+                      {/* Marker rail — shared scrubber between audio and video */}
+                      <div className="relative h-6 border-b border-border/30 bg-muted/20 flex-shrink-0">
+                        {timeline.video_track.length > 0 && (
                           <div
                             className="absolute top-0 cursor-ew-resize select-none z-10 flex flex-col items-center"
                             style={{ left: `${playStartX}px`, transform: "translateX(-50%)" }}
@@ -1121,20 +1105,29 @@ function EditorView({ projectId }: { projectId: string }) {
                             onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); e.preventDefault(); }}
                             onPointerMove={handleMarkerPointerMove}
                           >
-                            {/* Downward-pointing triangle */}
                             <div className="w-0 h-0 border-l-[7px] border-r-[7px] border-t-[10px] border-l-transparent border-r-transparent border-t-emerald-500 drop-shadow" />
-                            {/* Stem */}
                             <div className="w-0.5 h-3 bg-emerald-500" />
                           </div>
-                        </div>
-                        {/* Clip row */}
-                        <div className="flex flex-1 items-stretch">
-                          {renderTrack(timeline.video_track, "video", videoInsertPoint, setVideoInsertPoint)}
-                        </div>
+                        )}
                       </div>
-                    )}
-                  </div>
 
+                      {/* Video clip row */}
+                      <div className="h-[64px] p-2 bg-muted/30">
+                        {timeline.video_track.length === 0 ? (
+                          <div className="flex h-full items-center justify-center">
+                            <p className="text-xs text-muted-foreground">
+                              Add selects or clips from the Design tab
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="flex h-full items-stretch min-w-max">
+                            {renderTrack(timeline.video_track, "video", videoInsertPoint, setVideoInsertPoint)}
+                          </div>
+                        )}
+                      </div>
+
+                    </div>
+                  </div>
                 </div>
               </div>
 

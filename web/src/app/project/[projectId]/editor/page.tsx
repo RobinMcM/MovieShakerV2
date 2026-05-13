@@ -501,7 +501,6 @@ function EditorView({ projectId }: { projectId: string }) {
   const playerVideoRef = useRef<HTMLVideoElement>(null);
   const playTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const trackScrollRef = useRef<HTMLDivElement>(null);
-  const isDraggingMarkerRef = useRef(false);
   // Ref so event-handler closures see the latest isPlaying without staling
   const isPlayingRef = useRef(false);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
@@ -830,25 +829,11 @@ function EditorView({ projectId }: { projectId: string }) {
     return Math.max(0, timeline.video_track.length - 1);
   }
 
-  function handleMarkerMouseDown(e: React.MouseEvent) {
-    e.preventDefault();
-    isDraggingMarkerRef.current = true;
-
-    const handleMove = (ev: MouseEvent) => {
-      if (!isDraggingMarkerRef.current || !trackScrollRef.current) return;
-      const rect = trackScrollRef.current.getBoundingClientRect();
-      const rawX = ev.clientX - rect.left + trackScrollRef.current.scrollLeft;
-      setPlayStartIdx(pixelToClipIdx(Math.max(0, rawX)));
-    };
-
-    const handleUp = () => {
-      isDraggingMarkerRef.current = false;
-      document.removeEventListener("mousemove", handleMove);
-      document.removeEventListener("mouseup", handleUp);
-    };
-
-    document.addEventListener("mousemove", handleMove);
-    document.addEventListener("mouseup", handleUp);
+  function handleMarkerPointerMove(e: React.PointerEvent) {
+    if (e.buttons === 0 || !trackScrollRef.current) return;
+    const rect = trackScrollRef.current.getBoundingClientRect();
+    const rawX = e.clientX - rect.left + trackScrollRef.current.scrollLeft;
+    setPlayStartIdx(pixelToClipIdx(Math.max(0, rawX)));
   }
 
   // ---- track renderer — interleaved blocks + gap markers ----
@@ -1032,12 +1017,29 @@ function EditorView({ projectId }: { projectId: string }) {
               <div className="flex-shrink-0 border-b border-border px-4 pt-3 pb-2">
                 <div className="bg-muted/30 border border-border rounded-lg overflow-x-auto p-2 h-[50px]">
                   <div className="flex h-full items-stretch min-w-max">
-                    {timeline.audio_track.length === 0 ? (
+                    {timeline.audio_track.length > 0 ? (
+                      renderTrack(timeline.audio_track, "audio", audioInsertPoint, setAudioInsertPoint)
+                    ) : timeline.video_track.length > 0 ? (
+                      /* Linked audio — mirrors video track with same widths */
+                      <div className="flex h-full items-stretch">
+                        <div className="w-3 flex-shrink-0" />
+                        {timeline.video_track.map((item) => (
+                          <div key={`linked-audio-${item.id}`} className="flex h-full items-stretch">
+                            <div
+                              style={{ width: `${blockWidth(item.duration)}px`, minWidth: `${blockWidth(item.duration)}px` }}
+                              className="flex-shrink-0 h-full rounded border border-emerald-500/30 bg-emerald-500/10 flex items-center gap-1.5 px-2 overflow-hidden"
+                            >
+                              <Music className="w-2.5 h-2.5 text-emerald-400 flex-shrink-0" />
+                              <p className="text-[9px] text-emerald-400/80 truncate">{item.label}</p>
+                            </div>
+                            <div className="w-3 flex-shrink-0" />
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
                       <p className="text-xs text-muted-foreground self-center mx-auto">
                         Add sound or effects from the Design tab
                       </p>
-                    ) : (
-                      renderTrack(timeline.audio_track, "audio", audioInsertPoint, setAudioInsertPoint)
                     )}
                   </div>
                 </div>
@@ -1057,19 +1059,16 @@ function EditorView({ projectId }: { projectId: string }) {
                       {/* Marker rail — draggable play-start handle */}
                       <div className="relative h-6 flex-shrink-0">
                         <div
-                          onMouseDown={handleMarkerMouseDown}
-                          className="absolute top-0 cursor-ew-resize select-none z-10"
+                          className="absolute top-0 cursor-ew-resize select-none z-10 flex flex-col items-center"
                           style={{ left: `${computeMarkerOffset(playStartIdx)}px`, transform: "translateX(-50%)" }}
                           title="Drag to set play start"
+                          onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); e.preventDefault(); }}
+                          onPointerMove={handleMarkerPointerMove}
                         >
-                          <div className="w-5 h-5 bg-emerald-500 rounded-sm flex items-center justify-center shadow border border-emerald-400">
-                            <div className="flex gap-0.5">
-                              <div className="w-px h-3 bg-emerald-200 rounded-full" />
-                              <div className="w-px h-3 bg-emerald-200 rounded-full" />
-                              <div className="w-px h-3 bg-emerald-200 rounded-full" />
-                            </div>
-                          </div>
-                          <div className="w-0.5 h-2 bg-emerald-500 mx-auto" />
+                          {/* Downward-pointing triangle */}
+                          <div className="w-0 h-0 border-l-[7px] border-r-[7px] border-t-[10px] border-l-transparent border-r-transparent border-t-emerald-500 drop-shadow" />
+                          {/* Stem */}
+                          <div className="w-0.5 h-3 bg-emerald-500" />
                         </div>
                       </div>
                       {/* Clip row */}

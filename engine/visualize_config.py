@@ -55,7 +55,7 @@ FIAB_COST_RANK_OVERRIDES: dict[str, float] = {
     "google/gemini-2.0-pro": 860,
     "google/gemini-2.0-flash": 560,
     "google/gemma-3-27b-it": 520,
-    "google/gemma-4-31b-it": 580,
+    "google/gemma-3-12b-it": 430,
     "meta-llama/llama-3.3-70b-instruct": 720,
     "meta-llama/llama-3.1-70b-instruct": 680,
     "meta-llama/llama-3.1-8b-instruct": 330,

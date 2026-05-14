@@ -56,7 +56,7 @@ logger = logging.getLogger(__name__)
 settings = load_settings()
 
 ANALYSIS_MODEL = "anthropic/claude-3.7-sonnet"
-DECISIONS_MODEL = "google/gemma-4-31b-it:free"
+DECISIONS_MODEL = "google/gemma-3-12b-it"
 SHOTLIST_MODEL = "anthropic/claude-3.7-sonnet"
 _ANALYSIS_LOCK_TTL = 120
 

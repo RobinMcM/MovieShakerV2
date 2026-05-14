@@ -1,9 +1,8 @@
 """
 Model routing for the script chat endpoint.
 
-gateway_client.execute_text() accepts any model string via its `model`
-parameter — there is no built-in fast/full selection in the client
-itself. Model identifiers come from the project's configured defaults.
+select_model() always returns user_model — the user's profile model is the
+source of truth. Routing signals are preserved for future multi-tier selection.
 """
 import logging
 import re
@@ -11,9 +10,6 @@ import re
 from scripts.context_assembler import ChatContext
 
 logger = logging.getLogger(__name__)
-
-FAST_MODEL = "google/gemma-3-12b-it:free"
-FULL_MODEL = "anthropic/claude-3.7-sonnet"
 
 _FULL_MODEL_KEYWORDS = re.compile(
     r'\b('
@@ -27,12 +23,8 @@ _FULL_MODEL_KEYWORDS = re.compile(
 
 def select_model(message: str, context: ChatContext, user_model: str) -> tuple[str, str]:
     """
-    Returns (model_id, reason). Routing logic detects fast vs full signals
-    but always returns user_model — the user's profile model is the single
-    source of truth for which model to call.
-
-    # TODO: when multiple user model tiers are available,
-    # use routing logic to select fast vs full variant
+    Returns (model_id, reason). Always returns user_model for now.
+    Routing signal detection is preserved for future multi-tier selection.
     """
     if len(message) > 200:
         return user_model, "message length > 200 characters"

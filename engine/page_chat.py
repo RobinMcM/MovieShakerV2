@@ -210,14 +210,27 @@ def project_page_chat(
         gateway_messages.append({"role": h["role"], "content": h["content"]})
     gateway_messages.append({"role": "user", "content": message})
 
-    logger.warning("PAGE_CHAT gateway call: project=%s agent=%s model=%s context_mode=%s msgs=%d",
-                   project_id, agent, model, context_mode, len(gateway_messages))
+    logger.debug("PAGE_CHAT gateway call: project=%s agent=%s model=%s context_mode=%s msgs=%d",
+                 project_id, agent, model, context_mode, len(gateway_messages))
+    gw_client = _gateway_client()
     try:
-        gw_response = _gateway_client().execute_text(model=model, messages=gateway_messages)
-        logger.warning("PAGE_CHAT gateway response keys: %s", list(gw_response.keys()) if isinstance(gw_response, dict) else type(gw_response).__name__)
+        gw_response = gw_client.execute_text(model=model, messages=gateway_messages)
     except GatewayClientError as exc:
-        logger.error("PAGE_CHAT gateway error: %s", exc, exc_info=True)
-        raise HTTPException(status_code=502, detail=f"AI gateway error: {exc}")
+        fallback_model = settings.film_in_a_box_model
+        if fallback_model and fallback_model != model and (
+            "404" in str(exc) or "No endpoints found" in str(exc) or "Gateway returned error" in str(exc)
+        ):
+            logger.warning("PAGE_CHAT model %s unavailable (%s), retrying with fallback %s",
+                           model, exc, fallback_model)
+            try:
+                gw_response = gw_client.execute_text(model=fallback_model, messages=gateway_messages)
+                model = fallback_model
+            except GatewayClientError as fallback_exc:
+                logger.error("PAGE_CHAT fallback also failed: %s", fallback_exc, exc_info=True)
+                raise HTTPException(status_code=502, detail=f"AI gateway error: {fallback_exc}")
+        else:
+            logger.error("PAGE_CHAT gateway error: %s", exc, exc_info=True)
+            raise HTTPException(status_code=502, detail=f"AI gateway error: {exc}")
 
     # Extract reply text — gateway wraps OpenRouter result in a "result" envelope
     reply_text = ""

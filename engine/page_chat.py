@@ -215,14 +215,18 @@ def project_page_chat(
     except GatewayClientError as exc:
         raise HTTPException(status_code=502, detail=f"AI gateway error: {exc}")
 
-    # Extract reply text
+    # Extract reply text — gateway wraps OpenRouter result in a "result" envelope
     reply_text = ""
     if isinstance(gw_response, dict):
-        choices = gw_response.get("choices", [])
-        if choices:
+        result_block = gw_response.get("result") or gw_response
+        choices = result_block.get("choices") if isinstance(result_block, dict) else []
+        if isinstance(choices, list) and choices:
             reply_text = choices[0].get("message", {}).get("content", "")
         if not reply_text:
-            reply_text = gw_response.get("content", "") or gw_response.get("text", "")
+            for key in ("text", "output", "content"):
+                reply_text = result_block.get(key, "") if isinstance(result_block, dict) else ""
+                if reply_text:
+                    break
     if not reply_text:
         raise HTTPException(status_code=502, detail="Gateway returned an empty response")
 

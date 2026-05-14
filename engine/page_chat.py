@@ -210,9 +210,13 @@ def project_page_chat(
         gateway_messages.append({"role": h["role"], "content": h["content"]})
     gateway_messages.append({"role": "user", "content": message})
 
+    logger.warning("PAGE_CHAT gateway call: project=%s agent=%s model=%s context_mode=%s msgs=%d",
+                   project_id, agent, model, context_mode, len(gateway_messages))
     try:
         gw_response = _gateway_client().execute_text(model=model, messages=gateway_messages)
+        logger.warning("PAGE_CHAT gateway response keys: %s", list(gw_response.keys()) if isinstance(gw_response, dict) else type(gw_response).__name__)
     except GatewayClientError as exc:
+        logger.error("PAGE_CHAT gateway error: %s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail=f"AI gateway error: {exc}")
 
     # Extract reply text — gateway wraps OpenRouter result in a "result" envelope
@@ -228,6 +232,7 @@ def project_page_chat(
                 if reply_text:
                     break
     if not reply_text:
+        logger.error("PAGE_CHAT empty response: gw_response=%s", str(gw_response)[:500])
         raise HTTPException(status_code=502, detail="Gateway returned an empty response")
 
     db.execute(

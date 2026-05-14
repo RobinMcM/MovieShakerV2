@@ -473,6 +473,8 @@ class GatewayClient:
             raise GatewayClientError(f"Gateway text generation failed ({status_code}): {detail}")
         if not isinstance(response_json, dict):
             raise GatewayClientError("Gateway text generation failed: response is not valid JSON")
+        if response_json.get("status") == "error":
+            raise GatewayClientError(f"Gateway returned error: {response_json.get('message', 'unknown error')}")
         return response_json
 
     def get_status(self, job_id: str) -> dict:

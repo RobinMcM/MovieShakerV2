@@ -174,8 +174,8 @@ def _seeded_models() -> list[dict[str, Any]]:
     return [
         # FIAB text
         {
-            "id": "google/gemma-3-12b-it:free",
-            "name": "Gemma 3 12B Instruct (Free)",
+            "id": "google/gemma-4-31b-it:free",
+            "name": "Gemma 4 31B Instruct (Free)",
             "provider": "openrouter",
             "purpose": PURPOSE_FIAB_TEXT,
             "media_type_support": [MEDIA_TEXT],

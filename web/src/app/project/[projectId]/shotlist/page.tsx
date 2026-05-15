@@ -397,8 +397,8 @@ function ShotListContent() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/5">
       <AppHeader />
-      <main className="container mx-auto px-4 py-8">
-        <div className="max-w-3xl mx-auto space-y-6">
+      <main className="w-full px-4 py-6 sm:px-6 sm:py-8">
+        <div className="space-y-6">
           <div className="flex items-center gap-4">
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <Camera className="h-6 w-6 text-primary" />

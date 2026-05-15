@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { ScriptChat, type ScriptChatHandle } from "@/components/scripts/ScriptChat";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/lib/api";
 
 interface CoproducerSidebarProps {
@@ -10,8 +11,6 @@ interface CoproducerSidebarProps {
     onClose: () => void;
     contextMode: string;
     contextId?: string;
-    coproducerActive?: boolean;
-    activeAgent?: string;
 }
 
 const AGENT_CONFIG: Record<string, { icon: string; description: string }> = {
@@ -37,6 +36,10 @@ interface PromptOverrideResponse {
     prompt_override_mode: string;
 }
 
+interface ProfileData {
+    ai_credits?: number;
+}
+
 function useMediaQuery(query: string): boolean {
     const [matches, setMatches] = useState(false);
     useEffect(() => {
@@ -54,13 +57,12 @@ export function CoproducerSidebar({
     onClose,
     contextMode,
     contextId,
-    coproducerActive = false,
-    activeAgent = "CoProducer",
 }: CoproducerSidebarProps) {
     const contextLabel = CONTEXT_LABELS[contextMode] ?? "General";
-    const agentConfig = AGENT_CONFIG[activeAgent] ?? AGENT_CONFIG.CoProducer;
     const isMobile = useMediaQuery("(max-width: 767px)");
 
+    const [activeAgent, setActiveAgent] = useState("CoProducer");
+    const [aiCredits, setAiCredits] = useState<number | null>(null);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [promptOverride, setPromptOverride] = useState("");
     const [promptOverrideMode, setPromptOverrideMode] = useState<"append" | "prepend">("append");
@@ -68,6 +70,8 @@ export function CoproducerSidebar({
     const [saveMessage, setSaveMessage] = useState<{ kind: "success" | "error"; text: string } | null>(null);
 
     const chatRef = useRef<ScriptChatHandle>(null);
+
+    const agentConfig = AGENT_CONFIG[activeAgent] ?? AGENT_CONFIG.CoProducer;
 
     // Pages dispatch this event to send a preset message into the chat
     useEffect(() => {
@@ -77,6 +81,12 @@ export function CoproducerSidebar({
         };
         window.addEventListener("coproducerSendMessage", handler);
         return () => window.removeEventListener("coproducerSendMessage", handler);
+    }, []);
+
+    useEffect(() => {
+        api.get<ProfileData>("/profile/")
+            .then((p) => setAiCredits(p.ai_credits ?? 0))
+            .catch(() => setAiCredits(0));
     }, []);
 
     useEffect(() => {
@@ -109,10 +119,8 @@ export function CoproducerSidebar({
     const widthClass = isMobile ? "w-full" : isOpen ? "w-[420px]" : "w-12";
     const transformClass = isMobile
         ? (isOpen ? "translate-x-0" : "translate-x-full")
-        : coproducerActive
-            ? "translate-x-0"
-            : "translate-x-full";
-    const isCollapsedDesktop = !isMobile && !isOpen && coproducerActive;
+        : "translate-x-0";
+    const isCollapsedDesktop = !isMobile && !isOpen;
 
     return (
         <>
@@ -126,26 +134,24 @@ export function CoproducerSidebar({
             )}
 
             {/* Expand/collapse toggle tab — desktop only */}
-            {coproducerActive && (
-                <button
-                    type="button"
-                    onClick={onClose}
-                    className={`hidden md:flex fixed top-1/2 -translate-y-1/2 z-[81]
-                                h-16 w-8 items-center justify-center
-                                bg-background border border-r-0 border-border
-                                rounded-l-md shadow-lg hover:bg-accent
-                                transition-[right] duration-300 ease-in-out
-                                ${isOpen ? "right-[420px]" : "right-12"}`}
-                    aria-label={isOpen ? "Collapse sidebar" : "Expand sidebar"}
-                    title={isOpen ? "Collapse sidebar" : "Expand sidebar"}
-                >
-                    {isOpen ? (
-                        <PanelRightClose className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                        <PanelRightOpen className="h-4 w-4 text-muted-foreground" />
-                    )}
-                </button>
-            )}
+            <button
+                type="button"
+                onClick={onClose}
+                className={`hidden md:flex fixed top-1/2 -translate-y-1/2 z-[81]
+                            h-16 w-8 items-center justify-center
+                            bg-background border border-r-0 border-border
+                            rounded-l-md shadow-lg hover:bg-accent
+                            transition-[right] duration-300 ease-in-out
+                            ${isOpen ? "right-[420px]" : "right-12"}`}
+                aria-label={isOpen ? "Collapse sidebar" : "Expand sidebar"}
+                title={isOpen ? "Collapse sidebar" : "Expand sidebar"}
+            >
+                {isOpen ? (
+                    <PanelRightClose className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                    <PanelRightOpen className="h-4 w-4 text-muted-foreground" />
+                )}
+            </button>
 
             {/* Sidebar panel */}
             <aside
@@ -153,7 +159,7 @@ export function CoproducerSidebar({
                             bg-background border-l shadow-xl flex flex-col
                             transition-all duration-300 ease-in-out
                             ${widthClass} ${transformClass}`}
-                aria-label="CoProducer sidebar"
+                aria-label="AI assistant sidebar"
             >
                 {/* Desktop collapsed — icon strip only */}
                 {isCollapsedDesktop ? (
@@ -162,14 +168,23 @@ export function CoproducerSidebar({
                     </div>
                 ) : (
                     <>
-                        {/* Header: agent tag + page type */}
-                        <div className="flex items-center px-4 py-3 border-b shrink-0">
-                            <span className="mr-2 text-base leading-none">{agentConfig.icon}</span>
-                            <div className="flex flex-col min-w-0">
-                                <span className="text-sm font-semibold leading-tight">{activeAgent}</span>
-                                <span className="text-[10px] text-muted-foreground leading-tight">{agentConfig.description}</span>
-                            </div>
-                            <span className="ml-auto text-[10px] uppercase tracking-wide bg-muted text-muted-foreground px-2 py-0.5 rounded-full shrink-0">
+                        {/* Header: agent selector dropdown + credits */}
+                        <div className="flex items-center gap-2 px-3 py-3 border-b shrink-0">
+                            <Select value={activeAgent} onValueChange={setActiveAgent}>
+                                <SelectTrigger className="h-8 flex-1 text-sm">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="CoWriter">✍️ CoWriter</SelectItem>
+                                    <SelectItem value="CoProducer">🎬 CoProducer</SelectItem>
+                                    <SelectItem value="CoDirector">🎥 CoDirector</SelectItem>
+                                    <SelectItem value="CoDesigner">🎨 CoDesigner</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
+                                {aiCredits !== null ? `${aiCredits} credits` : "…"}
+                            </span>
+                            <span className="text-[10px] uppercase tracking-wide bg-muted text-muted-foreground px-2 py-0.5 rounded-full shrink-0">
                                 {contextLabel}
                             </span>
                         </div>

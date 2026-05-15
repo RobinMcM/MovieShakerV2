@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { Bot, ChevronDown, ChevronRight, FileText, FolderKanban, PanelLeftClose, PanelLeftOpen, Plus, Upload } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { ChevronDown, ChevronRight, FileText, FolderKanban, PanelLeftClose, PanelLeftOpen, Plus, Upload } from "lucide-react";
 import {
     PROJECT_EXTERNAL_NAV,
     PROJECT_TOOL_NAV,
@@ -26,27 +26,18 @@ interface ProjectSidebarNavProps {
     projectId?: string;
     scripts: ScriptItem[];
     scriptsLoading?: boolean;
-    aiCredits: number | null;
-    coproducerActive: boolean;
-    onCoproducerActivate: () => void;
     isVisible: boolean;
     onToggle: () => void;
-    activeAgent?: string;
 }
 
 export function ProjectSidebarNav({
     projectId,
     scripts,
     scriptsLoading = false,
-    aiCredits,
-    coproducerActive,
-    onCoproducerActivate,
     isVisible,
     onToggle,
-    activeAgent = "CoProducer",
 }: ProjectSidebarNavProps) {
     const pathname = usePathname();
-    const router = useRouter();
     const [scriptsExpanded, setScriptsExpanded] = useState(false);
     const [projectsExpanded, setProjectsExpanded] = useState(false);
     const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -74,17 +65,6 @@ export function ProjectSidebarNav({
                 : [],
         [scripts, projectId]
     );
-
-    const hasCredits = aiCredits !== null && aiCredits > 0;
-
-    function handleCoproducerClick() {
-        if (!projectId) return;
-        if (hasCredits) {
-            onCoproducerActivate();
-        } else {
-            router.push("/credits");
-        }
-    }
 
     return (
         <>
@@ -301,43 +281,6 @@ export function ProjectSidebarNav({
                             })}
                         </div>
                     </div>
-                </div>
-
-                {/* CoProducer button — pinned at bottom */}
-                <div className="shrink-0 border-t px-3 py-3">
-                    <button
-                        type="button"
-                        onClick={handleCoproducerClick}
-                        disabled={!projectId}
-                        className={cn(
-                            "w-full flex items-center rounded-md border text-sm overflow-hidden transition-colors",
-                            !projectId
-                                ? "border-border text-muted-foreground/50 cursor-default"
-                                : coproducerActive && hasCredits
-                                ? "border-primary/30 bg-primary/10 text-primary"
-                                : "border-border text-muted-foreground hover:text-foreground hover:bg-accent"
-                        )}
-                    >
-                        <span className="flex items-center gap-2 px-2.5 py-2 flex-1 min-w-0">
-                            <Bot className="h-4 w-4 shrink-0" />
-                            <span className="truncate">{activeAgent}</span>
-                        </span>
-                        <span className="w-px self-stretch bg-border/60 shrink-0" />
-                        <span className="px-2.5 py-2 text-xs shrink-0">
-                            {!projectId
-                                ? "—"
-                                : aiCredits === null
-                                ? "…"
-                                : hasCredits
-                                ? `${aiCredits} credits`
-                                : "Buy Credits"}
-                        </span>
-                    </button>
-                    {!projectId && (
-                        <p className="mt-1.5 text-[11px] text-center text-muted-foreground/60 px-1">
-                            Select a project to begin
-                        </p>
-                    )}
                 </div>
             </aside>
 

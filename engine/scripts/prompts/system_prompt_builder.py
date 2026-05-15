@@ -254,7 +254,7 @@ Your domain is the image. You own:
 - Shot coverage and tram line placement
 - Camera setup and framing
 - Moodboard generation and visual direction
-- Image and video generation via FAL
+- Image and video generation via the openrouter-gateway
 - aFilmInABox camera configuration
 - The composite.rapidmvp.io pipeline
 

@@ -921,11 +921,9 @@ def generate_dialogue(
     )
 
     try:
-        model = (profile.model_fiab_text or settings.film_in_a_box_model or "").strip()
-        if not model:
-            raise HTTPException(status_code=400, detail="No AI model configured")
-        response = _gateway_client().execute_text(
-            model=model,
+        response = _gateway_client().execute_text_autonomous(
+            team="cowriter",
+            task="documentary-generation",
             messages=_build_messages(
                 "You are a documentary writer and editor. Return only the cleaned dialogue text, no preamble.",
                 prompt,
@@ -990,11 +988,9 @@ def generate_script(
     )
 
     try:
-        model = (profile.model_fiab_text or settings.film_in_a_box_model or "").strip()
-        if not model:
-            raise HTTPException(status_code=400, detail="No AI model configured")
-        response = _gateway_client().execute_text(
-            model=model,
+        response = _gateway_client().execute_text_autonomous(
+            team="cowriter",
+            task="documentary-generation",
             messages=_build_messages(
                 "You are a professional documentary screenwriter. "
                 "Return only the formatted screenplay, no preamble or explanation.",
@@ -1056,11 +1052,9 @@ def extract_entities(
     )
 
     try:
-        model = (profile.model_fiab_text or settings.film_in_a_box_model or "").strip()
-        if not model:
-            raise HTTPException(status_code=400, detail="No AI model configured")
-        response = _gateway_client().execute_text(
-            model=model,
+        response = _gateway_client().execute_text_autonomous(
+            team="cowriter",
+            task="documentary-generation",
             messages=_build_messages(
                 "You are a documentary researcher. Return strict JSON only, no markdown.",
                 prompt,

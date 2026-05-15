@@ -10,8 +10,6 @@ from credits import apply_credit_cost, ensure_user_can_generate, extract_credit_
 from db import get_session
 from gateway_client import GatewayClient, GatewayClientError
 from config import load_settings
-from model_catalog import build_model_catalog, PURPOSE_FIAB_TEXT
-
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/ai", tags=["ai-assistant"])
 settings = load_settings()
@@ -117,12 +115,6 @@ def chat(
     if not settings.gateway_internal_api_key:
         raise HTTPException(status_code=503, detail="Gateway API key is not configured")
 
-    selected_model = (
-        body.model or profile.model_fiab_text or settings.film_in_a_box_model or ""
-    ).strip()
-    if not selected_model:
-        raise HTTPException(status_code=400, detail="Model is required")
-
     # Validate roles before sending to gateway
     for msg in body.messages:
         if msg.role not in ("user", "assistant"):
@@ -134,8 +126,9 @@ def chat(
     messages = [{"role": m.role, "content": m.content} for m in body.messages]
 
     try:
-        gateway_response = _gateway_client().execute_text(
-            model=selected_model,
+        gateway_response = _gateway_client().execute_text_autonomous(
+            team="cowriter",
+            task="cowriter-text",
             messages=_build_chat_messages(messages, system_prompt=body.system_prompt),
         )
         reply = _extract_text_from_gateway(gateway_response)
@@ -152,20 +145,3 @@ def chat(
         raise HTTPException(status_code=502, detail=str(exc))
 
 
-@router.get("/models")
-def list_text_models(
-    session: SessionContainer = Depends(verify_session()),
-):
-    """
-    Return available text models for the AI assistant.
-    Merges gateway live model list with curated catalog metadata.
-    Falls back to catalog-only if gateway is unreachable.
-    """
-    gateway_models: list[dict] = []
-    try:
-        gateway_models = _gateway_client().get_models()
-    except Exception as exc:
-        logger.warning("Could not fetch models from gateway: %s", exc)
-
-    catalog = build_model_catalog(fiab_text_gateway_models=gateway_models)
-    return {"models": catalog[PURPOSE_FIAB_TEXT]}

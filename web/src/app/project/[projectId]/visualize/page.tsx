@@ -11,13 +11,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -51,7 +44,6 @@ import { useVisualize } from "./useVisualize";
 import type {
   VideoHistoryItem,
   CompiledVideo,
-  ModelGenerationOptionDescriptor,
 } from "./types";
 import { API_URL, api, storageImageUrl } from "@/lib/api";
 
@@ -95,35 +87,6 @@ function normalizeSourceImagePath(pathOrUrl: string | null | undefined): string 
   return value;
 }
 
-function parseDurationFromOption(value: unknown): number | null {
-  if (value === null || value === undefined) return null;
-  const parsed = Number.parseInt(String(value).trim().toLowerCase().replace("s", ""), 10);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function buildDefaultOptionValues(
-  descriptors: ModelGenerationOptionDescriptor[]
-): Record<string, unknown> {
-  const defaults: Record<string, unknown> = {};
-  for (const descriptor of descriptors) {
-    if (!descriptor?.key) continue;
-    if (descriptor.default !== undefined) {
-      defaults[descriptor.key] = descriptor.default;
-      continue;
-    }
-    if (descriptor.type === "boolean") {
-      defaults[descriptor.key] = false;
-      continue;
-    }
-    if (descriptor.type === "enum") {
-      defaults[descriptor.key] = descriptor.choices?.[0] ?? "";
-      continue;
-    }
-    defaults[descriptor.key] = "";
-  }
-  return defaults;
-}
-
 function VisualizeContent() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -164,93 +127,12 @@ function VisualizeContent() {
   const [generatedImagePath, setGeneratedImagePath] = useState<string | null>(null);
   const [selectedSourceIndex, setSelectedSourceIndex] = useState(0);
   const [hasUserChosenSource, setHasUserChosenSource] = useState(false);
-  const [selectedVideoModel, setSelectedVideoModel] = useState<string | null>(null);
   const [durationSeconds, setDurationSeconds] = useState(6);
   const [focusedVideoId, setFocusedVideoId] = useState<string | null>(null);
   const [focusedLastFrameUrl, setFocusedLastFrameUrl] = useState<string | null>(null);
   const [focusedLastFrameDataUrl, setFocusedLastFrameDataUrl] = useState<string | null>(null);
   const [isLoadingLastFrame, setIsLoadingLastFrame] = useState(false);
   const [lastFrameError, setLastFrameError] = useState<string | null>(null);
-  const [modelOptionValuesByModel, setModelOptionValuesByModel] = useState<
-    Record<string, Record<string, unknown>>
-  >({});
-
-  const videoModelOptions = useMemo(() => {
-    const rows = apiConfig?.visualizeVideoModels || [];
-    return rows.filter((model) => (model.status || "active") !== "deprecated");
-  }, [apiConfig?.visualizeVideoModels]);
-
-  useEffect(() => {
-    if (videoModelOptions.length === 0) {
-      setSelectedVideoModel(null);
-      return;
-    }
-    const current = (selectedVideoModel || "").trim();
-    if (current && videoModelOptions.some((model) => model.id === current)) return;
-    const catalogDefault =
-      videoModelOptions.find(
-        (model) => (model.default_for_media_type || "").toLowerCase() === "image-to-video"
-      )?.id || null;
-    if (catalogDefault) {
-      setSelectedVideoModel(catalogDefault);
-      return;
-    }
-    setSelectedVideoModel(videoModelOptions[0]?.id || null);
-  }, [videoModelOptions, selectedVideoModel]);
-
-  const selectedVideoModelMeta = useMemo(
-    () => videoModelOptions.find((model) => model.id === selectedVideoModel) || null,
-    [videoModelOptions, selectedVideoModel]
-  );
-  const optionDescriptors = useMemo(
-    () => selectedVideoModelMeta?.generation_options || [],
-    [selectedVideoModelMeta]
-  );
-
-  useEffect(() => {
-    const modelId = (selectedVideoModel || "").trim();
-    if (!modelId) return;
-    setModelOptionValuesByModel((prev) => {
-      if (prev[modelId]) return prev;
-      return {
-        ...prev,
-        [modelId]: buildDefaultOptionValues(optionDescriptors),
-      };
-    });
-  }, [selectedVideoModel, optionDescriptors]);
-
-  const activeModelOptionValues = useMemo(() => {
-    const modelId = (selectedVideoModel || "").trim();
-    if (!modelId) return {};
-    return modelOptionValuesByModel[modelId] || buildDefaultOptionValues(optionDescriptors);
-  }, [selectedVideoModel, modelOptionValuesByModel, optionDescriptors]);
-
-  const modelOptionsPayload = useMemo(() => {
-    const payload: Record<string, unknown> = {};
-    for (const descriptor of optionDescriptors) {
-      const key = descriptor.key;
-      const value = activeModelOptionValues[key];
-      if (value === undefined || value === null) continue;
-      if (typeof value === "string" && value.trim() === "") continue;
-      payload[key] = value;
-    }
-    return payload;
-  }, [optionDescriptors, activeModelOptionValues]);
-
-  const updateActiveModelOption = useCallback(
-    (key: string, value: unknown) => {
-      const modelId = (selectedVideoModel || "").trim();
-      if (!modelId) return;
-      setModelOptionValuesByModel((prev) => ({
-        ...prev,
-        [modelId]: {
-          ...(prev[modelId] || buildDefaultOptionValues(optionDescriptors)),
-          [key]: value,
-        },
-      }));
-    },
-    [selectedVideoModel, optionDescriptors]
-  );
 
   useEffect(() => {
     if (!moodboardImageParam) {
@@ -506,14 +388,10 @@ function VisualizeContent() {
         tram_line_id: selectedTramLine,
         prompt: prompt.trim() || currentLine?.action_text || "Cinematic shot",
         aspect_ratio: normalizeVideoAspectRatio(project?.aspect_ratio),
-        duration:
-          parseDurationFromOption(modelOptionsPayload.duration) ??
-          durationSeconds,
+        duration: durationSeconds,
         channel: nextChannel,
         take_number: nextTake,
         media_type: "image-to-video",
-        model: selectedVideoModel,
-        model_options: modelOptionsPayload,
         source_image_path:
           generatedImagePath ||
           normalizeSourceImagePath(canonicalRootSource) ||
@@ -527,12 +405,9 @@ function VisualizeContent() {
         gateway: {
           job_id?: string | null;
           job_status?: string;
-          model_used?: string | null;
           duration_used?: string | number | null;
           aspect_ratio_used?: string | null;
-          model_options_used?: Record<string, unknown> | null;
           image_source_used?: string | null;
-          request_body?: Record<string, unknown> | null;
         };
         credits?: { cost?: number; balance?: number };
       }>("api/video-history/generate", requestPayload);
@@ -542,16 +417,11 @@ function VisualizeContent() {
       if (typeof res.credits?.balance === "number") {
         setLastCallBalance(res.credits.balance);
       }
-      if (res.gateway?.request_body) {
-        console.log("[visualize.generate-video] gateway request body", res.gateway.request_body);
-      }
       console.log("[visualize.generate-video] gateway response", {
         job_id: res.gateway?.job_id ?? null,
         job_status: res.gateway?.job_status ?? null,
-        model_used: res.gateway?.model_used ?? null,
         duration_used: res.gateway?.duration_used ?? null,
         aspect_ratio_used: res.gateway?.aspect_ratio_used ?? null,
-        model_options_used: res.gateway?.model_options_used ?? null,
       });
       await refreshSelectedLineData();
       console.log("[visualize.generate-video] history reloaded", {
@@ -571,8 +441,6 @@ function VisualizeContent() {
       console.error("[visualize.generate-video] failed", {
         error: e instanceof Error ? e.message : e,
         tram_line_id: selectedTramLine,
-        selected_model: selectedVideoModel,
-        model_options: modelOptionsPayload,
         source_image_path:
           generatedImagePath ||
           normalizeSourceImagePath(canonicalRootSource) ||
@@ -593,16 +461,13 @@ function VisualizeContent() {
       sourceVideoId,
       mode,
       selectedTramLine,
-      selectedVideoModel,
-      modelOptions: modelOptionsPayload,
     });
     try {
       const shouldUseFocusedFrame = focusedVideoId === sourceVideoId && !!focusedFramePreviewUrl;
       const res = await continueVideo(sourceVideoId, mode, selectedTramLine, {
         prompt,
         aspect_ratio: project?.aspect_ratio ?? null,
-        duration: parseDurationFromOption(modelOptionsPayload.duration),
-        model: selectedVideoModel,
+        duration: durationSeconds,
         source_image_path:
           shouldUseFocusedFrame && focusedLastFrameUrl
             ? normalizeSourceImagePath(focusedLastFrameUrl)
@@ -611,7 +476,6 @@ function VisualizeContent() {
           shouldUseFocusedFrame && focusedLastFrameDataUrl
             ? focusedLastFrameDataUrl
             : null,
-        model_options: modelOptionsPayload,
       });
       const createdVideoId = res?.video?.id;
       const createdJobStatus = res?.gateway?.job_status ?? null;
@@ -819,119 +683,20 @@ function VisualizeContent() {
                   Gateway generation supports prompt + optional moodboard source image.
                 </p>
                 <div className="space-y-3 max-w-xl">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Video model</label>
-                      <Select
-                        value={selectedVideoModel || "__none__"}
-                        onValueChange={(value) =>
-                          setSelectedVideoModel(value === "__none__" ? null : value)
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select video model" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {videoModelOptions.length === 0 ? (
-                            <SelectItem value="__none__">No models available</SelectItem>
-                          ) : (
-                            videoModelOptions.map((model) => (
-                              <SelectItem key={model.id} value={model.id}>
-                                {model.name || model.id}
-                                {model.provider ? ` (${model.provider})` : ""}
-                              </SelectItem>
-                            ))
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {!optionDescriptors.some((option) => option.key === "duration") && (
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Duration (seconds)</label>
-                        <Input
-                          type="number"
-                          min={1}
-                          max={12}
-                          value={durationSeconds}
-                          onChange={(e) => {
-                            const parsed = Number.parseInt(e.target.value || "6", 10);
-                            if (!Number.isFinite(parsed)) return;
-                            setDurationSeconds(Math.min(12, Math.max(1, parsed)));
-                          }}
-                        />
-                      </div>
-                    )}
+                  <div className="space-y-2 max-w-[180px]">
+                    <label className="text-sm font-medium">Duration (seconds)</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={12}
+                      value={durationSeconds}
+                      onChange={(e) => {
+                        const parsed = Number.parseInt(e.target.value || "6", 10);
+                        if (!Number.isFinite(parsed)) return;
+                        setDurationSeconds(Math.min(12, Math.max(1, parsed)));
+                      }}
+                    />
                   </div>
-                  {optionDescriptors.length > 0 && (
-                    <div className="space-y-3 rounded-md border p-3">
-                      <p className="text-sm font-medium">Model Options</p>
-                      {optionDescriptors.map((descriptor) => {
-                        const currentValue = activeModelOptionValues[descriptor.key];
-                        const hint = descriptor.hint || "";
-                        if (descriptor.type === "enum") {
-                          return (
-                            <div key={`model-opt-${descriptor.key}`} className="space-y-1">
-                              <label className="text-xs font-medium">{descriptor.label}</label>
-                              <Select
-                                value={String(currentValue ?? descriptor.default ?? "")}
-                                onValueChange={(value) => updateActiveModelOption(descriptor.key, value)}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder={descriptor.label} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {(descriptor.choices || []).map((choice) => (
-                                    <SelectItem key={`choice-${descriptor.key}-${choice}`} value={choice}>
-                                      {choice}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-                            </div>
-                          );
-                        }
-                        if (descriptor.type === "boolean") {
-                          return (
-                            <div key={`model-opt-${descriptor.key}`} className="space-y-1">
-                              <label className="text-xs font-medium">{descriptor.label}</label>
-                              <Select
-                                value={currentValue ? "true" : "false"}
-                                onValueChange={(value) => updateActiveModelOption(descriptor.key, value === "true")}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder={descriptor.label} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="true">Enabled</SelectItem>
-                                  <SelectItem value="false">Disabled</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-                            </div>
-                          );
-                        }
-                        return (
-                          <div key={`model-opt-${descriptor.key}`} className="space-y-1">
-                            <label className="text-xs font-medium">{descriptor.label}</label>
-                            <Input
-                              type={descriptor.type === "number" ? "number" : "text"}
-                              value={String(currentValue ?? descriptor.default ?? "")}
-                              onChange={(e) =>
-                                updateActiveModelOption(
-                                  descriptor.key,
-                                  descriptor.type === "number"
-                                    ? Number.parseFloat(e.target.value || "0")
-                                    : e.target.value
-                                )
-                              }
-                            />
-                            {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
                   <Textarea
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}

@@ -157,13 +157,9 @@ def project_page_chat(
 ):
     from scripts.context_assembler import assemble_chat_context, ChatContext
     from scripts.prompts.system_prompt_builder import build_system_prompt
-    from scripts.routing import select_model, log_routing_decision
 
     user_id = session.get_user_id()
-    profile = ensure_user_can_generate(db, user_id)
-    user_model = (profile.model_fiab_text or settings.film_in_a_box_model).strip()
-    if not user_model:
-        raise HTTPException(status_code=400, detail="No model configured for this account")
+    ensure_user_can_generate(db, user_id)
 
     message = (body.message or "").strip()
     if not message:
@@ -190,8 +186,6 @@ def project_page_chat(
         )
 
     history = _get_message_history(session_id, db)
-    model, routing_reason = select_model(message, ctx, user_model)
-    log_routing_decision(message, model, routing_reason)
 
     agent = "coproducer"
     if body.active_agent and body.active_agent.lower() in _VALID_AGENTS:
@@ -210,27 +204,18 @@ def project_page_chat(
         gateway_messages.append({"role": h["role"], "content": h["content"]})
     gateway_messages.append({"role": "user", "content": message})
 
-    logger.debug("PAGE_CHAT gateway call: project=%s agent=%s model=%s context_mode=%s msgs=%d",
-                 project_id, agent, model, context_mode, len(gateway_messages))
+    logger.debug("PAGE_CHAT gateway call: project=%s agent=%s task=%s-text context_mode=%s msgs=%d",
+                 project_id, agent, agent, context_mode, len(gateway_messages))
     gw_client = _gateway_client()
     try:
-        gw_response = gw_client.execute_text(model=model, messages=gateway_messages)
+        gw_response = gw_client.execute_text_autonomous(
+            team=agent,
+            task=f"{agent}-text",
+            messages=gateway_messages,
+        )
     except GatewayClientError as exc:
-        fallback_model = settings.film_in_a_box_model
-        if fallback_model and fallback_model != model and (
-            "404" in str(exc) or "No endpoints found" in str(exc) or "Gateway returned error" in str(exc)
-        ):
-            logger.warning("PAGE_CHAT model %s unavailable (%s), retrying with fallback %s",
-                           model, exc, fallback_model)
-            try:
-                gw_response = gw_client.execute_text(model=fallback_model, messages=gateway_messages)
-                model = fallback_model
-            except GatewayClientError as fallback_exc:
-                logger.error("PAGE_CHAT fallback also failed: %s", fallback_exc, exc_info=True)
-                raise HTTPException(status_code=502, detail=f"AI gateway error: {fallback_exc}")
-        else:
-            logger.error("PAGE_CHAT gateway error: %s", exc, exc_info=True)
-            raise HTTPException(status_code=502, detail=f"AI gateway error: {exc}")
+        logger.error("PAGE_CHAT gateway error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail=f"AI gateway error: {exc}")
 
     # Extract reply text — gateway wraps OpenRouter result in a "result" envelope
     reply_text = ""
@@ -248,6 +233,8 @@ def project_page_chat(
         logger.error("PAGE_CHAT empty response: gw_response=%s", str(gw_response)[:500])
         raise HTTPException(status_code=502, detail="Gateway returned an empty response")
 
+    model_used = gw_response.get("resolved_model", agent)
+
     db.execute(
         text("""
             INSERT INTO page_chat_messages (session_id, role, content, model_used)
@@ -260,7 +247,7 @@ def project_page_chat(
             INSERT INTO page_chat_messages (session_id, role, content, model_used)
             VALUES (:sid, 'assistant', :content, :model)
         """),
-        {"sid": session_id, "content": reply_text, "model": model},
+        {"sid": session_id, "content": reply_text, "model": model_used},
     )
     db.execute(
         text("UPDATE page_chat_sessions SET updated_at = NOW() WHERE id = :sid"),
@@ -277,7 +264,7 @@ def project_page_chat(
     return PageChatResponse(
         reply=reply_text,
         session_id=session_id,
-        model_used=model,
+        model_used=model_used,
         agent=agent,
     )
 

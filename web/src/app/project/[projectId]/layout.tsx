@@ -15,7 +15,6 @@ const COPRODUCER_ACTIVE_KEY = "coproducer_active";
 
 interface ProfileData {
     ai_credits?: number;
-    model_fiab_text?: string;
 }
 
 export default function ProjectLayout({
@@ -38,7 +37,6 @@ export default function ProjectLayout({
     const [coproducerActive, setCoproducerActive] = useState(false);
     const [coproducerOpen, setCoproducerOpen] = useState(false);
     const [aiCredits, setAiCredits] = useState<number | null>(null);
-    const [userModel, setUserModel] = useState("anthropic/claude-3.7-sonnet");
 
     // Left sidebar persistence
     useEffect(() => {
@@ -85,13 +83,10 @@ export default function ProjectLayout({
         }
     }
 
-    // Profile fetch — source of truth for credits and user model
+    // Profile fetch — source of truth for credits
     useEffect(() => {
         api.get<ProfileData>("/profile/")
-            .then((p) => {
-                setAiCredits(p.ai_credits ?? 0);
-                if (p.model_fiab_text) setUserModel(p.model_fiab_text);
-            })
+            .then((p) => { setAiCredits(p.ai_credits ?? 0); })
             .catch(() => setAiCredits(0));
     }, []);
 
@@ -162,7 +157,6 @@ export default function ProjectLayout({
                 onClose={() => setCoproducerOpen((v: boolean) => !v)}
                 contextMode={contextMode}
                 contextId={contextId}
-                userModel={userModel}
                 coproducerActive={coproducerActive}
                 activeAgent={activeAgent}
             />

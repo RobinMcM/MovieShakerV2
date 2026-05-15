@@ -64,28 +64,28 @@ PASS_PROMPTS = {
     },
 }
 
-# Maps pass type to image model — three-phase strategy:
+# Maps pass type to (team, task) — three-phase strategy:
 #
 # DEVELOPMENT (director building composition):
-#   flux-2-pro — fast enough, good quality, low cost per iteration
+#   codirector / generate-moodboard-sketch — fast, low cost per iteration
 #
 # APPROVAL (director happy with composition):
-#   nano-banana-2 — contextual colour understanding produces better images
+#   codesigner / generate-moodboard-colour — colour-aware, better images
 #
 # FINAL REFERENCE (feeds the Visualize pipeline):
-#   gpt-5-image — quality here directly determines video quality; worth the premium
-PASS_TO_MODEL = {
-    "sketch":    "flux-2-pro",
-    "draft":     "flux-2-pro",
-    "tonal":     "flux-2-pro",
-    "colour":    "nano-banana-2",
-    "cinematic": "nano-banana-2",
-    "reference": "gpt-5-image",
+#   codesigner / generate-moodboard-reference — highest quality, worth premium
+_PASS_TO_TEAM_TASK: dict[str, tuple[str, str]] = {
+    "sketch":    ("codirector",  "generate-moodboard-sketch"),
+    "draft":     ("codirector",  "generate-moodboard-sketch"),
+    "tonal":     ("codirector",  "generate-moodboard-sketch"),
+    "colour":    ("codesigner",  "generate-moodboard-colour"),
+    "cinematic": ("codesigner",  "generate-moodboard-colour"),
+    "reference": ("codesigner",  "generate-moodboard-reference"),
 }
 
 # Maps project aspect_ratio values to gateway-compatible strings.
 # 2.39:1 (cinematic) → "21:9" widescreen; anything else passes through unchanged.
-FAL_ASPECT_MAP: dict[str, str] = {
+GATEWAY_ASPECT_MAP: dict[str, str] = {
     "16:9":   "16:9",
     "9:16":   "9:16",
     "1:1":    "1:1",
@@ -149,7 +149,7 @@ def _extract_text_from_response(response: dict) -> Optional[str]:
     return None
 
 
-def _build_fal_prompt(
+def _build_image_prompt(
     shot_type: str,
     camera_direction: str,
     characters: list,
@@ -189,9 +189,10 @@ def _generate_shot_image(
     Build a prompt from script data and generate an image via OpenRouter.
     Returns raw image bytes on success, None on any failure (caller skips the shot).
     """
+    team, task = _PASS_TO_TEAM_TASK.get(pass_type, ("codirector", "generate-moodboard-sketch"))
     logger.info(
-        "=== _generate_shot_image START === tram=%s pass=%s model=%s",
-        tram_line.id, pass_type, PASS_TO_MODEL.get(pass_type, "unknown"),
+        "=== _generate_shot_image START === tram=%s pass=%s team=%s task=%s",
+        tram_line.id, pass_type, team, task,
     )
 
     char_names = [
@@ -200,7 +201,7 @@ def _generate_shot_image(
         if n.strip()
     ]
 
-    prompt = _build_fal_prompt(
+    prompt = _build_image_prompt(
         shot_type=tram_line.shot_type or "Medium",
         camera_direction=tram_line.camera_direction or "",
         characters=char_names,
@@ -210,19 +211,18 @@ def _generate_shot_image(
         vision=vision,
     )
 
-    model_key = PASS_TO_MODEL.get(pass_type, "flux-2-klein")
-
     try:
-        result = gateway.generate_image(
+        response = gateway.execute_media_autonomous(
+            team=team,
+            task=task,
             prompt=prompt,
-            model_key=model_key,
-            aspect_ratio=aspect_ratio,
-            dry_run=False,
+            options={"aspect_ratio": aspect_ratio},
         )
+        result = response.get("result") or {}
         logger.info(
-            "=== GATEWAY RETURNED === keys=%s ok=%s has_b64=%s b64_len=%d",
-            list(result.keys()),
-            result.get("ok"),
+            "=== GATEWAY RETURNED === ok=%s resolved_model=%s has_b64=%s b64_len=%d",
+            response.get("ok"),
+            response.get("resolved_model"),
             bool(result.get("image_b64")),
             len(result.get("image_b64") or ""),
         )
@@ -304,7 +304,7 @@ def generate_scene_moodboard(
         )
         ar_row = cur.fetchone()
     raw_aspect = ar_row[0] if ar_row else "16:9"
-    aspect_ratio = FAL_ASPECT_MAP.get(raw_aspect, "16:9")
+    aspect_ratio = GATEWAY_ASPECT_MAP.get(raw_aspect, "16:9")
     dims = _aspect_to_dimensions(raw_aspect)
 
     # Fetch tram lines for this scene

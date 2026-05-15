@@ -10,12 +10,9 @@ export interface ApiConfig {
   visualizeVideoModels?: ModelOption[];
 }
 
-export type Provider = "gateway";
-
 export interface GatewayModel {
   id: string;
   name: string;
-  provider?: string | null;
 }
 
 export interface ModelOption extends GatewayModel {
@@ -24,20 +21,7 @@ export interface ModelOption extends GatewayModel {
   optional_inputs?: string[];
   status?: string;
   default_for_media_type?: string | null;
-  cost_tier?: string;
-  speed_tier?: string;
-  quality_tier?: string;
   docs_url?: string | null;
-  generation_options?: ModelGenerationOptionDescriptor[];
-}
-
-export interface ModelGenerationOptionDescriptor {
-  key: string;
-  label: string;
-  type: "enum" | "text" | "number" | "boolean";
-  default?: string | number | boolean | null;
-  choices?: string[];
-  hint?: string;
 }
 
 export interface VideoHistoryItem {
@@ -80,7 +64,3 @@ export interface CompiledVideoWithTramLine extends CompiledVideo {
     shot_type?: string | null;
   };
 }
-
-export const PROVIDERS: { id: Provider; name: string; description: string }[] = [
-  { id: "gateway", name: "Gateway", description: "Gateway-backed model routing" },
-];

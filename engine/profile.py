@@ -44,7 +44,6 @@ class ProfileResponse(BaseModel):
     blocked: bool = False
     notifications_opt_in: bool = True
     ai_credits: int = 50
-    model_fiab_text: Optional[str] = None
     model_visualize_video: Optional[str] = None
     model_object_image: Optional[str] = None
     model_sound_music: Optional[str] = None
@@ -133,7 +132,6 @@ async def get_profile(
         blocked=profile.blocked,
         notifications_opt_in=profile.notifications_opt_in,
         ai_credits=profile.ai_credits,
-        model_fiab_text=profile.model_fiab_text,
         model_visualize_video=profile.model_visualize_video,
         model_object_image=profile.model_object_image,
         model_sound_music=profile.model_sound_music,
@@ -197,7 +195,6 @@ async def send_verification_email(
         blocked=profile.blocked,
         notifications_opt_in=profile.notifications_opt_in,
         ai_credits=profile.ai_credits,
-        model_fiab_text=profile.model_fiab_text,
         model_visualize_video=profile.model_visualize_video,
         model_object_image=profile.model_object_image,
         model_sound_music=profile.model_sound_music,
@@ -291,7 +288,6 @@ async def update_profile(
         blocked=profile.blocked,
         notifications_opt_in=profile.notifications_opt_in,
         ai_credits=profile.ai_credits,
-        model_fiab_text=profile.model_fiab_text,
         model_visualize_video=profile.model_visualize_video,
         model_object_image=profile.model_object_image,
         model_sound_music=profile.model_sound_music,

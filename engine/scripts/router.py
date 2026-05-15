@@ -55,9 +55,6 @@ from scripts.prompts.analysis import ANALYSIS_SYSTEM_PROMPT, build_analysis_user
 logger = logging.getLogger(__name__)
 settings = load_settings()
 
-ANALYSIS_MODEL = "anthropic/claude-3.7-sonnet"
-DECISIONS_MODEL = "google/gemma-3-12b-it"
-SHOTLIST_MODEL = "anthropic/claude-3.7-sonnet"
 _ANALYSIS_LOCK_TTL = 120
 
 router = APIRouter(tags=["scripts"])
@@ -1473,8 +1470,9 @@ def _run_analysis(script_id: str, db: Session) -> Optional[dict]:
             {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ]
-        gateway_response = _gateway_client().execute_text(
-            model=ANALYSIS_MODEL,
+        gateway_response = _gateway_client().execute_text_autonomous(
+            team="cowriter",
+            task="analyze-script",
             messages=messages,
         )
         raw_text = _extract_text_from_gateway(gateway_response)
@@ -1515,7 +1513,7 @@ def _run_analysis(script_id: str, db: Session) -> Optional[dict]:
                 "risk_scores": json.dumps(parsed.get("risk_scores")),
                 "production_metrics": json.dumps(parsed.get("production_metrics")),
                 "raw_analysis": raw_text,
-                "model_used": ANALYSIS_MODEL,
+                "model_used": gateway_response.get("resolved_model", "cowriter/analyze-script"),
             },
         )
         db.commit()
@@ -1863,8 +1861,9 @@ def suggest_shots(
     user_prompt = _build_suggest_shots_user_prompt(scene_elements, scene_number)
 
     try:
-        gw_response = _gateway_client().execute_text(
-            model=SHOTLIST_MODEL,
+        gw_response = _gateway_client().execute_text_autonomous(
+            team="codirector",
+            task="analyze-shotlist",
             messages=[
                 {"role": "system", "content": SHOTLIST_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
@@ -1956,8 +1955,9 @@ def _extract_decisions(
     )
 
     try:
-        gateway_response = _gateway_client().execute_text(
-            model=DECISIONS_MODEL,
+        gateway_response = _gateway_client().execute_text_autonomous(
+            team="coproducer",
+            task="production-decisions",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -2213,14 +2213,9 @@ def script_chat(
     # Lazy imports avoid circular dependency
     # (context_assembler imports _read_script_json from this module)
     from scripts.context_assembler import assemble_chat_context, get_message_history
-    from scripts.routing import select_model, log_routing_decision
 
     user_id = session.get_user_id()
-    # Fetch profile — same pattern as film_in_a_box.py / ai_assistant.py
-    profile = ensure_user_can_generate(db, user_id)
-    user_model = (profile.model_fiab_text or settings.film_in_a_box_model).strip()
-    if not user_model:
-        raise HTTPException(status_code=400, detail="No model configured for this account")
+    ensure_user_can_generate(db, user_id)
 
     script = _get_script_and_ensure_access(db, script_id, user_id)
     script_uuid = script.id
@@ -2242,8 +2237,6 @@ def script_chat(
 
     ctx = assemble_chat_context(script_id, message, db)
     history = get_message_history(chat_id, db)
-    model, routing_reason = select_model(message, ctx, user_model)
-    log_routing_decision(message, model, routing_reason)
 
     # Classify the message to select the correct agent prompt.
     # If the frontend already knows the agent, skip the classifier entirely.
@@ -2286,7 +2279,11 @@ def script_chat(
     gateway_messages.append({"role": "user", "content": message})
 
     try:
-        gw_response = _gateway_client().execute_text(model=model, messages=gateway_messages)
+        gw_response = _gateway_client().execute_text_autonomous(
+            team=agent,
+            task=f"{agent}-text",
+            messages=gateway_messages,
+        )
     except GatewayClientError as exc:
         raise HTTPException(status_code=502, detail=f"AI gateway error: {exc}")
 
@@ -2295,6 +2292,7 @@ def script_chat(
         raise HTTPException(status_code=502, detail="Gateway returned an empty response")
 
     scene_refs = _extract_chat_scene_refs(reply_text)
+    model_used = gw_response.get("resolved_model", agent)
 
     db.execute(
         text(
@@ -2317,7 +2315,7 @@ def script_chat(
             "chat_id": chat_id,
             "content": reply_text,
             "scene_refs": json.dumps(scene_refs),
-            "model_used": model,
+            "model_used": model_used,
         },
     )
     db.commit()
@@ -2328,7 +2326,7 @@ def script_chat(
         reply=reply_text,
         chat_id=chat_id,
         scene_refs=scene_refs,
-        model_used=model,
+        model_used=model_used,
         agent=agent,
     )
 
@@ -2470,8 +2468,9 @@ def generate_schedule(
     )
 
     try:
-        gw_response = _gateway_client().execute_text(
-            model=ANALYSIS_MODEL,
+        gw_response = _gateway_client().execute_text_autonomous(
+            team="coproducer",
+            task="schedule-generation",
             messages=[
                 {"role": "system", "content": SCHEDULING_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},

@@ -5,7 +5,7 @@ Prefix: /api/video-history.
 import json
 from io import BytesIO
 import uuid
-from typing import Any, Optional
+from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,13 +17,6 @@ from config import load_settings
 from credits import apply_credit_cost, ensure_user_can_generate, extract_credit_cost
 from gateway_client import GatewayClient, GatewayClientError
 from media_handler_client import MediaHandlerClient, MediaHandlerClientError
-from model_catalog import (
-    MEDIA_IMAGE_TO_VIDEO,
-    PURPOSE_VISUALIZE_VIDEO,
-    build_model_catalog,
-    find_model,
-    model_supports_media_type,
-)
 from models import (
     GatewayUsageEvent,
     MoodBoardCompiledVideo,
@@ -127,60 +120,6 @@ def _gateway_client() -> GatewayClient:
         verify_tls=settings.gateway_verify_tls,
     )
 
-
-def _gateway_execute_body(
-    *,
-    media_type: str,
-    payload: dict,
-    model: Optional[str],
-    dry_run: bool,
-) -> dict:
-    body = {
-        "provider": "fal",
-        "media_type": media_type,
-        "payload": payload,
-        "dry_run": dry_run,
-    }
-    if model:
-        body["model"] = model
-    return body
-
-
-def _video_model_catalog(client: GatewayClient) -> dict[str, list[dict]]:
-    return build_model_catalog(
-        visualize_video_gateway_models=client.get_visualize_video_models()
-    )
-
-
-def _resolve_video_model_id(
-    *,
-    catalog: dict[str, list[dict]],
-    explicit_model: Optional[str],
-) -> Optional[str]:
-    candidate = (explicit_model or "").strip()
-    if candidate:
-        model = find_model(catalog, candidate)
-        if not model:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Model '{candidate}' is not available for selection.",
-            )
-        if not model_supports_media_type(model, MEDIA_IMAGE_TO_VIDEO):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Model '{candidate}' does not support media_type '{MEDIA_IMAGE_TO_VIDEO}'.",
-            )
-        if str(model.get("status") or "active").strip().lower() not in {"active", "beta"}:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Model '{candidate}' is not active.",
-            )
-        return candidate
-
-    for item in catalog.get(PURPOSE_VISUALIZE_VIDEO, []):
-        if str(item.get("default_for_media_type") or "").strip().lower() == MEDIA_IMAGE_TO_VIDEO:
-            return str(item.get("id") or "").strip() or None
-    return None
 
 
 def _media_handler_client() -> MediaHandlerClient:
@@ -318,23 +257,9 @@ def _extract_gateway_response_fields(response: dict) -> tuple[Optional[str], Opt
     return job_id, job_status, error_message, result_dict if isinstance(result_dict, dict) else {}
 
 
-def _should_fallback_to_default_model(error_text: str) -> bool:
-    text = (error_text or "").lower()
-    fallback_markers = (
-        "not in allowlist",
-        "model not allowed",
-        "unknown media_type",
-        "unknown model",
-        "invalid model",
-        "unsupported model",
-        "not found",
-    )
-    return any(marker in text for marker in fallback_markers)
-
-
 def _normalize_video_aspect_ratio(aspect_ratio: Optional[str]) -> str:
     """
-    Normalize UI/project aspect ratios to Fal-supported values:
+    Normalize UI/project aspect ratios to gateway-supported values:
     16:9, 9:16, 4:3, 3:4, 21:9, 9:21
     """
     value = (aspect_ratio or "").strip()
@@ -364,183 +289,6 @@ def _normalize_gateway_job_status(raw_status: Optional[str]) -> str:
     if value in {"processing", "pending", "queued", "in_progress", "running", "submitted"}:
         return "processing"
     return value
-
-
-def _normalize_payload_for_model(
-    *,
-    model_id: Optional[str],
-    payload: dict,
-    model_options: Optional[dict[str, Any]] = None,
-) -> dict:
-    """
-    Apply model-specific input constraints before sending to gateway/FAL.
-
-    Model families with distinct contracts are normalized here:
-    - Veo: duration "4s|6s|8s", aspect_ratio 16:9|9:16, plus
-      resolution/generate_audio/safety_tolerance.
-    - MiniMax/Hailuo: duration "6|10", resolution/prompt_optimizer.
-    - Wan: duration "5|10|15", resolution/enable_prompt_rewriting.
-    - Kling: duration "5|10", aspect_ratio + cfg_scale.
-    """
-    normalized = {
-        "prompt": str(payload.get("prompt") or "").strip(),
-        "image_url": str(payload.get("image_url") or "").strip(),
-    }
-    model_key = (model_id or "").strip().lower()
-    source_aspect = str(payload.get("aspect_ratio") or "").strip() or "16:9"
-    source_duration_raw = payload.get("duration")
-
-    def _duration_int(value: object) -> Optional[int]:
-        try:
-            if value is None:
-                return None
-            return int(str(value).strip().lower().replace("s", ""))
-        except Exception:
-            return None
-
-    duration_int = _duration_int(source_duration_raw)
-    requested = model_options or {}
-
-    def _apply_requested_overrides(
-        values: dict,
-        *,
-        allowed_keys: set[str],
-    ) -> dict:
-        for key, value in requested.items():
-            if key in allowed_keys:
-                values[key] = value
-        return values
-
-    # Veo family: duration uses "4s|6s|8s", aspect is 16:9/9:16/auto.
-    if "veo3" in model_key:
-        if source_aspect in {"9:16", "9:21"}:
-            normalized["aspect_ratio"] = "9:16"
-        else:
-            normalized["aspect_ratio"] = "16:9"
-        if duration_int is not None:
-            if duration_int <= 4:
-                normalized["duration"] = "4s"
-            elif duration_int <= 6:
-                normalized["duration"] = "6s"
-            else:
-                normalized["duration"] = "8s"
-        normalized["resolution"] = "720p"
-        normalized["generate_audio"] = True
-        normalized["safety_tolerance"] = "4"
-        return _apply_requested_overrides(
-            normalized,
-            allowed_keys={"duration", "aspect_ratio", "resolution", "generate_audio", "safety_tolerance", "negative_prompt", "auto_fix", "seed"},
-        )
-
-    # MiniMax/Hailuo family: duration enum as strings (6/10), no aspect_ratio field.
-    if "minimax" in model_key or "hailuo" in model_key:
-        if duration_int is not None:
-            normalized["duration"] = "10" if duration_int >= 10 else "6"
-        normalized["resolution"] = "768P"
-        normalized["prompt_optimizer"] = True
-        return _apply_requested_overrides(
-            normalized,
-            allowed_keys={"duration", "resolution", "prompt_optimizer", "end_image_url", "seed"},
-        )
-
-    # Wan family: duration enum 5/10/15, plus optional prompt rewriting.
-    if model_key.startswith("wan/") or "wan-i2v" in model_key:
-        if duration_int is not None:
-            if duration_int <= 5:
-                normalized["duration"] = "5"
-            elif duration_int <= 10:
-                normalized["duration"] = "10"
-            else:
-                normalized["duration"] = "15"
-        normalized["resolution"] = "720p"
-        normalized["enable_prompt_rewriting"] = True
-        return _apply_requested_overrides(
-            normalized,
-            allowed_keys={"duration", "resolution", "enable_prompt_rewriting", "negative_prompt", "audio_url", "seed"},
-        )
-
-    # Kling family: duration enum typically 5/10, supports aspect ratio and cfg_scale.
-    if "kling-video" in model_key:
-        if source_aspect in {"9:16", "9:21"}:
-            normalized["aspect_ratio"] = "9:16"
-        elif source_aspect == "1:1":
-            normalized["aspect_ratio"] = "1:1"
-        else:
-            normalized["aspect_ratio"] = "16:9"
-        if duration_int is not None:
-            normalized["duration"] = "10" if duration_int >= 8 else "5"
-        normalized["cfg_scale"] = 0.5
-        return _apply_requested_overrides(
-            normalized,
-            allowed_keys={"duration", "aspect_ratio", "negative_prompt", "cfg_scale", "special_fx", "seed"},
-        )
-
-    # Conservative fallback for unknown i2v models.
-    if source_aspect in {"9:16", "9:21"}:
-        normalized["aspect_ratio"] = "9:16"
-    else:
-        normalized["aspect_ratio"] = "16:9"
-    if duration_int is not None:
-        normalized["duration"] = str(duration_int)
-    return _apply_requested_overrides(
-        normalized,
-        allowed_keys={"duration", "aspect_ratio", "negative_prompt", "seed"},
-    )
-
-
-def _coerce_bool(value: object, *, key: str) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"true", "1", "yes", "on"}:
-            return True
-        if normalized in {"false", "0", "no", "off"}:
-            return False
-    raise HTTPException(status_code=400, detail=f"model_options.{key} must be a boolean.")
-
-
-def _sanitize_model_options(model: Optional[dict], requested: Optional[dict[str, Any]]) -> dict[str, Any]:
-    if not requested:
-        return {}
-    if not isinstance(requested, dict):
-        raise HTTPException(status_code=400, detail="model_options must be a JSON object.")
-
-    options = model.get("generation_options") if isinstance(model, dict) else None
-    descriptors = options if isinstance(options, list) else []
-    descriptor_by_key: dict[str, dict] = {}
-    for item in descriptors:
-        if not isinstance(item, dict):
-            continue
-        key = str(item.get("key") or "").strip()
-        if key:
-            descriptor_by_key[key] = item
-
-    if not descriptor_by_key:
-        raise HTTPException(status_code=400, detail="Selected model does not support additional options.")
-
-    sanitized: dict[str, Any] = {}
-    for key, value in requested.items():
-        descriptor = descriptor_by_key.get(key)
-        if not descriptor:
-            raise HTTPException(status_code=400, detail=f"model_options.{key} is not supported for this model.")
-        kind = str(descriptor.get("type") or "text").strip().lower()
-        if kind == "enum":
-            choices = [str(choice) for choice in descriptor.get("choices") or []]
-            candidate = str(value).strip()
-            if choices and candidate not in choices:
-                raise HTTPException(status_code=400, detail=f"model_options.{key} must be one of {choices}.")
-            sanitized[key] = candidate
-        elif kind == "boolean":
-            sanitized[key] = _coerce_bool(value, key=key)
-        elif kind == "number":
-            try:
-                sanitized[key] = float(value)
-            except Exception:
-                raise HTTPException(status_code=400, detail=f"model_options.{key} must be a number.")
-        else:
-            sanitized[key] = str(value).strip()
-    return sanitized
 
 
 def _normalize_storage_key(path_or_url: Optional[str]) -> Optional[str]:
@@ -732,7 +480,7 @@ def _video_credit_cost_map(db: Session, video_ids: list[uuid.UUID]) -> dict[uuid
 class CreateVideoHistoryBody(BaseModel):
     tram_line_id: str
     task_id: Optional[str] = None
-    generation_method: str = "gateway_fal"
+    generation_method: str = "gateway_image-to-video"
     prompt: Optional[str] = None
     aspect_ratio: Optional[str] = None
     duration: Optional[int] = None
@@ -835,106 +583,34 @@ def generate_video(
     payload["image_url"] = resolved_image_url
 
     gateway = _gateway_client()
-    catalog = _video_model_catalog(gateway)
-    selected_model = _resolve_video_model_id(
-        catalog=catalog,
-        explicit_model=(body.model or None),
-    )
-    selected_model_meta = find_model(catalog, selected_model) if selected_model else None
-    sanitized_model_options = _sanitize_model_options(selected_model_meta, body.model_options)
-    _trace(
-        "generate.model",
-        selected_model=selected_model,
-        sanitized_model_options=sanitized_model_options,
-    )
-    model_payload = _normalize_payload_for_model(
-        model_id=selected_model,
-        payload=payload,
-        model_options=sanitized_model_options,
-    )
-    _trace("generate.payload", model_payload=model_payload)
+    video_options: dict = {"aspect_ratio": normalized_aspect_ratio}
+    if body.duration:
+        video_options["duration"] = body.duration
+    _trace("generate.dispatch", team="codirector", task="generate-shot", prompt_len=len(prompt))
     try:
-        request_body = _gateway_execute_body(
-            media_type="image-to-video",
-            payload=model_payload,
-            model=selected_model,
-            dry_run=body.dry_run,
-        )
-        # Temporary diagnostics for troubleshooting missing provider requests.
-        print(f"[video_history.generate] gateway execute body: {json.dumps(request_body, ensure_ascii=False)}")
-        response = gateway.execute_fal(
-            media_type="image-to-video",
-            payload=model_payload,
-            model=selected_model,
+        response = gateway.execute_media_autonomous(
+            team="codirector",
+            task="generate-shot",
+            prompt=prompt,
+            source=resolved_image_url,
+            options=video_options,
             dry_run=body.dry_run,
         )
         _trace("generate.gateway_submit_response", response_keys=sorted(response.keys()) if isinstance(response, dict) else str(type(response)))
     except GatewayClientError as exc:
-        error_text = str(exc)
-        if not selected_model or not _should_fallback_to_default_model(error_text):
-            raise HTTPException(status_code=502, detail=error_text)
-        # If selected model is invalid/unavailable in gateway, retry on default route.
-        request_body = _gateway_execute_body(
-            media_type="image-to-video",
-            payload=model_payload,
-            model=None,
-            dry_run=body.dry_run,
-        )
-        print(f"[video_history.generate] gateway execute fallback body: {json.dumps(request_body, ensure_ascii=False)}")
-        try:
-            response = gateway.execute_fal(
-                media_type="image-to-video",
-                payload=model_payload,
-                model=None,
-                dry_run=body.dry_run,
-            )
-            _trace("generate.gateway_fallback_response", response_keys=sorted(response.keys()) if isinstance(response, dict) else str(type(response)))
-        except GatewayClientError:
-            raise HTTPException(
-                status_code=502,
-                detail=f"Selected video model '{selected_model}' is unavailable and default fallback failed: {error_text}",
-            )
+        raise HTTPException(status_code=502, detail=str(exc))
 
     gateway_job_id, parsed_job_status, gateway_error, gateway_result = _extract_gateway_response_fields(response)
-    job_status = parsed_job_status or ("completed" if body.dry_run else "processing")
     direct_video_path = _extract_video_path(gateway_result)
-    if (
-        selected_model
-        and gateway_error
-        and not gateway_job_id
-        and not direct_video_path
-        and _should_fallback_to_default_model(gateway_error)
-    ):
-        # Some gateway versions return model errors as 200 JSON payloads
-        # (e.g. {"status": "...", "message": "..."}). Retry default route.
-        request_body = _gateway_execute_body(
-            media_type="image-to-video",
-            payload=model_payload,
-            model=None,
-            dry_run=body.dry_run,
-        )
-        print(f"[video_history.generate] gateway execute soft-error fallback body: {json.dumps(request_body, ensure_ascii=False)}")
-        try:
-            response = gateway.execute_fal(
-                media_type="image-to-video",
-                payload=model_payload,
-                model=None,
-                dry_run=body.dry_run,
-            )
-            _trace("generate.gateway_soft_fallback_response", response_keys=sorted(response.keys()) if isinstance(response, dict) else str(type(response)))
-            gateway_job_id, parsed_job_status, gateway_error, gateway_result = _extract_gateway_response_fields(response)
-            job_status = parsed_job_status or ("completed" if body.dry_run else "processing")
-            direct_video_path = _extract_video_path(gateway_result)
-        except GatewayClientError:
-            raise HTTPException(
-                status_code=502,
-                detail=f"Selected video model '{selected_model}' soft-failed and default fallback failed: {gateway_error}",
-            )
+    if direct_video_path:
+        job_status = "completed"
+    else:
+        job_status = parsed_job_status or ("completed" if body.dry_run else "processing")
     if not gateway_job_id and not direct_video_path:
         detail = gateway_error or "Gateway did not return a job identifier."
         raise HTTPException(
             status_code=502,
-            detail=f"{detail} model={selected_model or 'default'} keys={sorted(response.keys())}",
+            detail=f"{detail} resolved_model={response.get('resolved_model', 'unknown')} keys={sorted(response.keys())}",
         )
     if gateway_error and str(job_status).strip().lower() in {"failed", "error", "cancelled"}:
         raise HTTPException(status_code=502, detail=gateway_error)
@@ -953,9 +629,8 @@ def generate_video(
         persisted_video_path=persisted_video_path,
         gateway_error=gateway_error,
     )
-    estimate = response.get("estimate")
-    routing = response.get("routing") if isinstance(response.get("routing"), dict) else {}
-    model_used = selected_model or routing.get("model")
+    estimate = None
+    model_used = response.get("resolved_model", "codirector/generate-shot")
 
     row = MoodBoardVideoHistory(
         tram_line_id=uuid.UUID(body.tram_line_id),
@@ -1009,11 +684,10 @@ def generate_video(
             "job_status": job_status,
             "estimate": estimate,
             "model_used": model_used,
-            "duration_used": model_payload.get("duration"),
-            "aspect_ratio_used": model_payload.get("aspect_ratio"),
-            "model_options_used": sanitized_model_options,
+            "duration_used": body.duration,
+            "aspect_ratio_used": normalized_aspect_ratio,
             "image_source_used": resolved_image_url,
-            "request_body": request_body,
+            "request_body": None,
         },
         "credits": {
             "cost": credits_cost,
@@ -1133,102 +807,34 @@ def continue_video(
     payload["image_url"] = resolved_image_url
 
     gateway = _gateway_client()
-    catalog = _video_model_catalog(gateway)
-    selected_model = _resolve_video_model_id(
-        catalog=catalog,
-        explicit_model=(body.model or None),
-    )
-    selected_model_meta = find_model(catalog, selected_model) if selected_model else None
-    sanitized_model_options = _sanitize_model_options(selected_model_meta, body.model_options)
-    _trace(
-        "continue.model",
-        selected_model=selected_model,
-        sanitized_model_options=sanitized_model_options,
-    )
-    model_payload = _normalize_payload_for_model(
-        model_id=selected_model,
-        payload=payload,
-        model_options=sanitized_model_options,
-    )
-    _trace("continue.payload", model_payload=model_payload)
+    video_options: dict = {"aspect_ratio": normalized_aspect_ratio}
+    if body.duration:
+        video_options["duration"] = body.duration
+    _trace("continue.dispatch", team="codirector", task="generate-shot", prompt_len=len(prompt))
     try:
-        request_body = _gateway_execute_body(
-            media_type="image-to-video",
-            payload=model_payload,
-            model=selected_model,
-            dry_run=body.dry_run,
-        )
-        print(f"[video_history.continue] gateway execute body: {json.dumps(request_body, ensure_ascii=False)}")
-        response = gateway.execute_fal(
-            media_type="image-to-video",
-            payload=model_payload,
-            model=selected_model,
+        response = gateway.execute_media_autonomous(
+            team="codirector",
+            task="generate-shot",
+            prompt=prompt,
+            source=resolved_image_url,
+            options=video_options,
             dry_run=body.dry_run,
         )
         _trace("continue.gateway_submit_response", response_keys=sorted(response.keys()) if isinstance(response, dict) else str(type(response)))
     except GatewayClientError as exc:
-        error_text = str(exc)
-        if not selected_model or not _should_fallback_to_default_model(error_text):
-            raise HTTPException(status_code=502, detail=error_text)
-        request_body = _gateway_execute_body(
-            media_type="image-to-video",
-            payload=model_payload,
-            model=None,
-            dry_run=body.dry_run,
-        )
-        print(f"[video_history.continue] gateway execute fallback body: {json.dumps(request_body, ensure_ascii=False)}")
-        try:
-            response = gateway.execute_fal(
-                media_type="image-to-video",
-                payload=model_payload,
-                model=None,
-                dry_run=body.dry_run,
-            )
-            _trace("continue.gateway_fallback_response", response_keys=sorted(response.keys()) if isinstance(response, dict) else str(type(response)))
-        except GatewayClientError:
-            raise HTTPException(
-                status_code=502,
-                detail=f"Selected video model '{selected_model}' is unavailable and default fallback failed: {error_text}",
-            )
+        raise HTTPException(status_code=502, detail=str(exc))
 
     gateway_job_id, parsed_job_status, gateway_error, gateway_result = _extract_gateway_response_fields(response)
-    job_status = parsed_job_status or ("completed" if body.dry_run else "processing")
     direct_video_path = _extract_video_path(gateway_result)
-    if (
-        selected_model
-        and gateway_error
-        and not gateway_job_id
-        and not direct_video_path
-        and _should_fallback_to_default_model(gateway_error)
-    ):
-        request_body = _gateway_execute_body(
-            media_type="image-to-video",
-            payload=model_payload,
-            model=None,
-            dry_run=body.dry_run,
-        )
-        print(f"[video_history.continue] gateway execute soft-error fallback body: {json.dumps(request_body, ensure_ascii=False)}")
-        try:
-            response = gateway.execute_fal(
-                media_type="image-to-video",
-                payload=model_payload,
-                model=None,
-                dry_run=body.dry_run,
-            )
-            _trace("continue.gateway_soft_fallback_response", response_keys=sorted(response.keys()) if isinstance(response, dict) else str(type(response)))
-            gateway_job_id, parsed_job_status, gateway_error, gateway_result = _extract_gateway_response_fields(response)
-            job_status = parsed_job_status or ("completed" if body.dry_run else "processing")
-            direct_video_path = _extract_video_path(gateway_result)
-        except GatewayClientError:
-            raise HTTPException(
-                status_code=502,
-                detail=f"Selected video model '{selected_model}' soft-failed and default fallback failed: {gateway_error}",
-            )
+    if direct_video_path:
+        job_status = "completed"
+    else:
+        job_status = parsed_job_status or ("completed" if body.dry_run else "processing")
     if not gateway_job_id and not direct_video_path:
         detail = gateway_error or "Gateway did not return a job identifier."
         raise HTTPException(
             status_code=502,
-            detail=f"{detail} model={selected_model or 'default'} keys={sorted(response.keys())}",
+            detail=f"{detail} resolved_model={response.get('resolved_model', 'unknown')} keys={sorted(response.keys())}",
         )
     if gateway_error and str(job_status).strip().lower() in {"failed", "error", "cancelled"}:
         raise HTTPException(status_code=502, detail=gateway_error)
@@ -1247,9 +853,8 @@ def continue_video(
         persisted_video_path=persisted_video_path,
         gateway_error=gateway_error,
     )
-    estimate = response.get("estimate")
-    routing = response.get("routing") if isinstance(response.get("routing"), dict) else {}
-    model_used = selected_model or routing.get("model")
+    estimate = None
+    model_used = response.get("resolved_model", "codirector/generate-shot")
 
     row = MoodBoardVideoHistory(
         tram_line_id=source.tram_line_id,
@@ -1304,11 +909,10 @@ def continue_video(
             "job_status": job_status,
             "estimate": estimate,
             "model_used": model_used,
-            "duration_used": model_payload.get("duration"),
-            "aspect_ratio_used": model_payload.get("aspect_ratio"),
-            "model_options_used": sanitized_model_options,
+            "duration_used": body.duration,
+            "aspect_ratio_used": normalized_aspect_ratio,
             "image_source_used": resolved_image_url,
-            "request_body": request_body,
+            "request_body": None,
         },
         "credits": {
             "cost": credits_cost,

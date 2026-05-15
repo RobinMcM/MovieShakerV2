@@ -330,7 +330,7 @@ class MoodBoardVideoHistory(SQLModel, table=True):
     user_id: str = Field(index=True)
     video_path: str = Field()  # URL or storage path
     task_id: Optional[str] = Field(default=None)
-    generation_method: str = Field(default="gateway_fal")
+    generation_method: str = Field(default="gateway_image-to-video")
     prompt: Optional[str] = Field(default=None)
     aspect_ratio: Optional[str] = Field(default=None)
     duration: Optional[int] = Field(default=None)
@@ -370,7 +370,7 @@ class GatewayUsageEvent(SQLModel, table=True):
     tram_line_id: uuid.UUID = Field(foreign_key="tram_lines.id", index=True)
     video_history_id: Optional[uuid.UUID] = Field(default=None, foreign_key="mood_board_video_history.id", index=True)
     gateway_job_id: Optional[str] = Field(default=None, index=True)
-    provider: str = Field(default="fal")
+    provider: str = Field(default="openrouter")
     model: Optional[str] = Field(default=None)
     media_type: Optional[str] = Field(default=None)
     status: str = Field(default="submitted")

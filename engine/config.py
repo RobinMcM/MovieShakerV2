@@ -55,7 +55,6 @@ class Settings:
     media_handler_internal_api_key: str
     media_handler_timeout_seconds: float
     media_handler_verify_tls: bool
-    film_in_a_box_model: str
     sql_echo: bool
 
     @property
@@ -122,6 +121,5 @@ def load_settings() -> Settings:
         media_handler_internal_api_key=os.getenv("MEDIA_HANDLER_INTERNAL_API_KEY", "").strip(),
         media_handler_timeout_seconds=float(os.getenv("MEDIA_HANDLER_TIMEOUT_SECONDS", "60")),
         media_handler_verify_tls=media_handler_verify_tls,
-        film_in_a_box_model=os.getenv("FILM_IN_A_BOX_MODEL", "google/gemma-3-12b-it").strip(),
         sql_echo=sql_echo,
     )

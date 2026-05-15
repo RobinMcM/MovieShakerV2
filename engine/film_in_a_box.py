@@ -778,14 +778,11 @@ def generate(
         raise HTTPException(status_code=503, detail="Gateway API key is not configured")
 
     try:
-        selected_model = (body.model or profile.model_fiab_text or settings.film_in_a_box_model).strip()
-        if not selected_model:
-            raise HTTPException(status_code=400, detail="Model is required")
-
         if content_type == "FILM":
             prompt = _film_prompt(body.title.strip(), body.prompt.strip(), body.previousContent)
-            gateway_response = _gateway_client().execute_text(
-                model=selected_model,
+            gateway_response = _gateway_client().execute_text_autonomous(
+                team="cowriter",
+                task="cowriter-text",
                 messages=_build_gateway_messages(prompt, want_json=False),
             )
             text = _extract_text_from_gateway(gateway_response)
@@ -797,8 +794,9 @@ def generate(
             return {"result": text, "credits": {"cost": credits_cost, "balance": balance}}
 
         prompt = _doc_prompt(body.title.strip(), body.prompt.strip(), body.previousContent)
-        gateway_response = _gateway_client().execute_text(
-            model=selected_model,
+        gateway_response = _gateway_client().execute_text_autonomous(
+            team="cowriter",
+            task="documentary-generation",
             messages=_build_gateway_messages(prompt, want_json=True),
         )
         raw_text = _extract_text_from_gateway(gateway_response)
@@ -866,10 +864,6 @@ def festival_analyze(
     characters = [str(character.name or "").strip() for character in character_rows if str(character.name or "").strip()]
     script_excerpt = _extract_script_excerpt(script_json)
 
-    selected_model = (body.model or profile.model_fiab_text or settings.film_in_a_box_model).strip()
-    if not selected_model:
-        raise HTTPException(status_code=400, detail="Model is required")
-
     prompt = _build_festival_prompt(
         title=(body.title or project.name or "Untitled project").strip() or "Untitled project",
         project_description=(body.projectDescription or project.description or "").strip(),
@@ -881,8 +875,9 @@ def festival_analyze(
     )
 
     try:
-        gateway_response = _gateway_client().execute_text(
-            model=selected_model,
+        gateway_response = _gateway_client().execute_text_autonomous(
+            team="cowriter",
+            task="festival-analysis",
             messages=_build_gateway_messages(prompt, want_json=True),
         )
         raw_text = _extract_text_from_gateway(gateway_response)
@@ -942,10 +937,6 @@ def funding_analyze(
     scene_headings = [str(scene.heading or "").strip() for scene in scene_rows if str(scene.heading or "").strip()]
     script_excerpt = _extract_script_excerpt(script_json)
 
-    selected_model = (body.model or profile.model_fiab_text or settings.film_in_a_box_model).strip()
-    if not selected_model:
-        raise HTTPException(status_code=400, detail="Model is required")
-
     prompt = _build_funding_prompt(
         title=(body.title or project.name or "Untitled project").strip() or "Untitled project",
         logline=(body.logline or "").strip(),
@@ -958,8 +949,9 @@ def funding_analyze(
     )
 
     try:
-        gateway_response = _gateway_client().execute_text(
-            model=selected_model,
+        gateway_response = _gateway_client().execute_text_autonomous(
+            team="cowriter",
+            task="funding-analysis",
             messages=_build_gateway_messages(prompt, want_json=True),
         )
         raw_text = _extract_text_from_gateway(gateway_response)
@@ -1027,10 +1019,6 @@ def marketing_analyze(
     characters = [str(character.name or "").strip() for character in character_rows if str(character.name or "").strip()]
     script_excerpt = _extract_script_excerpt(script_json)
 
-    selected_model = (body.model or profile.model_fiab_text or settings.film_in_a_box_model).strip()
-    if not selected_model:
-        raise HTTPException(status_code=400, detail="Model is required")
-
     prompt = _build_marketing_prompt(
         title=(body.title or project.name or "Untitled project").strip() or "Untitled project",
         logline=(body.logline or "").strip(),
@@ -1044,8 +1032,9 @@ def marketing_analyze(
     )
 
     try:
-        gateway_response = _gateway_client().execute_text(
-            model=selected_model,
+        gateway_response = _gateway_client().execute_text_autonomous(
+            team="cowriter",
+            task="marketing-analysis",
             messages=_build_gateway_messages(prompt, want_json=True),
         )
         raw_text = _extract_text_from_gateway(gateway_response)
@@ -1105,10 +1094,6 @@ def festival_strategy_analyze(
     scene_headings = [str(scene.heading or "").strip() for scene in scene_rows if str(scene.heading or "").strip()]
     script_excerpt = _extract_script_excerpt(script_json)
 
-    selected_model = (body.model or profile.model_fiab_text or settings.film_in_a_box_model).strip()
-    if not selected_model:
-        raise HTTPException(status_code=400, detail="Model is required")
-
     prompt = _build_festival_strategy_prompt(
         title=(body.title or project.name or "Untitled project").strip() or "Untitled project",
         logline=(body.logline or "").strip(),
@@ -1121,8 +1106,9 @@ def festival_strategy_analyze(
     )
 
     try:
-        gateway_response = _gateway_client().execute_text(
-            model=selected_model,
+        gateway_response = _gateway_client().execute_text_autonomous(
+            team="cowriter",
+            task="festival-analysis",
             messages=_build_gateway_messages(prompt, want_json=True),
         )
         raw_text = _extract_text_from_gateway(gateway_response)

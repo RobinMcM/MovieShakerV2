@@ -28,7 +28,7 @@ router = APIRouter(tags=["backgrounds"])
 settings = load_settings()
 
 # Maps project aspect_ratio values to OpenRouter-compatible strings.
-FAL_ASPECT_MAP: dict[str, str] = {
+GATEWAY_ASPECT_MAP: dict[str, str] = {
     "16:9":   "16:9",
     "9:16":   "9:16",
     "1:1":    "1:1",
@@ -194,7 +194,7 @@ def generate_background_sketch(
         text("SELECT aspect_ratio FROM project WHERE id = :pid"),
         {"pid": str(script.project_id)},
     ).fetchone()
-    aspect_ratio = FAL_ASPECT_MAP.get(ar_row[0] if ar_row else "16:9", "16:9")
+    aspect_ratio = GATEWAY_ASPECT_MAP.get(ar_row[0] if ar_row else "16:9", "16:9")
 
     model_key = body.model or "flux-2-klein"
     gateway = _gateway_client()

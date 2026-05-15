@@ -829,7 +829,6 @@ function ObjectsContent() {
     loading,
     project,
     currentScriptId,
-    objectImageModels,
     characterObjects,
     artifactObjects,
     backgroundLocations,
@@ -845,7 +844,6 @@ function ObjectsContent() {
 
   const [activeTab, setActiveTab] = useState<TabKey>("characters");
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedImageModel, setSelectedImageModel] = useState<string | null>(null);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [uploadingLocation, setUploadingLocation] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<{
@@ -856,19 +854,6 @@ function ObjectsContent() {
   const [deleteTarget, setDeleteTarget] = useState<CharacterMood | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const fileTargetIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!Array.isArray(objectImageModels) || objectImageModels.length === 0) {
-      setSelectedImageModel(null);
-      return;
-    }
-    if (selectedImageModel && objectImageModels.some((m) => m.id === selectedImageModel)) return;
-    const defaultModel =
-      objectImageModels.find(
-        (m) => (m.default_for_media_type || "").toLowerCase() === "image-generation"
-      )?.id || objectImageModels[0]?.id || null;
-    setSelectedImageModel(defaultModel);
-  }, [objectImageModels, selectedImageModel]);
 
   useEffect(() => {
     if (!toastMessage) return;
@@ -934,7 +919,7 @@ function ObjectsContent() {
   };
 
   const handleGenerate = async (characterId: string, prompt: string, aspectRatio?: string | null) => {
-    await generateImage(characterId, prompt, aspectRatio ?? undefined, selectedImageModel);
+    await generateImage(characterId, prompt, aspectRatio ?? undefined);
   };
 
   const triggerFileInput = (objectId: string) => {
@@ -1065,27 +1050,6 @@ function ObjectsContent() {
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-9"
               />
-            </div>
-            <div className="sm:w-[360px]">
-              <Select
-                value={selectedImageModel || "__none__"}
-                onValueChange={(value) => setSelectedImageModel(value === "__none__" ? null : value)}
-              >
-                <SelectTrigger><SelectValue placeholder="Text-to-Image model" /></SelectTrigger>
-                <SelectContent>
-                  {objectImageModels.length === 0 ? (
-                    <SelectItem value="__none__">No models available</SelectItem>
-                  ) : (
-                    objectImageModels
-                      .filter((model) => (model.status || "active") !== "deprecated")
-                      .map((model) => (
-                        <SelectItem key={`obj-model-${model.id}`} value={model.id}>
-                          {model.name || model.id}{model.provider ? ` (${model.provider})` : ""}
-                        </SelectItem>
-                      ))
-                  )}
-                </SelectContent>
-              </Select>
             </div>
           </div>
         )}

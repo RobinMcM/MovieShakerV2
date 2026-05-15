@@ -10,7 +10,6 @@ interface CoproducerSidebarProps {
     onClose: () => void;
     contextMode: string;
     contextId?: string;
-    userModel: string;
     coproducerActive?: boolean;
     activeAgent?: string;
 }

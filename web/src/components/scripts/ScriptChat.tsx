@@ -13,7 +13,6 @@ export interface ChatMessage {
     role: "user" | "assistant";
     content: string;
     scene_refs: number[];
-    model_used?: string;
     timestamp: Date;
 }
 
@@ -70,14 +69,6 @@ interface PageSessionApiResponse {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function truncateModelId(model: string): string {
-    // "anthropic/claude-3.5-sonnet" → "claude-3.5"
-    // "google/gemma-3-12b-it:free" → "gemma-3"
-    const slug = model.split("/").pop() ?? model;
-    const base = slug.split(":")[0];
-    return base.split("-").slice(0, 2).join("-");
-}
-
 let _msgCounter = 0;
 function newId() {
     return `msg-${++_msgCounter}-${Date.now()}`;
@@ -106,7 +97,6 @@ function MessageBubble({
     message: ChatMessage;
     onSceneClick: (n: number) => void;
 }) {
-    const [modelExpanded, setModelExpanded] = useState(false);
     const isUser = message.role === "user";
 
     return (
@@ -135,22 +125,6 @@ function MessageBubble({
                                 Scene {n}
                             </button>
                         ))}
-                    </div>
-                )}
-
-                {/* Model badge */}
-                {!isUser && message.model_used && (
-                    <div className="px-1">
-                        <button
-                            type="button"
-                            onClick={() => setModelExpanded((v) => !v)}
-                            title={message.model_used}
-                            className="text-[10px] text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors"
-                        >
-                            {modelExpanded
-                                ? message.model_used
-                                : truncateModelId(message.model_used)}
-                        </button>
                     </div>
                 )}
             </div>
@@ -213,7 +187,6 @@ export function ScriptChat({ scriptId, projectId, initialChatId, onAfterResponse
                         role: m.role as "user" | "assistant",
                         content: m.content,
                         scene_refs: m.scene_refs ?? [],
-                        model_used: m.model_used ?? undefined,
                         timestamp: m.created_at ? new Date(m.created_at) : new Date(),
                     }))
                 );
@@ -245,7 +218,6 @@ export function ScriptChat({ scriptId, projectId, initialChatId, onAfterResponse
                             role: m.role as "user" | "assistant",
                             content: m.content,
                             scene_refs: [],
-                            model_used: m.model_used ?? undefined,
                             timestamp: m.created_at ? new Date(m.created_at) : new Date(),
                         }))
                     );
@@ -306,7 +278,6 @@ export function ScriptChat({ scriptId, projectId, initialChatId, onAfterResponse
                         role: "assistant",
                         content: res.reply,
                         scene_refs: [],
-                        model_used: res.model_used,
                         timestamp: new Date(),
                     }]);
                 } else if (scriptId) {
@@ -327,7 +298,6 @@ export function ScriptChat({ scriptId, projectId, initialChatId, onAfterResponse
                         role: "assistant",
                         content: res.reply,
                         scene_refs: res.scene_refs ?? [],
-                        model_used: res.model_used,
                         timestamp: new Date(),
                     }]);
                 }

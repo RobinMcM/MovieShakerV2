@@ -174,7 +174,7 @@ export function CoproducerSidebar({
                                 <SelectTrigger className="h-8 flex-1 text-sm">
                                     <SelectValue />
                                 </SelectTrigger>
-                                <SelectContent>
+                                <SelectContent position="item-aligned">
                                     <SelectItem value="CoWriter">✍️ CoWriter</SelectItem>
                                     <SelectItem value="CoProducer">🎬 CoProducer</SelectItem>
                                     <SelectItem value="CoDirector">🎥 CoDirector</SelectItem>

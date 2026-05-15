@@ -5,7 +5,7 @@ Prefix: /api/video-history.
 import json
 from io import BytesIO
 import uuid
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query

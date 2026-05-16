@@ -48,6 +48,7 @@ from backgrounds import router as backgrounds_router
 from page_chat import router as page_chat_router
 from documentary import router as documentary_router
 from editorial import router as editorial_router
+from production_sync import router as production_sync_router
 
 settings = load_settings()
 
@@ -399,6 +400,7 @@ app.include_router(backgrounds_router)
 app.include_router(page_chat_router)
 app.include_router(documentary_router)
 app.include_router(editorial_router)
+app.include_router(production_sync_router)
 
 # --- Routes ---
 @app.get("/")

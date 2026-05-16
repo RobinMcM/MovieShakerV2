@@ -69,6 +69,7 @@ def _tram_line_to_shot(line: TramLine, now_iso: str) -> dict:
         "line_number": line.line_number,
         "shot_type": line.shot_type,
         "camera_direction": line.camera_direction or "",
+        "camera_role": line.camera_role or "",
         "color": line.color or "",
         "characters": chars,
         "start_element_id": start_id,
@@ -77,6 +78,7 @@ def _tram_line_to_shot(line: TramLine, now_iso: str) -> dict:
         "end_element_text": end_text,
         "scene_mood": line.scene_mood or "",
         "scene_visual": line.scene_visual or "",
+        "shot_status": line.shot_status or "queued",
         "x_position": line.x_position,
         "embedded_at": now_iso,
     }
@@ -174,11 +176,13 @@ class UpdateTramLineBody(BaseModel):
     end_y: Optional[float] = None
     x_position: Optional[float] = None
     camera_direction: Optional[str] = None
+    camera_role: Optional[str] = None  # A_CAM | B_CAM | GIMBAL_CAM | BTS_CAM | null clears
     shot_type: Optional[str] = None
     action_text: Optional[str] = None
     character_names: Optional[str] = None
     script_elements: Optional[List[Any]] = None
     scene_visual: Optional[str] = None
+    shot_status: Optional[str] = None  # queued | ready | recording | completed
 
 
 def _row_to_response(row: TramLine, scene: Optional[Scene] = None) -> dict:
@@ -191,10 +195,12 @@ def _row_to_response(row: TramLine, scene: Optional[Scene] = None) -> dict:
         "end_y": row.end_y,
         "x_position": row.x_position,
         "camera_direction": row.camera_direction or "",
+        "camera_role": row.camera_role or None,
         "shot_type": row.shot_type,
         "action_text": row.action_text,
         "scene_mood": row.scene_mood,
         "scene_visual": row.scene_visual,
+        "shot_status": row.shot_status or "queued",
     }
     if row.script_elements:
         try:

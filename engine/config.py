@@ -56,6 +56,8 @@ class Settings:
     media_handler_timeout_seconds: float
     media_handler_verify_tls: bool
     sql_echo: bool
+    afilminabox_base_url: str
+    afilminabox_api_key: str
 
     @property
     def is_production(self) -> bool:
@@ -122,4 +124,6 @@ def load_settings() -> Settings:
         media_handler_timeout_seconds=float(os.getenv("MEDIA_HANDLER_TIMEOUT_SECONDS", "60")),
         media_handler_verify_tls=media_handler_verify_tls,
         sql_echo=sql_echo,
+        afilminabox_base_url=os.getenv("AFILMINABOX_BASE_URL", "").rstrip("/"),
+        afilminabox_api_key=os.getenv("AFILMINABOX_API_KEY", "").strip(),
     )

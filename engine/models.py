@@ -275,6 +275,9 @@ class SceneCost(SQLModel, table=True):
     logistics_percentage: float = Field()
 
 
+CAMERA_ROLES = {"A_CAM", "B_CAM", "GIMBAL_CAM", "BTS_CAM"}
+
+
 class TramLine(SQLModel, table=True):
     """Shot coverage marker (tramline) on a scene: vertical bar with start/end %, x position, optional shot type and camera direction."""
     __tablename__ = "tram_lines"
@@ -290,9 +293,42 @@ class TramLine(SQLModel, table=True):
     scene_mood: Optional[str] = Field(default=None)
     scene_visual: Optional[str] = Field(default=None)
     color: Optional[str] = Field(default=None)
+    camera_role: Optional[str] = Field(default=None)  # A_CAM | B_CAM | GIMBAL_CAM | BTS_CAM
+    shot_status: Optional[str] = Field(default="queued")  # queued | ready | recording | completed
     start_y: float = Field()
     end_y: float = Field()
     x_position: float = Field()
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Take(SQLModel, table=True):
+    """A single recorded take on set, linked to a shot (TramLine) and camera role."""
+    __tablename__ = "takes"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    project_id: uuid.UUID = Field(index=True)               # Project.id — no FK, cross-service safe
+    scene_id: Optional[uuid.UUID] = Field(default=None, index=True)      # Scene.id
+    tram_line_id: Optional[uuid.UUID] = Field(default=None, index=True)  # TramLine.id (shot)
+    camera_role: str = Field()                               # A_CAM | B_CAM | GIMBAL_CAM | BTS_CAM
+    take_number: int = Field(default=0)                      # 0 = provisional; updated on completion
+    status: str = Field(default="recording")                 # recording | completed | rejected
+    started_at: Optional[datetime] = Field(default=None)
+    completed_at: Optional[datetime] = Field(default=None)
+    duration: Optional[float] = Field(default=None)          # seconds
+    video_path: Optional[str] = Field(default=None)          # path or URL from aFilmInABox
+    recording_id: Optional[str] = Field(default=None)        # aFilmInABox recording ID
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ProductionCamera(SQLModel, table=True):
+    """Maps a camera slot (1/2/3 in aFilmInABox) to a named camera role for a production."""
+    __tablename__ = "production_camera"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    project_id: uuid.UUID = Field(foreign_key="project.id", index=True)
+    camera_slot: int = Field()    # 1 | 2 | 3 — physical slot in aFilmInABox
+    camera_role: str = Field()    # A_CAM | B_CAM | GIMBAL_CAM | BTS_CAM
+    operator_name: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

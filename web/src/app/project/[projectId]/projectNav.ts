@@ -2,6 +2,7 @@ import {
   BarChart3,
   Box,
   Calendar,
+  Clapperboard,
   CreditCard,
   Eye,
   List,
@@ -59,6 +60,12 @@ export const PROJECT_TOOL_NAV: ProjectNavItem[] = [
     label: "Shot List",
     href: (projectId) => `/project/${projectId}/shotlist`,
     icon: List,
+  },
+  {
+    id: "on-set",
+    label: "On Set",
+    href: (projectId) => `/project/${projectId}/on-set`,
+    icon: Clapperboard,
   },
   {
     id: "moodboard",

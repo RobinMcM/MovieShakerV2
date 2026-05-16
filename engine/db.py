@@ -407,6 +407,78 @@ def _create_script_messages_table():
                 logger.warning("Migration script_messages: %s", e)
 
 
+def _create_takes_table():
+    """Create takes table if not exists. No FK constraints — cross-service IDs."""
+    with engine.connect() as conn:
+        with conn.begin():
+            try:
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS takes (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        project_id UUID NOT NULL,
+                        scene_id UUID,
+                        tram_line_id UUID,
+                        camera_role VARCHAR NOT NULL,
+                        take_number INTEGER NOT NULL DEFAULT 0,
+                        status VARCHAR NOT NULL DEFAULT 'recording',
+                        started_at TIMESTAMPTZ,
+                        completed_at TIMESTAMPTZ,
+                        duration FLOAT,
+                        video_path TEXT,
+                        recording_id VARCHAR,
+                        created_at TIMESTAMPTZ DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ DEFAULT NOW()
+                    )
+                """))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_takes_project_id ON takes (project_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_takes_tram_line_id ON takes (tram_line_id)"))
+            except Exception as e:
+                logger.warning("Migration takes: %s", e)
+
+
+def _migrate_tram_lines_camera_role():
+    """Add camera_role to tram_lines table if missing."""
+    with engine.connect() as conn:
+        with conn.begin():
+            try:
+                conn.execute(text("ALTER TABLE tram_lines ADD COLUMN IF NOT EXISTS camera_role VARCHAR"))
+            except Exception as e:
+                logger.warning("Migration tram_lines camera_role: %s", e)
+
+
+def _migrate_tram_lines_shot_status():
+    """Add shot_status to tram_lines table if missing."""
+    with engine.connect() as conn:
+        with conn.begin():
+            try:
+                conn.execute(text(
+                    "ALTER TABLE tram_lines ADD COLUMN IF NOT EXISTS shot_status VARCHAR DEFAULT 'queued'"
+                ))
+            except Exception as e:
+                logger.warning("Migration tram_lines shot_status: %s", e)
+
+
+def _create_production_camera_table():
+    """Create production_camera table with unique slot-per-project constraint."""
+    with engine.connect() as conn:
+        with conn.begin():
+            try:
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS production_camera (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        project_id UUID NOT NULL,
+                        camera_slot INTEGER NOT NULL,
+                        camera_role VARCHAR NOT NULL,
+                        operator_name VARCHAR,
+                        created_at TIMESTAMPTZ DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ DEFAULT NOW(),
+                        UNIQUE (project_id, camera_slot)
+                    )
+                """))
+            except Exception as e:
+                logger.warning("Migration production_camera: %s", e)
+
+
 def _create_page_chat_tables():
     """Create page_chat_sessions and page_chat_messages tables for per-page chat history."""
     with engine.connect() as conn:
@@ -493,6 +565,8 @@ def init_db():
         SceneCostConfig,
         SceneCost,
         TramLine,
+        Take,
+        ProductionCamera,
         MoodBoardComposition,
         MoodBoardImageHistory,
         MoodBoardVideoHistory,
@@ -531,6 +605,10 @@ def init_db():
     _create_page_chat_tables()
     _migrate_scenes_characters_column()
     _migrate_scenes_unique_constraint()
+    _create_takes_table()
+    _migrate_tram_lines_camera_role()
+    _migrate_tram_lines_shot_status()
+    _create_production_camera_table()
 
 
 def get_session():

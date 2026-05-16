@@ -20,6 +20,7 @@ import {
   CheckCircle2,
   Circle,
   Clapperboard,
+  ExternalLink,
   Loader2,
   RefreshCw,
   X,
@@ -181,6 +182,7 @@ function OnSetDashboardInner() {
   const [contextError, setContextError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [launching, setLaunching] = useState(false);
   const [settingShot, setSettingShot] = useState(false);
   const [clearingShot, setClearingShot] = useState(false);
 
@@ -265,6 +267,24 @@ function OnSetDashboardInner() {
     }
   };
 
+  const handleLaunchBox = async () => {
+    if (!projectId) return;
+    setLaunching(true);
+    try {
+      const res = await api.post<{ success: boolean; launchUrl: string }>(
+        `/projects/${projectId}/launch-box`,
+        {}
+      );
+      if (res.launchUrl) {
+        window.open(res.launchUrl, "_blank", "noopener,noreferrer");
+      }
+    } catch (e) {
+      setSyncMsg(`Launch failed: ${(e as Error).message}`);
+    } finally {
+      setLaunching(false);
+    }
+  };
+
   const handleSetActiveShot = async () => {
     if (!projectId || !selectedShotId) return;
     setSettingShot(true);
@@ -339,6 +359,14 @@ function OnSetDashboardInner() {
                 <RefreshCw className="h-4 w-4" />
               )}
               {syncing ? "Syncing…" : "Sync to Box"}
+            </Button>
+            <Button onClick={handleLaunchBox} disabled={launching} size="sm">
+              {launching ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ExternalLink className="h-4 w-4" />
+              )}
+              {launching ? "Opening…" : "Open in aFilmInABox"}
             </Button>
           </div>
         </div>

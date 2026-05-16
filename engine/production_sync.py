@@ -3,10 +3,13 @@ Production Sync: push project, scenes, shots, and camera assignments from MovieS
 Receive takes back from aFilmInABox via internal endpoints.
 Requires AFILMINABOX_BASE_URL and AFILMINABOX_API_KEY env vars.
 """
+import hashlib
 import hmac
+import json
 import os
+import secrets
 import uuid as uuid_lib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import httpx
@@ -14,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
+from cache import cache_delete, cache_get, cache_set
 from db import get_session
 from models import CAMERA_ROLES, Project, ProjectMember, ProductionCamera, Scene, Script, Take, TramLine
 from supertokens_python.recipe.session import SessionContainer
@@ -650,3 +654,153 @@ def clear_active_shot(
         raise HTTPException(status_code=502, detail=f"aFilmInABox unreachable: {e}")
 
     return {"success": True}
+
+
+# ---------------------------------------------------------------------------
+# Launch token — MovieShaker → aFilmInABox auth handoff
+# ---------------------------------------------------------------------------
+
+LAUNCH_TOKEN_TTL = 300  # 5 minutes, single-use
+
+
+class LaunchBoxBody(BaseModel):
+    camera_role: Optional[str] = None   # A_CAM | B_CAM | GIMBAL_CAM | BTS_CAM
+    operator_name: Optional[str] = None
+
+
+class LaunchVerifyBody(BaseModel):
+    token: str
+    project_id: str
+
+
+class MemberCheckBody(BaseModel):
+    user_id: str
+    project_id: str
+
+
+@router.post("/projects/{project_id}/launch-box")
+def launch_box(
+    project_id: str,
+    body: LaunchBoxBody,
+    session: SessionContainer = Depends(verify_session()),
+    db: Session = Depends(get_session),
+):
+    """
+    Generate a short-lived launch token so a MovieShaker user can open
+    aFilmInABox pre-authenticated. Token is single-use and expires in 5 minutes.
+    """
+    user_id = session.get_user_id()
+    project = _require_project_access(db, project_id, user_id, roles={"owner", "editor", "viewer"})
+    base_url, _ = _box_client()
+
+    if body.camera_role and body.camera_role not in CAMERA_ROLES:
+        raise HTTPException(status_code=400, detail=f"camera_role must be one of {sorted(CAMERA_ROLES)}")
+
+    # launchId is the Valkey key; the client token is launchId + HMAC signature.
+    # Payload lives server-side — can be revoked, audited, and marked used without
+    # touching the token itself.
+    launch_id = str(uuid_lib.uuid4())
+    internal_key = os.environ.get("INTERNAL_API_KEY", "")
+    sig = hmac.new(internal_key.encode(), launch_id.encode(), hashlib.sha256).hexdigest()
+    token = f"{launch_id}.{sig}"
+
+    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=LAUNCH_TOKEN_TTL)).isoformat()
+    cache_set(
+        f"launch:token:{launch_id}",
+        json.dumps({
+            "launchId": launch_id,
+            "userId": user_id,
+            "projectId": str(project.id),
+            "projectName": project.name or "",
+            "director": project.director or "",
+            "cameraRole": body.camera_role,
+            "operatorName": body.operator_name,
+            "expiresAt": expires_at,
+            "used": False,
+        }),
+        ttl_seconds=LAUNCH_TOKEN_TTL,
+    )
+
+    launch_url = f"{base_url}/launch?token={token}&projectId={project_id}"
+    return {
+        "success": True,
+        "launchUrl": launch_url,
+        "expiresIn": LAUNCH_TOKEN_TTL,
+    }
+
+
+@router.post("/api/production/launch/verify")
+def verify_launch_token(
+    request: Request,
+    body: LaunchVerifyBody,
+    db: Session = Depends(get_session),
+):
+    """
+    Called by aFilmInABox server to validate a launch token.
+    Single-use: token is deleted on first successful verification.
+    No SuperTokens auth — uses INTERNAL_API_KEY.
+    """
+    _require_internal_key(request)
+
+    # Token format: {launchId}.{hmac-sha256-hex}
+    parts = body.token.rsplit(".", 1)
+    if len(parts) != 2:
+        raise HTTPException(status_code=401, detail="Malformed launch token")
+    launch_id, provided_sig = parts
+
+    internal_key = os.environ.get("INTERNAL_API_KEY", "")
+    expected_sig = hmac.new(internal_key.encode(), launch_id.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected_sig, provided_sig):
+        raise HTTPException(status_code=401, detail="Launch token signature invalid")
+
+    raw = cache_get(f"launch:token:{launch_id}")
+    if not raw:
+        raise HTTPException(status_code=401, detail="Launch token invalid or expired")
+
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Launch token corrupted")
+
+    if payload.get("used"):
+        raise HTTPException(status_code=401, detail="Launch token already used")
+
+    if payload.get("projectId") != body.project_id:
+        raise HTTPException(status_code=401, detail="Project ID mismatch")
+
+    # Mark used — keep in Valkey briefly for audit; natural TTL or 60s post-use
+    payload["used"] = True
+    cache_set(f"launch:token:{launch_id}", json.dumps(payload), ttl_seconds=60)
+
+    return {
+        "success": True,
+        "userId": payload["userId"],
+        "projectId": payload["projectId"],
+        "projectName": payload.get("projectName", ""),
+        "director": payload.get("director", ""),
+        "cameraRole": payload.get("cameraRole"),
+        "operatorName": payload.get("operatorName"),
+    }
+
+
+@router.post("/api/production/member-check")
+def member_check(
+    request: Request,
+    body: MemberCheckBody,
+    db: Session = Depends(get_session),
+):
+    """Called by aFilmInABox to verify a user is still a member of a project."""
+    _require_internal_key(request)
+
+    member = db.exec(
+        select(ProjectMember).where(
+            ProjectMember.project_id == body.project_id,
+            ProjectMember.user_id == body.user_id,
+        )
+    ).first()
+
+    return {
+        "success": True,
+        "isMember": member is not None,
+        "role": member.role if member else None,
+    }

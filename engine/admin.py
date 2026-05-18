@@ -447,8 +447,8 @@ async def admin_update_user(
         db.commit()
         db.refresh(profile)
     if body.role is not None:
-        if body.role not in ("admin", "producer", "super_user"):
-            raise HTTPException(status_code=400, detail="role must be admin, producer, or super_user")
+        if body.role not in ("admin", "producer", "super_user", "user"):
+            raise HTTPException(status_code=400, detail="role must be admin, producer, super_user, or user")
         profile.role = body.role
     if body.producer_tier is not None:
         if body.producer_tier not in ("standard", "indie", "production_company"):

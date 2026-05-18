@@ -103,13 +103,14 @@ function AdminUsersPage() {
                                                 disabled={updating === user.user_id}
                                                 onChange={(e) =>
                                                     updateUser(user.user_id, {
-                                                        role: e.target.value as "admin" | "producer",
+                                                        role: e.target.value as "admin" | "producer" | "super_user",
                                                     })
                                                 }
                                                 className="rounded-md border border-input bg-background px-3 py-1.5 text-sm"
                                             >
                                                 <option value="producer">Producer</option>
                                                 <option value="admin">Admin</option>
+                                                <option value="super_user">Super User</option>
                                             </select>
                                         </div>
                                         <div className="flex items-center gap-2">

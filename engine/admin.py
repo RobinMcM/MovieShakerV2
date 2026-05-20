@@ -82,7 +82,7 @@ class UserWithProfileResponse(BaseModel):
     email: str
     time_joined: int
     phone_number: Optional[str] = None
-    role: str = "producer"
+    role: str = "user"
     producer_tier: str = "standard"
     blocked: bool = False
 
@@ -411,11 +411,11 @@ async def admin_list_users(
         phone_numbers = getattr(u, "phone_numbers", None) or []
         phone_number = phone_numbers[0] if phone_numbers else None
         profile = db.get(UserProfile, user_id)
-        role = "producer"
+        role = "user"
         producer_tier = "standard"
         blocked = False
         if profile:
-            role = profile.role or "producer"
+            role = profile.role or "user"
             producer_tier = profile.producer_tier or "standard"
             blocked = profile.blocked or False
         out.append(
@@ -447,8 +447,8 @@ async def admin_update_user(
         db.commit()
         db.refresh(profile)
     if body.role is not None:
-        if body.role not in ("admin", "producer", "super_user", "user"):
-            raise HTTPException(status_code=400, detail="role must be admin, producer, super_user, or user")
+        if body.role not in ("admin", "super_user", "user"):
+            raise HTTPException(status_code=400, detail="role must be admin, super_user, or user")
         profile.role = body.role
     if body.producer_tier is not None:
         if body.producer_tier not in ("standard", "indie", "production_company"):

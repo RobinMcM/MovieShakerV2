@@ -18,7 +18,7 @@ def _migrate_user_profile_roles():
     with engine.connect() as conn:
         with conn.begin():
             for col, typ in [
-                ("role", "VARCHAR NOT NULL DEFAULT 'producer'"),
+                ("role", "VARCHAR NOT NULL DEFAULT 'user'"),
                 ("producer_tier", "VARCHAR NOT NULL DEFAULT 'standard'"),
                 ("blocked", "BOOLEAN NOT NULL DEFAULT FALSE"),
                 ("notifications_opt_in", "BOOLEAN NOT NULL DEFAULT TRUE"),
@@ -34,6 +34,10 @@ def _migrate_user_profile_roles():
                     )
                 except Exception as e:
                     logger.warning("Migration user_profile %s: %s", col, e)
+            try:
+                conn.execute(text("UPDATE user_profile SET role = 'user' WHERE role = 'producer'"))
+            except Exception as e:
+                logger.warning("Migration user_profile producer→user: %s", e)
 
 
 def _migrate_user_profile_drop_admin():

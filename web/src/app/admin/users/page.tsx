@@ -68,7 +68,7 @@ function AdminUsersPage() {
             <main className="flex-1 container mx-auto px-4 py-8">
                 <h1 className="text-3xl font-bold mb-6 text-primary">User Management</h1>
                 <p className="text-muted-foreground mb-6">
-                    Assign Admin roles, set Producer tier, and block users.
+                    Assign Admin roles, set user tier, and block users.
                 </p>
 
                 {loading && <p>Loading users...</p>}
@@ -103,13 +103,12 @@ function AdminUsersPage() {
                                                 disabled={updating === user.user_id}
                                                 onChange={(e) =>
                                                     updateUser(user.user_id, {
-                                                        role: e.target.value as "admin" | "producer" | "super_user" | "user",
+                                                        role: e.target.value as "admin" | "super_user" | "user",
                                                     })
                                                 }
                                                 className="rounded-md border border-input bg-background px-3 py-1.5 text-sm"
                                             >
                                                 <option value="user">User</option>
-                                                <option value="producer">Producer</option>
                                                 <option value="admin">Admin</option>
                                                 <option value="super_user">Super User</option>
                                             </select>

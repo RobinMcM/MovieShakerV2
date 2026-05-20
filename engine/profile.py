@@ -39,7 +39,7 @@ class ProfileResponse(BaseModel):
     username: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
-    role: str = "producer"
+    role: str = "user"
     producer_tier: str = "standard"
     blocked: bool = False
     notifications_opt_in: bool = True

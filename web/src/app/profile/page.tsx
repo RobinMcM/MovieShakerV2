@@ -146,12 +146,12 @@ function ProfilePage() {
                         Profile
                     </h1>
                     <span className="text-xs font-semibold px-2 py-1 rounded bg-muted text-muted-foreground capitalize">
-                        {profile?.role === "admin" ? "Admin" : "Producer"}
-                        {profile?.role === "producer" && profile?.producer_tier && (
+                        {profile?.role === "admin" ? "Admin" : "User"}
+                        {profile?.role === "user" && profile?.producer_tier && (
                             <> · {profile.producer_tier.replace("_", " ")}</>
                         )}
                     </span>
-                    {profile?.role === "producer" &&
+                    {profile?.role === "user" &&
                         typeof profile?.owned_project_count === "number" &&
                         typeof profile?.project_limit === "number" && (
                             <span className="text-xs text-muted-foreground">

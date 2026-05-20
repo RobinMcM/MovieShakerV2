@@ -196,7 +196,7 @@ function ProjectsPage() {
                         <h1 className="text-3xl font-bold text-primary">My Projects</h1>
                         <p className="text-muted-foreground mt-1">
                             Manage your film and series productions
-                            {profile?.role === "producer" &&
+                            {profile?.role === "user" &&
                                 typeof profile?.owned_project_count === "number" &&
                                 typeof profile?.project_limit === "number" && (
                                     <span className="ml-2">

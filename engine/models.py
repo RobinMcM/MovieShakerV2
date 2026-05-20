@@ -15,7 +15,7 @@ class UserProfile(SQLModel, table=True):
     username: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
-    role: str = Field(default="producer")  # "admin" | "producer"
+    role: str = Field(default="user")  # "admin" | "user"
     producer_tier: str = Field(default="standard")  # "standard" | "indie" | "production_company"
     blocked: bool = Field(default=False)
     notifications_opt_in: bool = Field(default=True)
